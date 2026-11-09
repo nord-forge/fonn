@@ -1,9 +1,10 @@
 export type FilterMode = 'filter' | 'observe' | 'off';
-export type ProfileName = 'opus-high' | 'opus-medium' | 'sonnet-medium';
+export type ProfileName = string;
+export type ProfileEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export interface TaskProfile {
   name: ProfileName;
-  model: 'claude-opus-5-5' | 'claude-sonnet-5-5';
-  effort: 'high' | 'medium';
+  model: string;
+  effort: ProfileEffort;
 }
 
 export interface ToolObservation {
@@ -120,6 +121,7 @@ export interface RunTaskOptions {
   prompt: string;
   cwd: string;
   profile?: ProfileName;
+  configDirectory?: string;
   budgetUsd?: number;
   maxTurns?: number;
   filterMode?: FilterMode;

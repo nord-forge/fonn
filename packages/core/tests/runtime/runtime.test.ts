@@ -8,6 +8,7 @@ import type { HookInput, Options, PermissionResult, SDKMessage, SyncHookJSONOutp
 import type { FilterDecision, RunTaskOptions, TaskResult } from '../../src/contracts.js';
 import { createArtifactStore } from '../../src/filtering/index.js';
 import { createRecoveryReader, createRuntime, createTaskRecoveryStore, getTaskArtifactDirectory, listRuns, readRun } from '../../src/runtime/index.js';
+import { createProfileStore } from '../../src/profiles.js';
 import { acquireResumeLock } from '../../src/runtime/resume-lock.js';
 
 const valid: TaskResult = { summary: 'Inspected the fixture', changes: [], checks: [{ name: 'fixture', status: 'not_run', details: 'No external checks were run.' }], unresolved: [], handoffs: [] };
@@ -22,7 +23,7 @@ function result(cost = 1, changes: Record<string, unknown> = {}): SDKMessage {
 }
 async function fixture() {
   const root = await mkdtemp(join(await realpath(tmpdir()), 'fonn-runtime-'));
-  return { root, options: { prompt: 'private prompt fixture', cwd: root, stateDirectory: join(root, 'state') } satisfies RunTaskOptions, cleanup: () => rm(root, { recursive: true, force: true }) };
+  return { root, options: { prompt: 'private prompt fixture', cwd: root, stateDirectory: join(root, 'state'), configDirectory: join(root, 'config') } satisfies RunTaskOptions, cleanup: () => rm(root, { recursive: true, force: true }) };
 }
 async function hook(options: Options, name: 'PreToolUse' | 'PostToolUse', input: Record<string, unknown>) {
   const callback = options.hooks?.[name]?.[0]?.hooks[0];
@@ -77,9 +78,10 @@ test('all invalid inputs and missing explicit key fail before query without expo
     let calls = 0;
     const runtime = createRuntime({ getApiKey: () => ' ', query: async function* () { calls++; yield result(); } });
     await assert.rejects(runtime.runTask(f.options), /ANTHROPIC_API_KEY/);
-    for (const extra of [{ prompt: '' }, { budgetUsd: 0 }, { budgetUsd: Infinity }, { maxTurns: 0 }, { maxTurns: 1.2 }, { profile: 'unknown' }, { filterMode: 'unknown' }, { resumeTaskId: '../bad' }, { answerQuestions: true }]) {
+    for (const extra of [{ prompt: '' }, { budgetUsd: 0 }, { budgetUsd: Infinity }, { maxTurns: 0 }, { maxTurns: 1.2 }, { filterMode: 'unknown' }, { resumeTaskId: '../bad' }, { answerQuestions: true }]) {
       await assert.rejects(runtime.runTask({ ...f.options, ...extra } as RunTaskOptions), /Invalid task options/);
     }
+    await assert.rejects(runtime.runTask({ ...f.options, profile: 'unknown' }), /Unknown profile/);
     await assert.rejects(runtime.runTask({ ...f.options, cwd: join(f.root, 'absent') }));
     assert.equal(calls, 0);
     const failing = createRuntime({ getApiKey: () => secret, query: async function* () { throw new Error(`${secret} ${f.options.prompt}`); } });
@@ -378,5 +380,26 @@ test('task-start profile snapshot is immutable and resume validates profile and 
     await assert.rejects(runtime.runTask({ ...f.options, cwd: other.root, resumeTaskId: first.taskId }), /same project/);
     const resumed = await runtime.runTask({ ...f.options, resumeTaskId: first.taskId });
     assert.equal(resumed.profile.name, 'opus-high');
+
+    const store = createProfileStore(f.options.configDirectory);
+    await store.create({ name: 'careful', model: 'sonnet', effort: 'low' });
+    await store.setDefault('careful');
+    const customSession = randomUUID();
+    const customRuntime = createRuntime({ getApiKey: () => secret, query: async function* ({ options: sdk }) {
+      assert.equal(sdk.model, 'sonnet'); assert.equal(sdk.effort, 'low');
+      yield result(1, { session_id: customSession });
+    } });
+    const custom = await customRuntime.runTask(f.options);
+    assert.deepEqual(custom.profile, { name: 'careful', model: 'sonnet', effort: 'low' });
+    await store.edit('careful', { model: 'opus', effort: 'high' });
+    assert.deepEqual((await readRun(custom.taskId, f.options.stateDirectory)).profile, custom.profile);
+    const continued = await customRuntime.runTask({ ...f.options, resumeTaskId: custom.taskId, profile: 'careful' });
+    assert.deepEqual(continued.profile, custom.profile);
+    await store.setDefault('opus-medium');
+    await store.delete('careful');
+    // Even a broken current registry cannot change or block a saved SDK profile.
+    await writeFile(join(f.options.configDirectory, 'profiles.json'), '{invalid');
+    const afterDelete = await customRuntime.runTask({ ...f.options, resumeTaskId: continued.taskId });
+    assert.deepEqual(afterDelete.profile, custom.profile);
   } finally { await f.cleanup(); await other.cleanup(); }
 });

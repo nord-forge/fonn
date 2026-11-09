@@ -56,6 +56,19 @@ Tool details start collapsed; press **Ctrl+O** to expand them or use `fonn -- --
 
 Pass ordinary Claude arguments after `--`. Options that override the selected launch model/effort, hook/settings sources, or permission policy are rejected, including permission-bypass flags. Management and cloud subcommands are unsupported through this launcher; use plain `claude` for those. The profile sets the initial model and effort; interactive `/model` and `/effort` remain available. Launch IDs and state locations are recorded for original-output recovery. `native-hook` is an internal stdin-JSON command used by generated hook settings.
 
+## Custom profiles
+
+Save a model and effort choice, then use it for native Claude or an SDK task:
+
+```sh
+fonn profiles create focused --model sonnet --effort medium
+fonn profiles default focused
+fonn profiles
+fonn --profile focused
+```
+
+Use `fonn help profiles` for create, edit, show, delete, and default commands. Profiles are stored locally in `~/.config/fonn/profiles.json`, with `XDG_CONFIG_HOME` and `FONN_CONFIG_DIR` overrides. Built-in profiles remain unchanged. Saved SDK tasks keep their original profile snapshot when resumed, even after edits or deletion. See [profiles](docs/profiles.md).
+
 ## Run an SDK task
 
 Supply your own `ANTHROPIC_API_KEY` through your environment or normal secret manager. SDK runs use separate API billing and do not extract subscription credentials or use subscription quotas. This example makes paid model requests:
@@ -74,7 +87,7 @@ The commands below use the installed `fonn` name. In a local checkout, substitut
 | --- | --- |
 | `[launcher options] [-- <claude args>]` | Open ordinary interactive Claude; this is the default when no command is supplied. |
 | `claude [options] [-- <claude args>]` | Explicit form of the same native launcher. |
-| `profiles [--json]` | List `opus-high`, `opus-medium`, and `sonnet-medium`. |
+| `profiles [--json]` | List built-in and custom profiles, marking the default. |
 | `run <prompt> [options]` | Start a task or continue with `--resume <task-id>`. Quote the prompt as one argument. |
 | `runs [--state-dir <path>] [--json]` | List saved SDK runs. |
 | `show <task-id> [--state-dir <path>] [--json]` | Read results, checks, estimates, and filtering statistics. |
@@ -83,7 +96,7 @@ The commands below use the installed `fonn` name. In a local checkout, substitut
 | `doctor [--json]` | Check local compatibility and key presence offline. |
 | `--help`, `--version` | Print usage or package version offline. |
 
-SDK options include `--cwd`, `--profile`, `--budget`, `--max-turns`, `--filter`, `--state-dir`, `--resume`, and `--json`. Defaults are `opus-medium`, an estimated $5 stop threshold, 20 turns, and conservative `filter` mode. Requests may overshoot the threshold. Profiles are fixed for an SDK task; resume retains the saved profile and project directory. `observe` records potential reductions without changing delivered output; `off` disables reduction.
+SDK options include `--cwd`, `--profile`, `--budget`, `--max-turns`, `--filter`, `--state-dir`, `--resume`, and `--json`. Defaults are the configured profile (initially `opus-medium`), an estimated $5 stop threshold, 20 turns, and conservative `filter` mode. Requests may overshoot the threshold. Profiles are fixed for an SDK task; resume retains the saved profile and project directory. `observe` records potential reductions without changing delivered output; `off` disables reduction.
 
 `--json` reserves stdout for one machine-readable value on successful dispatch; progress, permissions, and errors use stderr. Errors may leave stdout empty. Failed, cancelled, budget-stopped, invalid, and failed-check outcomes exit nonzero. Ctrl+C requests cancellation; a saved cancelled outcome is shown when the runtime can produce one. Human-readable model/tool text escapes terminal controls.
 

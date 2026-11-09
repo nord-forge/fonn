@@ -6,7 +6,7 @@ import type { Options, SDKMessage, SDKResultMessage } from '@anthropic-ai/claude
 import { z } from 'zod';
 import type { ArtifactStore, FilterDecision, RunRecord, RunTaskOptions, TaskUsage } from '../contracts.js';
 import { createArtifactStore, createOutputFilter } from '../filtering/index.js';
-import { getProfile } from '../profiles.js';
+import { getDefaultConfigDirectory, profileNameSchema, resolveProfile } from '../profiles.js';
 import { taskResultSchema } from '../schema.js';
 import { buildSdkOptions } from './options.js';
 import { accountingResetError, emptyUsage, getDefaultStateDirectory, getTaskArtifactDirectory, listRuns, prepareTask, readRun, resumeBaseline, saveRun, taskIdSchema } from './storage.js';
@@ -28,7 +28,7 @@ export interface RuntimeDependencies {
 }
 
 const optionsSchema = z.object({
-  prompt: z.string().trim().min(1), cwd: z.string().min(1), profile: z.enum(['opus-high', 'opus-medium', 'sonnet-medium']).optional(),
+  prompt: z.string().trim().min(1), cwd: z.string().min(1), profile: profileNameSchema.optional(), configDirectory: z.string().min(1).optional(),
   budgetUsd: z.number().finite().positive().default(5), maxTurns: z.number().int().positive().default(20), filterMode: z.enum(['filter', 'observe', 'off']).default('filter'),
   stateDirectory: z.string().min(1).optional(), resumeTaskId: taskIdSchema.optional(), signal: z.instanceof(AbortSignal).optional(),
   approveTool: z.custom<NonNullable<RunTaskOptions['approveTool']>>((value) => typeof value === 'function').optional(),
@@ -73,7 +73,8 @@ export function createRuntime(dependencies: RuntimeDependencies = {}) {
       const parent = options.resumeTaskId ? await readRun(options.resumeTaskId, stateDirectory) : undefined;
       if (parent && (parent.cwd !== cwd || !parent.sessionId)) throw new Error('Resume requires a saved session from the same project directory');
       if (parent && options.profile && options.profile !== parent.profile.name) throw new Error('A resumed task must retain its session profile');
-      const profile = Object.freeze({ ...getProfile(options.profile ?? parent?.profile.name) });
+      // Resumes use the saved snapshot even if its named profile was edited or deleted.
+      const profile = Object.freeze({ ...(parent?.profile ?? await resolveProfile(options.profile, options.configDirectory ?? getDefaultConfigDirectory(dependencies.environment ?? process.env))) });
       // Hold the same-session lock across leaf validation, the query, and record persistence.
       const releaseResumeLock = parent ? await acquireResumeLock(parent.sessionId!, stateDirectory) : undefined;
       try {

@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import type { RunRecord, RunTaskOptions } from '@nord-forge/fonn-core/contracts';
 import { dispatch, type CliDependencies } from '../../src/cli/main.js';
 import { renderRun, terminalText } from '../../src/cli/render.js';
+
+const emptyConfigDirectory = join(await realpath(tmpdir()), `fonn-cli-no-profiles-${process.pid}-${randomUUID()}`);
 
 function record(overrides: Partial<RunRecord> = {}): RunRecord {
   return { schemaVersion: 1, taskId: 'task-1', startedAt: '2026-11-09T10:00:00Z', finishedAt: '2026-11-09T10:01:00Z', status: 'succeeded', profile: { name: 'opus-medium', model: 'claude-opus-5-5', effort: 'medium' }, cwd: '/tmp/project', budgetUsd: 5, maxTurns: 30, filterMode: 'filter', result: { summary: 'Fixed the issue.', changes: ['Updated one file'], checks: [{ name: 'unit', status: 'passed', details: '2 tests' }], unresolved: [], handoffs: [] }, usage: { estimatedCostUsd: 0.12, inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 }, filters: [], ...overrides };
@@ -11,7 +17,7 @@ function harness(extra: Partial<CliDependencies> = {}) {
   let out = '';
   let err = '';
   const options: RunTaskOptions[] = [];
-  const deps: Partial<CliDependencies> = { stdout: text => { out += text; }, stderr: text => { err += text; }, env: {}, nodeVersion: '22.0.0', interactive: false, onInterrupt: () => () => {}, runTask: async value => { options.push(value); return record(); }, listRuns: async () => [record()], readRun: async () => record(), ...extra };
+  const deps: Partial<CliDependencies> = { stdout: text => { out += text; }, stderr: text => { err += text; }, nodeVersion: '22.0.0', interactive: false, onInterrupt: () => () => {}, runTask: async value => { options.push(value); return record(); }, listRuns: async () => [record()], readRun: async () => record(), ...extra, env: { FONN_CONFIG_DIR: emptyConfigDirectory, ...extra.env } };
   return { run: (args: string[]) => dispatch(args, deps), out: () => out, err: () => err, options };
 }
 
@@ -19,12 +25,49 @@ test('help, profiles and version run offline and do not import/execute the SDK',
   const h = harness({ runTask: async () => { throw new Error('must not run'); } });
   assert.equal(await h.run(['--help']), 0);
   assert.match(h.out(), /--resume/);
+  assert.equal(await h.run(['help']), 0);
+  for (const args of [['help', 'profiles'], ['profiles', '--help']]) {
+    const profileHelp = harness();
+    assert.equal(await profileHelp.run(args), 0);
+    assert.match(profileHelp.out(), /profiles create <name>/);
+  }
   const p = harness();
   assert.equal(await p.run(['profiles', '--json']), 0);
   assert.equal(JSON.parse(p.out()).length, 3);
   const v = harness();
   assert.equal(await v.run(['--version']), 0);
   assert.match(v.out(), /^0\.1\.0\n$/);
+});
+
+test('profile commands persist custom choices, manage the default and reject invalid arguments', async () => {
+  const configDirectory = await mkdtemp(join(await realpath(tmpdir()), 'fonn-cli-profiles-'));
+  const env = { FONN_CONFIG_DIR: configDirectory };
+  const invoke = async (args: string[]) => {
+    const h = harness({ env });
+    assert.equal(await h.run(['profiles', ...args]), 0, h.err());
+    return h.out();
+  };
+  try {
+    const custom = { name: 'quick', model: 'haiku', effort: 'low' };
+    assert.deepEqual(JSON.parse(await invoke(['create', 'quick', '--model', 'haiku', '--effort', 'low', '--json'])), custom);
+    assert.deepEqual(JSON.parse(await invoke(['show', 'quick', '--json'])), custom);
+    assert.equal(JSON.parse(await invoke(['edit', 'quick', '--effort', 'max', '--json'])).effort, 'max');
+    assert.equal(JSON.parse(await invoke(['default', 'quick', '--json'])).name, 'quick');
+    assert.equal(JSON.parse(await invoke(['default', '--json'])).name, 'quick');
+    assert.match(await invoke(['list']), /quick: haiku, effort max \(default\)/);
+    assert.equal(JSON.parse(await invoke(['list', '--json'])).length, 4);
+    const fresh = harness({ env });
+    assert.equal(await fresh.run(['run', 'Use configured default']), 0);
+    assert.equal(fresh.options[0]?.profile, 'quick');
+    for (const args of [ ['edit', 'quick'], ['create', 'missing', '--model', 'haiku'], ['show', 'quick', 'extra'], ['default', 'quick', 'extra'], ['list', '--model', 'haiku'], ['delete', 'quick'], ['delete', 'opus-high'], ['edit', 'opus-high', '--effort', 'low'], ['create', 'bad', '--model', 'haiku', '--effort', 'invalid'], ['unknown'] ]) {
+      const invalid = harness({ env });
+      assert.equal(await invalid.run(['profiles', ...args]), 1, args.join(' '));
+      assert.equal(invalid.out(), '');
+    }
+    await invoke(['default', 'opus-medium']);
+    assert.deepEqual(JSON.parse(await invoke(['delete', 'quick', '--json'])), { deleted: 'quick' });
+    assert.equal(JSON.parse(await invoke(['--json'])).length, 3);
+  } finally { await rm(configDirectory, { recursive: true, force: true }); }
 });
 
 test('doctor shows only key presence and requires supported Node plus a key', async () => {
@@ -54,10 +97,16 @@ test('run passes validated options and JSON stdout contains exactly one value', 
 });
 
 test('resume lets runtime preserve the saved profile unless explicit', async () => {
-  const h = harness();
-  assert.equal(await h.run(['run', 'Continue', '--resume', 'task-1']), 0);
-  assert.equal(h.options[0]?.profile, undefined);
-  assert.equal(h.options[0]?.resumeTaskId, 'task-1');
+  const configDirectory = await mkdtemp(join(await realpath(tmpdir()), 'fonn-cli-resume-'));
+  try {
+    await writeFile(join(configDirectory, 'profiles.json'), '{broken configuration');
+    const h = harness({ env: { FONN_CONFIG_DIR: configDirectory } });
+    assert.equal(await h.run(['run', 'Continue', '--resume', 'task-1']), 0);
+    assert.equal(h.options[0]?.profile, undefined);
+    assert.equal(h.options[0]?.resumeTaskId, 'task-1');
+    assert.equal(await h.run(['run', 'Continue', '--resume', 'task-1', '--profile', 'deleted-custom-profile']), 0);
+    assert.equal(h.options[1]?.profile, 'deleted-custom-profile');
+  } finally { await rm(configDirectory, { recursive: true, force: true }); }
 });
 
 test('strict argument errors are helpful and never invoke runtime', async () => {
@@ -107,20 +156,29 @@ test('native claude routing preserves passthrough without requiring an API key',
   let called = false;
   const h = harness({ launchClaude: async options => {
     called = true;
-    assert.deepEqual(options, { cwd: '/tmp/project', profile: 'opus-high', filterMode: 'observe', stateDirectory: '/tmp/state', args: ['--resume', 'session-id'] });
+    assert.deepEqual(options, { cwd: '/tmp/project', profile: 'opus-high', filterMode: 'observe', stateDirectory: '/tmp/state', configDirectory: emptyConfigDirectory, args: ['--resume', 'session-id'] });
     return 7;
   } });
   assert.equal(await h.run(['claude', '--cwd', '/tmp/project', '--profile', 'opus-high', '--filter', 'observe', '--state-dir', '/tmp/state', '--', '--resume', 'session-id']), 7);
   assert.equal(called, true);
   // Leading launcher options and no arguments use native Claude by default.
   assert.equal(await h.run(['--cwd', '/tmp/project', '--profile', 'opus-high', '--filter', 'observe', '--state-dir', '/tmp/state', '--', '--resume', 'session-id']), 7);
-  const defaultLaunch = harness({ launchClaude: async options => {
-    assert.equal(options.cwd, process.cwd());
-    assert.equal(options.profile, 'opus-medium');
-    assert.deepEqual(options.args, []);
-    return 0;
-  } });
-  assert.equal(await defaultLaunch.run([]), 0);
+  const configDirectory = await mkdtemp(join(await realpath(tmpdir()), 'fonn-cli-native-'));
+  try {
+    const env = { FONN_CONFIG_DIR: configDirectory };
+    const setup = harness({ env });
+    assert.equal(await setup.run(['profiles', 'create', 'quick', '--model', 'haiku', '--effort', 'low']), 0);
+    assert.equal(await setup.run(['profiles', 'default', 'quick']), 0);
+    const defaultLaunch = harness({ env, launchClaude: async options => {
+      assert.equal(options.cwd, process.cwd());
+      assert.equal(options.profile, 'quick');
+      assert.equal(options.configDirectory, configDirectory);
+      assert.deepEqual(options.args, []);
+      return 0;
+    } });
+    assert.equal(await defaultLaunch.run([]), 0);
+    assert.equal(await defaultLaunch.run(['--profile', 'quick']), 0);
+  } finally { await rm(configDirectory, { recursive: true, force: true }); }
   assert.equal(h.out(), '');
   assert.equal(await harness().run(['claude', '--budget', '2']), 1);
   assert.equal(await harness().run(['claude', '--json']), 1);

@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { ArtifactSlice, FilterMode, ProfileName, ToolObservation } from '@nord-forge/fonn-core/contracts';
 import { createArtifactStore, createOutputFilter } from '@nord-forge/fonn-core/filtering';
-import { getProfile } from '@nord-forge/fonn-core/profiles';
+import { profileNameSchema, resolveProfile, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
 import { getDefaultStateDirectory } from '@nord-forge/fonn-core/state';
 
 const executeFile = promisify(execFile);
@@ -17,18 +17,20 @@ const launchSchema = z.object({
   schemaVersion: z.literal(1),
   launchId: z.string().regex(idPattern),
   cwd: z.string(),
-  profile: z.enum(['opus-high', 'opus-medium', 'sonnet-medium']),
+  profile: profileNameSchema,
+  profileSnapshot: taskProfileSchema.optional(),
   filterMode: z.enum(['filter', 'observe', 'off']),
   createdAt: z.string(),
   hookEntrypoint: z.string(),
   finishedAt: z.string().optional(),
   exitCode: z.number().int().optional(),
-}).strict();
+}).strict().refine(record => record.profileSnapshot === undefined || record.profileSnapshot.name === record.profile, 'Profile snapshot must match the launch profile');
 type LaunchRecord = z.infer<typeof launchSchema>;
 
 export interface NativeLaunchOptions {
   cwd: string;
   profile?: ProfileName;
+  configDirectory?: string;
   filterMode?: FilterMode;
   stateDirectory?: string;
   args?: string[];
@@ -113,10 +115,10 @@ async function verifyClaude(executable: string): Promise<void> {
 
 /** Launches the user's actual CLI, preserving its authentication and permission flow. */
 export async function launchClaude(options: NativeLaunchOptions): Promise<number> {
-  const profile = getProfile(options.profile);
   const mode = z.enum(['filter', 'observe', 'off']).parse(options.filterMode ?? 'filter');
   const args = options.args ?? [];
   validateArguments(args);
+  const profile = await resolveProfile(options.profile, options.configDirectory);
   const cwd = await realpath(options.cwd);
   if (!(await lstat(cwd)).isDirectory()) throw new Error('The target working directory is not a directory.');
   const executable = options.executable ?? 'claude';
@@ -133,7 +135,7 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
   entrypoint = path.resolve(entrypoint);
   const launchId = randomUUID();
   const location = await launchDirectory(options.stateDirectory, launchId, true);
-  const record: LaunchRecord = { schemaVersion: 1, launchId, cwd, profile: profile.name, filterMode: mode, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
+  const record: LaunchRecord = { schemaVersion: 1, launchId, cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
   const metadata = path.join(location.directory, 'launch.json');
   await atomicJson(metadata, record);
   const settingsPath = path.join(location.directory, 'settings.json');

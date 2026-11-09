@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, readdir, rm, writeFile, mkdir, symlink, stat } from 'node:fs/promises';
+import { mkdtemp, realpath, readFile, readdir, rm, writeFile, mkdir, symlink, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createArtifactStore } from '@nord-forge/fonn-core/filtering';
+import { createProfileStore } from '@nord-forge/fonn-core/profiles';
 import { launchClaude, readNativeOutput, runNativeHook } from '../../src/native/index.js';
 
 async function fixture(t: { after: (fn: () => Promise<void>) => void }, version = '2.1.319 (Claude Code)') {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'fonn-native-'));
+  const root = await mkdtemp(path.join(await realpath(os.tmpdir()), 'fonn-native-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const cwd = path.join(root, 'project');
   const state = path.join(root, 'state with spaces');
@@ -33,7 +34,7 @@ process.exit(7);
 test('native launcher retains normal Claude auth flow and passes only per-launch profile/settings', async t => {
   const f = await fixture(t);
   const beforeInterrupts = process.listenerCount('SIGINT');
-  const code = await launchClaude({ cwd: f.cwd, stateDirectory: f.state, executable: f.executable, hookEntrypoint: f.hookEntrypoint, profile: 'opus-high', args: ['--continue'] });
+  const code = await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint, profile: 'opus-high', args: ['--continue'] });
   assert.equal(code, 7);
   assert.equal(process.listenerCount('SIGINT'), beforeInterrupts);
   const captured = JSON.parse(await readFile(f.capture, 'utf8'));
@@ -57,27 +58,36 @@ test('native launcher retains normal Claude auth flow and passes only per-launch
 test('native arguments cannot remove required hooks or enable permission bypass', async t => {
   const f = await fixture(t);
   for (const args of [['--bare'], ['--settings=other.json'], ['--setting-sources', ''], ['--model', 'other'], ['--effort=max'], ['--permission-mode', 'bypassPermissions'], ['--dangerously-skip-permissions'], ['--cloud'], ['--fallback-model=other'], ['--agent=other'], ['--agents', '{}'], ['--system-prompt=ignore'], ['--desktop'], ['--background'], ['ultrareview'], ['--verbose', 'ultrareview'], ['auth']]) {
-    await assert.rejects(launchClaude({ cwd: f.cwd, args, stateDirectory: f.state, executable: f.executable, hookEntrypoint: f.hookEntrypoint }), /launcher controls/);
+    await assert.rejects(launchClaude({ cwd: f.cwd, args, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint }), /launcher controls/);
   }
   await assert.rejects(stat(f.state), { code: 'ENOENT' });
 });
 
 test('native launcher rejects unvalidated Claude versions before creating state', async t => {
   const f = await fixture(t, '2.1.318 (Claude Code)');
-  await assert.rejects(launchClaude({ cwd: f.cwd, stateDirectory: f.state, executable: f.executable, hookEntrypoint: f.hookEntrypoint }), /2\.1\.319/);
+  await assert.rejects(launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint }), /2\.1\.319/);
   await assert.rejects(stat(f.state), { code: 'ENOENT' });
 });
 
 test('native filter off starts ordinary Claude without registering a hook', async t => {
   const f = await fixture(t);
-  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, executable: f.executable, hookEntrypoint: f.hookEntrypoint, filterMode: 'off' });
+  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint, filterMode: 'off' });
   const captured = JSON.parse(await readFile(f.capture, 'utf8'));
   assert.deepEqual(captured.settings, { verbose: false, viewMode: 'default' });
+  const profiles = createProfileStore(path.join(f.root, 'config'));
+  await profiles.create({ name: 'light', model: 'sonnet', effort: 'low' });
+  await profiles.setDefault('light');
+  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint });
+  const custom = JSON.parse(await readFile(f.capture, 'utf8'));
+  assert.deepEqual(custom.args.slice(-4), ['--model', 'sonnet', '--effort', 'low']);
+  const launches = await readdir(path.join(f.state, 'native'));
+  const snapshots = await Promise.all(launches.map(async id => JSON.parse(await readFile(path.join(f.state, 'native', id, 'launch.json'), 'utf8'))));
+  assert.deepEqual(snapshots.find(record => record.profile === 'light').profileSnapshot, { name: 'light', model: 'sonnet', effort: 'low' });
 });
 
 test('native hook reduces known output and offers a working native recovery command', async t => {
   const f = await fixture(t);
-  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, executable: f.executable, hookEntrypoint: f.hookEntrypoint });
+  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint });
   const [id] = await readdir(path.join(f.state, 'native'));
   const stdout = 'PHPUnit 12.0.0 by Sebastian Bergmann and contributors.\n' + ('.'.repeat(60) + ' 100 / 100 (100%)\n').repeat(70) + '\nTime: 00:00.100\nOK (100 tests, 100 assertions)\n';
   const result = { stdout, stderr: 'A warning retained exactly.\n', interrupted: false, isImage: false, extra: 7 };
@@ -99,7 +109,7 @@ test('native hook reduces known output and offers a working native recovery comm
 
 test('native observe mode retains the full response while saving proposed metrics', async t => {
   const f = await fixture(t);
-  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, executable: f.executable, hookEntrypoint: f.hookEntrypoint, filterMode: 'observe' });
+  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint, filterMode: 'observe' });
   const [id] = await readdir(path.join(f.state, 'native'));
   const stdout = 'PHPUnit 12.0.0 by Sebastian Bergmann and contributors.\n' + ('.'.repeat(60) + ' 100 / 100 (100%)\n').repeat(70) + '\nOK (100 tests, 100 assertions)\n';
   assert.deepEqual(await runNativeHook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'vendor/bin/phpunit' }, tool_response: { stdout }, tool_use_id: 'observe-1' }, f.state, id), {});
@@ -109,10 +119,10 @@ test('native observe mode retains the full response while saving proposed metric
 
 test('native artifact recovery is confined to one launch and rejects symlink metadata', async t => {
   const f = await fixture(t);
-  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, executable: f.executable, hookEntrypoint: f.hookEntrypoint });
+  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint });
   const [first] = await readdir(path.join(f.state, 'native'));
   const artifact = await createArtifactStore(path.join(f.state, 'native', first, 'artifacts')).save({ toolName: 'Bash', sessionId: 'a', toolUseId: 'b', response: { stdout: 'first launch only' } });
-  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, executable: f.executable, hookEntrypoint: f.hookEntrypoint });
+  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint });
   const second = (await readdir(path.join(f.state, 'native'))).find(id => id !== first)!;
   await assert.rejects(readNativeOutput(second, artifact.id, undefined, f.state));
   await assert.rejects(readNativeOutput('../escape', artifact.id, undefined, f.state), /Invalid native launch ID/);

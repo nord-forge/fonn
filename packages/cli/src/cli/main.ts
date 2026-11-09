@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
-import type { ArtifactSlice, FilterMode, PermissionRequest, ProfileName, RunRecord, RunTaskOptions } from '@nord-forge/fonn-core/contracts';
-import { getProfile, profiles } from '@nord-forge/fonn-core/profiles';
+import type { ArtifactSlice, FilterMode, PermissionRequest, ProfileName, RunRecord, RunTaskOptions, TaskProfile } from '@nord-forge/fonn-core/contracts';
+import { createProfileStore, effortSchema, getDefaultConfigDirectory, modelSchema, resolveProfile, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
 import { renderRun, runExitCode, terminalText, validateResult } from './render.js';
 
 export interface CliDependencies {
@@ -12,7 +12,7 @@ export interface CliDependencies {
   listRuns: (stateDirectory?: string) => Promise<RunRecord[]>;
   readRun: (taskId: string, stateDirectory?: string) => Promise<RunRecord>;
   readArtifact: (taskId: string, artifactId: string, options: { offset: number; limit: number }, stateDirectory?: string) => Promise<ArtifactSlice>;
-  launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; stateDirectory?: string; args?: string[] }) => Promise<number>;
+  launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; stateDirectory?: string; configDirectory?: string; args?: string[] }) => Promise<number>;
   runNativeHook: (event: unknown, stateDirectory: string, launchId: string) => Promise<unknown>;
   readNativeOutput: (launchId: string, artifactId: string, options: { offset: number; limit: number }, stateDirectory?: string) => Promise<ArtifactSlice>;
   readStdin: () => Promise<string>;
@@ -30,17 +30,18 @@ const help = `Fonn — local Claude Agent SDK tasks
 Usage:
   fonn [--cwd <dir>] [--profile <name>] [--filter <mode>] [--state-dir <path>] [-- <claude args>]
   fonn profiles [--json]
+  fonn help profiles
   fonn run <prompt> [options]
   fonn runs [--state-dir <path>] [--json]
   fonn show <task-id> [--state-dir <path>] [--json]
   fonn output <task-id> <artifact-id> [--offset <n>] [--limit <n>] [--state-dir <path>]
   fonn native-output <launch-id> <artifact-id> [--offset <n>] [--limit <n>] [--state-dir <path>]
   fonn doctor [--json]
-  fonn --help | --version
+  fonn help | --help | --version
 
 Run options:
   --cwd <dir>            Target project directory (default: current directory)
-  --profile <name>       opus-high | opus-medium | sonnet-medium (default: opus-medium)
+  --profile <name>       Built-in or saved profile (default: configured default, initially opus-medium)
   --budget <dollars>     Positive estimated API stop budget (default: 5; can overshoot)
   --max-turns <n>        Positive integer turn limit (default: 20)
   --filter <mode>        filter | observe | off (default: filter)
@@ -53,6 +54,26 @@ The claude command opens ordinary interactive Claude with its existing authentic
 SDK budget, structured JSON, and turn-limit flags belong to run, not claude.
 Permission requests require an explicit interactive yes; noninteractive requests are denied.
 Artifact reads default to 4000 characters and are limited to 20000 per request.
+`;
+
+const profilesHelp = `Fonn profiles — saved model and effort choices
+
+Usage:
+  fonn profiles [list] [--json]
+  fonn profiles show <name> [--json]
+  fonn profiles create <name> --model <model> --effort <level> [--json]
+  fonn profiles edit <name> [--model <model>] [--effort <level>] [--json]
+  fonn profiles delete <name> [--json]
+  fonn profiles default [<name>] [--json]
+  fonn help profiles | profiles --help
+
+Models: opus, sonnet, haiku, or a Claude model ID. Availability is not verified.
+Effort: low | medium | high | xhigh | max. Model support is not verified.
+Edit requires at least one change. Built-in profiles cannot be edited or deleted.
+Choose another default before deleting the current default profile.
+Configuration: ~/.config/fonn/profiles.json; XDG_CONFIG_HOME and FONN_CONFIG_DIR override it.
+Profiles store model and effort only; credentials and permission settings remain separate.
+SDK resume retains the saved profile snapshot, even after the profile is edited or deleted.
 `;
 
 interface Parsed { positionals: string[]; flags: Map<string, string | true> }
@@ -106,6 +127,12 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       args = ['claude', ...args];
     }
     const command = args[0]!;
+    if (command === 'help') {
+      if (args.length === 1) { stdout(help); return 0; }
+      if (args.length === 2 && args[1] === 'profiles') { stdout(profilesHelp); return 0; }
+      throw new Error('Expected help [profiles]. Use --help for usage.');
+    }
+    if (command === 'profiles' && args.length === 2 && args[1] === '--help') { stdout(profilesHelp); return 0; }
     if (command === '--help' || command === '-h' || (args.length === 2 && args[1] === '--help')) { stdout(help); return 0; }
     if (command === '--version') { if (args.length !== 1) throw new Error('--version takes no arguments.'); stdout(await version() + '\n'); return 0; }
     if (command === 'claude') {
@@ -114,8 +141,10 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       argumentCount(parsed, 0, 'claude [options] [-- <claude args>]');
       const filterMode = stringFlag(parsed, 'filter') ?? 'filter';
       if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
+      const configDirectory = getDefaultConfigDirectory(env);
+      const profile = await resolveProfile(stringFlag(parsed, 'profile'), configDirectory);
       const launch = injected.launchClaude ?? (await import('../native/index.js')).launchClaude;
-      return await launch({ cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile: getProfile(stringFlag(parsed, 'profile')).name, filterMode: filterMode as FilterMode, stateDirectory: stringFlag(parsed, 'state-dir'), args: separator < 0 ? [] : args.slice(separator + 1) });
+      return await launch({ cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile: profile.name, filterMode: filterMode as FilterMode, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
     }
     if (command === 'native-hook') {
       const parsed = parse(args.slice(1), ['state-dir', 'launch-id']);
@@ -130,14 +159,47 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       json(await hook(event, stateDirectory, launchId));
       return 0;
     }
-    if (command === 'profiles' || command === 'doctor') {
-      const parsed = parse(args.slice(1), ['json']);
-      argumentCount(parsed, 0, command);
-      if (command === 'profiles') {
-        if (parsed.flags.has('json')) json(Object.values(profiles));
-        else stdout(Object.values(profiles).map(profile => `${profile.name}: ${profile.model}, effort ${profile.effort}`).join('\n') + '\n');
+    if (command === 'profiles') {
+      const action = args[1] && !args[1].startsWith('--') ? args[1] : 'list';
+      if (!['list', 'show', 'create', 'edit', 'delete', 'default'].includes(action)) throw new Error(`Unknown profiles command ${action}. Use fonn help profiles for usage.`);
+      const parsed = parse(args.slice(args[1] === action ? 2 : 1), action === 'create' || action === 'edit' ? ['model', 'effort', 'json'] : ['json']);
+      if (action === 'default') {
+        if (parsed.positionals.length > 1) throw new Error('Expected profiles default [<name>]. Use fonn help profiles for usage.');
+      } else argumentCount(parsed, action === 'list' ? 0 : 1, action === 'list' ? 'profiles list' : `profiles ${action} <name>`);
+      const store = createProfileStore(getDefaultConfigDirectory(env));
+      const renderProfile = (profile: { name: string; model: string; effort: string }) => `${terminalText(profile.name)}: ${terminalText(profile.model)}, effort ${terminalText(profile.effort)}`;
+      if (action === 'list') {
+        const listing = await store.list();
+        if (parsed.flags.has('json')) json(listing.profiles);
+        else stdout(listing.profiles.map(profile => `${renderProfile(profile)}${profile.name === listing.defaultProfile ? ' (default)' : ''}`).join('\n') + '\n');
         return 0;
       }
+      const name = parsed.positionals[0];
+      if (action === 'delete') {
+        await store.delete(name!);
+        if (parsed.flags.has('json')) json({ deleted: name });
+        else stdout(`Deleted profile ${terminalText(name!)}.\n`);
+        return 0;
+      }
+      let profile: TaskProfile;
+      if (action === 'create') {
+        if (!parsed.flags.has('model') || !parsed.flags.has('effort')) throw new Error('profiles create requires --model and --effort.');
+        profile = await store.create(taskProfileSchema.parse({ name, model: stringFlag(parsed, 'model'), effort: stringFlag(parsed, 'effort') }));
+      } else if (action === 'edit') {
+        if (!parsed.flags.has('model') && !parsed.flags.has('effort')) throw new Error('profiles edit requires --model or --effort.');
+        profile = await store.edit(name!, {
+          ...(parsed.flags.has('model') ? { model: modelSchema.parse(stringFlag(parsed, 'model')) } : {}),
+          ...(parsed.flags.has('effort') ? { effort: effortSchema.parse(stringFlag(parsed, 'effort')) } : {}),
+        });
+      } else if (action === 'default' && name !== undefined) profile = await store.setDefault(name);
+      else profile = await store.get(name);
+      if (parsed.flags.has('json')) json(profile);
+      else stdout(`${renderProfile(profile)}${action === 'default' ? ' (default)' : ''}\n`);
+      return 0;
+    }
+    if (command === 'doctor') {
+      const parsed = parse(args.slice(1), ['json']);
+      argumentCount(parsed, 0, command);
       const nodeVersion = injected.nodeVersion ?? process.versions.node;
       const nodeSupported = Number(nodeVersion.split('.')[0]) >= 22;
       const report = { nodeVersion, nodeSupported, apiKeyPresent: Boolean(env.ANTHROPIC_API_KEY?.trim()), configurationCompatible: nodeSupported, authentication: 'ANTHROPIC_API_KEY only', projectSettings: 'user, project, local and managed settings preserved', networkChecked: false };
@@ -149,7 +211,8 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       const parsed = parse(args.slice(1), ['cwd', 'profile', 'budget', 'max-turns', 'filter', 'state-dir', 'resume', 'json']);
       argumentCount(parsed, 1, 'run <prompt>');
       if (!parsed.positionals[0]!.trim()) throw new Error('The prompt must not be empty.');
-      const profile = getProfile(stringFlag(parsed, 'profile'));
+      const configDirectory = getDefaultConfigDirectory(env);
+      const profile = parsed.flags.has('resume') ? stringFlag(parsed, 'profile') : (await resolveProfile(stringFlag(parsed, 'profile'), configDirectory)).name;
       const filterMode = stringFlag(parsed, 'filter') ?? 'filter';
       if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
       const budgetUsd = numeric(parsed.flags.get('budget'), '--budget', 5);
@@ -185,7 +248,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
           return answers;
         };
         const runTask = injected.runTask ?? (await import('@nord-forge/fonn-core/runtime')).runTask;
-        const record = await runTask({ prompt: parsed.positionals[0]!, cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile: parsed.flags.has('resume') && !parsed.flags.has('profile') ? undefined : profile.name, budgetUsd, maxTurns, filterMode: filterMode as RunTaskOptions['filterMode'], stateDirectory: stringFlag(parsed, 'state-dir'), resumeTaskId: stringFlag(parsed, 'resume'), signal: abort.signal, approveTool, answerQuestions, onEvent: event => stderr(`${event.type}: ${event.message}`) });
+        const record = await runTask({ prompt: parsed.positionals[0]!, cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile, budgetUsd, maxTurns, filterMode: filterMode as RunTaskOptions['filterMode'], stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, resumeTaskId: stringFlag(parsed, 'resume'), signal: abort.signal, approveTool, answerQuestions, onEvent: event => stderr(`${event.type}: ${event.message}`) });
         validateResult(record);
         if (parsed.flags.has('json')) json(record); else stdout(renderRun(record) + '\n');
         return runExitCode(record);

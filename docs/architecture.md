@@ -29,3 +29,5 @@ Native Ctrl+C handling respects the shared foreground process group: the termina
 SDK resumes use an atomic, owner-checked session lock and reject concurrent resumes. Cumulative usage regressions produce an explicit indeterminate-accounting failure. See [the README](../README.md#records-and-recovery) for manual stale-lock recovery. Resume recovery searches only the current store and validated same-session/project ancestors, never arbitrary task directories.
 
 The native Claude launch service currently belongs to the CLI workspace because it registers that CLI’s recovery hook entrypoint. A future desktop host can reuse the SDK core directly; sharing native launch services would require extracting that boundary.
+
+Custom profiles and the selected default are stored separately from task state, in the Fonn configuration directory. Each profile contains only a name, model and effort. SDK task records store the resolved profile snapshot; resume uses that saved value rather than the current registry, including after profile edits or deletion. Profile writes use a private atomic file and an exclusive mutation lock. See [profiles](profiles.md).

@@ -5,17 +5,14 @@ import { join, parse, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { RunRecord, TaskUsage } from '../contracts.js';
-import { getProfile } from '../profiles.js';
+import { taskProfileSchema } from '../profiles.js';
 import { taskResultSchema } from '../schema.js';
 
 export const taskIdSchema = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 const finite = z.number().finite().nonnegative();
 const token = finite.int();
 const usageSchema = z.object({ estimatedCostUsd: finite, inputTokens: token, outputTokens: token, cacheReadTokens: token, cacheWriteTokens: token }).strict();
-const profileSchema = z.object({ name: z.enum(['opus-high', 'opus-medium', 'sonnet-medium']), model: z.enum(['claude-opus-5-5', 'claude-sonnet-5-5']), effort: z.enum(['high', 'medium']) }).strict().refine((profile) => {
-  const expected = getProfile(profile.name);
-  return profile.model === expected.model && profile.effort === expected.effort;
-});
+const profileSchema = taskProfileSchema;
 export const runRecordSchema = z.object({
   schemaVersion: z.literal(1), taskId: taskIdSchema, sessionId: z.string().min(1).optional(), parentTaskId: taskIdSchema.optional(),
   startedAt: z.iso.datetime(), finishedAt: z.iso.datetime(), status: z.enum(['succeeded', 'failed', 'cancelled', 'budget_exceeded']),
