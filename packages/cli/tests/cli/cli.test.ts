@@ -1,0 +1,218 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import type { RunRecord, RunTaskOptions } from '@nord-forge/fonn-core/contracts';
+import { dispatch, type CliDependencies } from '../../src/cli/main.js';
+import { renderRun, terminalText } from '../../src/cli/render.js';
+
+function record(overrides: Partial<RunRecord> = {}): RunRecord {
+  return { schemaVersion: 1, taskId: 'task-1', startedAt: '2026-11-09T10:00:00Z', finishedAt: '2026-11-09T10:01:00Z', status: 'succeeded', profile: { name: 'opus-medium', model: 'claude-opus-5-5', effort: 'medium' }, cwd: '/tmp/project', budgetUsd: 5, maxTurns: 30, filterMode: 'filter', result: { summary: 'Fixed the issue.', changes: ['Updated one file'], checks: [{ name: 'unit', status: 'passed', details: '2 tests' }], unresolved: [], handoffs: [] }, usage: { estimatedCostUsd: 0.12, inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 }, filters: [], ...overrides };
+}
+function harness(extra: Partial<CliDependencies> = {}) {
+  let out = '';
+  let err = '';
+  const options: RunTaskOptions[] = [];
+  const deps: Partial<CliDependencies> = { stdout: text => { out += text; }, stderr: text => { err += text; }, env: {}, nodeVersion: '22.0.0', interactive: false, onInterrupt: () => () => {}, runTask: async value => { options.push(value); return record(); }, listRuns: async () => [record()], readRun: async () => record(), ...extra };
+  return { run: (args: string[]) => dispatch(args, deps), out: () => out, err: () => err, options };
+}
+
+test('help, profiles and version run offline and do not import/execute the SDK', async () => {
+  const h = harness({ runTask: async () => { throw new Error('must not run'); } });
+  assert.equal(await h.run(['--help']), 0);
+  assert.match(h.out(), /--resume/);
+  const p = harness();
+  assert.equal(await p.run(['profiles', '--json']), 0);
+  assert.equal(JSON.parse(p.out()).length, 3);
+  const v = harness();
+  assert.equal(await v.run(['--version']), 0);
+  assert.match(v.out(), /^0\.1\.0\n$/);
+});
+
+test('doctor shows only key presence and requires supported Node plus a key', async () => {
+  const h = harness({ env: { ANTHROPIC_API_KEY: 'sk-SECRET' } });
+  assert.equal(await h.run(['doctor', '--json']), 0);
+  assert.equal(JSON.parse(h.out()).apiKeyPresent, true);
+  assert.equal(JSON.parse(h.out()).networkChecked, false);
+  assert.doesNotMatch(h.out(), /sk-SECRET/);
+  assert.equal(await harness().run(['doctor']), 1);
+  assert.equal(await harness({ env: { ANTHROPIC_API_KEY: 'x' }, nodeVersion: '20.1.0' }).run(['doctor']), 1);
+});
+
+test('run passes validated options and JSON stdout contains exactly one value', async () => {
+  const h = harness({ runTask: async options => { options.onEvent?.({ type: 'progress', message: 'Working' }); return record(); } });
+  assert.equal(await h.run(['run', 'Fix it', '--cwd', '/tmp/repo', '--profile', 'sonnet-medium', '--budget', '1.25', '--max-turns', '7', '--filter', 'observe', '--state-dir', '/tmp/state', '--json']), 0);
+  assert.equal(JSON.parse(h.out()).taskId, 'task-1');
+  assert.equal(h.out().trim().split('\n').length, 1);
+  assert.match(h.err(), /progress: Working/);
+  const c = harness();
+  assert.equal(await c.run(['run', 'Fix it', '--cwd', '/tmp/repo', '--profile', 'sonnet-medium', '--budget', '1.25', '--max-turns', '7', '--filter', 'observe', '--state-dir', '/tmp/state']), 0);
+  assert.equal(c.options[0]?.cwd, '/tmp/repo');
+  assert.equal(c.options[0]?.profile, 'sonnet-medium');
+  assert.equal(c.options[0]?.budgetUsd, 1.25);
+  assert.equal(c.options[0]?.maxTurns, 7);
+  assert.equal(c.options[0]?.filterMode, 'observe');
+  assert.equal(c.options[0]?.stateDirectory, '/tmp/state');
+});
+
+test('resume lets runtime preserve the saved profile unless explicit', async () => {
+  const h = harness();
+  assert.equal(await h.run(['run', 'Continue', '--resume', 'task-1']), 0);
+  assert.equal(h.options[0]?.profile, undefined);
+  assert.equal(h.options[0]?.resumeTaskId, 'task-1');
+});
+
+test('strict argument errors are helpful and never invoke runtime', async () => {
+  for (const args of [ ['run'], ['run', 'a', 'b'], ['run', 'a', '--budget'], ['run', 'a', '--budget', '0'], ['run', 'a', '--budget', 'NaN'], ['run', 'a', '--max-turns', '1.5'], ['run', 'a', '--profile', 'unknown'], ['run', 'a', '--filter', 'yes'], ['run', 'a', '--yes'], ['run', 'a', '--budget', '1', '--budget', '2'], ['show'], ['runs', 'extra'], ['unknown'], ['output', 'task', 'artifact', '--offset', '-1'], ['output', 'task', 'artifact', '--limit', '20001'] ]) {
+    const h = harness();
+    assert.equal(await h.run(args), 1, args.join(' '));
+    assert.match(h.err(), /Error:/);
+    assert.equal(h.out(), '');
+    assert.equal(h.options.length, 0);
+  }
+});
+
+test('noninteractive permission requests deny and keep untrusted input on stderr', async () => {
+  let approved: boolean | undefined;
+  const h = harness({ ask: async () => { throw new Error('must not ask'); }, runTask: async options => { approved = await options.approveTool!({ toolName: 'Bash', input: { command: '\u001b[31mrm file' }, reason: 'write' }); return record(); } });
+  assert.equal(await h.run(['run', 'Task', '--json']), 0);
+  assert.equal(approved, false);
+  assert.match(h.err(), /untrusted tool input/);
+  assert.match(h.err(), /Denied/);
+  assert.doesNotMatch(h.err(), /\u001b/);
+  assert.equal(JSON.parse(h.out()).status, 'succeeded');
+});
+
+test('interactive permission requires explicit yes', async () => {
+  for (const answer of ['yes', 'YES', 'y', '', 'no']) {
+    let approved: boolean | undefined;
+    const h = harness({ interactive: true, ask: async () => answer, runTask: async options => { approved = await options.approveTool!({ toolName: 'Edit', input: { path: 'file' } }); return record(); } });
+    await h.run(['run', 'Task']);
+    assert.equal(approved, answer.toLowerCase() === 'yes');
+  }
+});
+
+test('questions use interactive text answers and remain unresolved headlessly', async () => {
+  for (const interactive of [true, false]) {
+    let answers: Record<string, string> | undefined;
+    const h = harness({ interactive, ask: async () => 'Small scope', runTask: async options => {
+      answers = await options.answerQuestions!({ questions: [{ question: 'Which scope?', options: [{ label: 'Small scope', description: 'One file' }] }] });
+      return record();
+    } });
+    assert.equal(await h.run(['run', 'Task', '--json']), 0);
+    assert.equal(answers?.['Which scope?'], interactive ? 'Small scope' : undefined);
+    assert.equal(JSON.parse(h.out()).taskId, 'task-1');
+  }
+});
+
+test('native claude routing preserves passthrough without requiring an API key', async () => {
+  let called = false;
+  const h = harness({ launchClaude: async options => {
+    called = true;
+    assert.deepEqual(options, { cwd: '/tmp/project', profile: 'opus-high', filterMode: 'observe', stateDirectory: '/tmp/state', args: ['--resume', 'session-id'] });
+    return 7;
+  } });
+  assert.equal(await h.run(['claude', '--cwd', '/tmp/project', '--profile', 'opus-high', '--filter', 'observe', '--state-dir', '/tmp/state', '--', '--resume', 'session-id']), 7);
+  assert.equal(called, true);
+  // Leading launcher options and no arguments use native Claude by default.
+  assert.equal(await h.run(['--cwd', '/tmp/project', '--profile', 'opus-high', '--filter', 'observe', '--state-dir', '/tmp/state', '--', '--resume', 'session-id']), 7);
+  const defaultLaunch = harness({ launchClaude: async options => {
+    assert.equal(options.cwd, process.cwd());
+    assert.equal(options.profile, 'opus-medium');
+    assert.deepEqual(options.args, []);
+    return 0;
+  } });
+  assert.equal(await defaultLaunch.run([]), 0);
+  assert.equal(h.out(), '');
+  assert.equal(await harness().run(['claude', '--budget', '2']), 1);
+  assert.equal(await harness().run(['claude', '--json']), 1);
+});
+
+test('native hook reads stdin JSON and writes one JSON response', async () => {
+  const h = harness({ readStdin: async () => '{"hook_event_name":"PostToolUse"}', runNativeHook: async (event, state, launch) => {
+    assert.deepEqual(event, { hook_event_name: 'PostToolUse' });
+    assert.equal(state, '/tmp/state'); assert.equal(launch, 'launch-1');
+    return { hookSpecificOutput: { hookEventName: 'PostToolUse' } };
+  } });
+  assert.equal(await h.run(['native-hook', '--launch-id', 'launch-1', '--state-dir', '/tmp/state']), 0);
+  assert.equal(JSON.parse(h.out()).hookSpecificOutput.hookEventName, 'PostToolUse');
+  assert.equal(h.err(), '');
+  assert.equal(await harness().run(['native-hook', '--launch-id', 'launch-1']), 1);
+  const invalid = harness({ readStdin: async () => 'bad' });
+  assert.equal(await invalid.run(['native-hook', '--launch-id', 'launch-1', '--state-dir', '/tmp/state']), 1);
+  assert.match(invalid.err(), /JSON event/);
+});
+
+test('native output routes bounded recovery to the launch store', async () => {
+  const h = harness({ readNativeOutput: async (launch, artifact, options) => {
+    assert.equal(launch, 'launch-1'); assert.equal(artifact, 'artifact-1'); assert.deepEqual(options, { offset: 0, limit: 4000 });
+    return { id: artifact, text: 'Original', offset: 0, nextOffset: null, totalCharacters: 8 };
+  } });
+  assert.equal(await h.run(['native-output', 'launch-1', 'artifact-1']), 0);
+  assert.equal(h.out(), 'Original\n');
+});
+
+test('SIGINT aborts and cleans handlers while rendering saved cancellation', async () => {
+  let interrupt: (() => void) | undefined;
+  let detached = false;
+  const h = harness({ onInterrupt: handler => { interrupt = handler; return () => { detached = true; }; }, runTask: async options => { interrupt!(); assert.equal(options.signal?.aborted, true); return record({ status: 'cancelled', error: 'Interrupted' }); } });
+  assert.equal(await h.run(['run', 'Task', '--json']), 1);
+  assert.equal(detached, true);
+  assert.equal(JSON.parse(h.out()).status, 'cancelled');
+});
+
+test('runtime errors clean handlers, redact API keys and keep stdout empty', async () => {
+  let detached = false;
+  const h = harness({ env: { ANTHROPIC_API_KEY: 'secret-value' }, onInterrupt: () => () => { detached = true; }, runTask: async () => { throw new Error('bad secret-value\u001b[2J'); } });
+  assert.equal(await h.run(['run', 'Task', '--json']), 1);
+  assert.equal(detached, true);
+  assert.equal(h.out(), '');
+  assert.doesNotMatch(h.err(), /secret-value|\u001b/);
+  assert.match(h.err(), /REDACTED/);
+});
+
+test('failed, budget and cancelled runs and failed checks exit nonzero', async () => {
+  for (const status of ['failed', 'budget_exceeded', 'cancelled'] as const) {
+    const h = harness({ runTask: async () => record({ status }) });
+    assert.equal(await h.run(['run', 'Task']), 1);
+    assert.match(h.out(), new RegExp(status.toUpperCase()));
+  }
+  const saved = record();
+  saved.result!.checks[0]!.status = 'failed';
+  assert.equal(await harness({ readRun: async () => saved }).run(['show', 'task-1']), 1);
+});
+
+test('lists/shows saved runs, validates structured results before rendering', async () => {
+  const h = harness();
+  assert.equal(await h.run(['runs', '--json']), 0);
+  assert.equal(JSON.parse(h.out())[0].taskId, 'task-1');
+  const show = harness();
+  assert.equal(await show.run(['show', 'task-1', '--json']), 0);
+  assert.equal(JSON.parse(show.out()).taskId, 'task-1');
+  const bad = record({ result: { summary: 'bad' } as RunRecord['result'] });
+  const invalid = harness({ readRun: async () => bad });
+  assert.equal(await invalid.run(['show', 'task-1']), 1);
+  assert.match(invalid.err(), /invalid structured result/);
+});
+
+test('artifact output uses bounded recovery arguments and escapes terminal controls', async () => {
+  const h = harness({ readArtifact: async (taskId, artifactId, options, state) => {
+    assert.equal(taskId, 'task-1'); assert.equal(artifactId, 'artifact-1'); assert.deepEqual(options, { offset: 10, limit: 20 }); assert.equal(state, '/tmp/state');
+    return { id: artifactId, text: '\u001b[31mraw', offset: 10, nextOffset: 20, totalCharacters: 50 };
+  } });
+  assert.equal(await h.run(['output', 'task-1', 'artifact-1', '--offset', '10', '--limit', '20', '--state-dir', '/tmp/state']), 0);
+  assert.match(h.out(), /\\u001b\[31mraw/);
+  assert.match(h.err(), /next --offset 20/);
+});
+
+test('renderer is concise, preserves failed checks and bounds handoffs', () => {
+  const value = record();
+  value.result!.checks[0]!.status = 'failed';
+  value.result!.summary = 'Summary\u001b[2J\u202e';
+  value.result!.handoffs = Array.from({ length: 8 }, () => ({ agent: 'reviewer', task: 'Review', findings: ['x'.repeat(2000)], evidence: [], unresolved: ['Investigate'] }));
+  const rendered = renderRun(value);
+  assert.match(rendered, /\[FAILED\]/);
+  assert.match(rendered, /Estimated API cost/);
+  assert.match(rendered, /Further handoffs/);
+  assert.equal((rendered.match(/Handoff \(reviewer\)/g) ?? []).length, 4);
+  assert.doesNotMatch(rendered, /\u001b|\u202e/);
+  assert.equal(terminalText('safe\ntext'), 'safe\ntext');
+});

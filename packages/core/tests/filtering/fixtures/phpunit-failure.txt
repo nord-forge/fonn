@@ -1,0 +1,22 @@
+PHPUnit 11.5.3 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.4.1
+Configuration: /app/phpunit.xml
+
+...............................................................  63 / 315 ( 20%)
+............................................................... 126 / 315 ( 40%)
+............................................................... 189 / 315 ( 60%)
+............................................................... 252 / 315 ( 80%)
+............................................................... 315 / 315 (100%)
+
+Time: 00:02.049, Memory: 44.50 MB
+
+There was 1 failure:
+
+1) Tests\Feature\BookingTest::test_it_rejects_an_invalid_booking
+Failed asserting that 200 is identical to 422.
+
+/app/tests/Feature/BookingTest.php:41
+
+FAILURES!
+Tests: 315, Assertions: 780, Failures: 1.

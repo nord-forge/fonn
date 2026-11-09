@@ -1,0 +1,5 @@
+src/bookings.ts(14,3): error TS2322: Type 'string' is not assignable to type 'number'. The expected type comes from property 'capacity' which is declared here on type 'BookingConfiguration'.
+src/bookings.ts(14,3): error TS2322: Type 'string' is not assignable to type 'number'. The expected type comes from property 'capacity' which is declared here on type 'BookingConfiguration'.
+src/bookings.ts(14,3): error TS2322: Type 'string' is not assignable to type 'number'. The expected type comes from property 'capacity' which is declared here on type 'BookingConfiguration'.
+src/bookings.ts(14,3): error TS2322: Type 'string' is not assignable to type 'number'. The expected type comes from property 'capacity' which is declared here on type 'BookingConfiguration'.
+src/bookings.ts(19,10): error TS2304: Cannot find name 'missingBooking'.
