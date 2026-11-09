@@ -140,7 +140,22 @@ fonn profiles create sol --provider codex --model gpt-6.1-sol --effort medium
 fonn codex --profile sol
 ```
 
-Codex retains its existing authentication, settings, approval and sandbox policies. New Fonn hooks require review in Codex's `/hooks` browser before filtering can run; Fonn never bypasses hook trust. The native interface remains Codex's own UI. See [Codex support](docs/codex.md), including filtering limits and recovery. Programmatic `fonn run` remains a Claude SDK command.
+Codex retains its existing authentication, settings, approval and sandbox policies. New Fonn hooks require review in Codex's `/hooks` browser before filtering or delegation guidance can run; Fonn never bypasses hook trust. The native interface remains Codex's own UI. See [Codex support](docs/codex.md), including filtering limits and recovery. Programmatic `fonn run` remains a Claude SDK command.
+
+## Automatic subagents
+
+New native launches default to `--subagents auto`. Fonn adds startup guidance asking Claude/Codex to delegate meaningful independent work through their built-in subagent tools, so you do not need to request subagents in every prompt. Simple tasks stay with the parent. The guidance asks for at most two workers, no nested delegation, read-only exploration/review, separate file scopes for builders, and concise verified handoffs. These are instructions, not an enforced concurrency limit; the native agent and your policies control actual delegation.
+
+```sh
+fonn                              # Default agent, automatic delegation guidance
+fonn codex                        # Same behavior for Codex
+fonn --subagents off               # Omit automatic delegation guidance
+fonn --filter off --subagents off  # Register no Fonn hooks
+```
+
+**Subagent shell output uses the same session-wide Fonn filter, including Opus, Sonnet and Haiku.** Native subagents inherit the session hooks; Fonn handles their supported Bash observations without a model exemption and adds a worker startup notice about filtering and bounded original-output recovery. `observe` retains full delivered output, and `--filter off` disables filtering for the parent and workers. Unknown output, failures, warnings and arbitrary MCP payloads still pass through. Filtering cannot cover a provider tool path that does not emit supported hooks.
+
+Codex requires the normal `/hooks` review/trust for startup guidance and filtering. Existing permission checks, agent definitions, models and provider limits remain active. Fonn does not grant unattended permissions or launch headless CLI workers; a rejected delegation must continue in the parent or report its blocker. `--subagents off` removes Fonn's automatic delegation preference; it does not disable native subagent tools or the session-wide output filter. Delegation can increase total token use. See [subagents and permission boundaries](docs/subagents.md).
 
 ## Resume after closing a session
 
@@ -150,7 +165,7 @@ When a native Claude or Codex session exits, Fonn prints a command such as:
 fonn resume <launch-id>
 ```
 
-Copy the printed command to restore the saved agent, initial model/effort profile, project directory and filter mode. A custom `--state-dir` is included when needed. Saved profile snapshots still work after the profile is edited or deleted.
+Copy the printed command to restore the saved agent, initial model/effort profile, project directory, filter mode and subagent preference. A custom `--state-dir` is included when needed. Saved profile snapshots still work after the profile is edited or deleted.
 
 Session lifecycle hooks record the provider's session ID when enabled and, for Codex, trusted. When that ID is unavailable, the footer says **Choose a session to resume** and the same command opens the provider's session picker. Help/version, print-only and nonpersistent launches do not print a resume footer. `fonn help resume` explains the command; SDK tasks continue to use `fonn run --resume <task-id>`.
 

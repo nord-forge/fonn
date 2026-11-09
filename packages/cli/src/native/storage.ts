@@ -16,6 +16,7 @@ const launchSchema = z.object({
   profile: profileNameSchema,
   profileSnapshot: taskProfileSchema.optional(),
   filterMode: z.enum(['filter', 'observe', 'off']),
+  subagents: z.enum(['auto', 'off']).optional(),
   createdAt: z.string(),
   hookEntrypoint: z.string(),
   finishedAt: z.string().optional(),
@@ -28,6 +29,7 @@ export interface NativeLaunchOptions {
   profile?: ProfileName;
   configDirectory?: string;
   filterMode?: FilterMode;
+  subagents?: 'auto' | 'off';
   stateDirectory?: string;
   args?: string[];
   executable?: string;
@@ -79,4 +81,3 @@ export async function atomicJson(file: string, data: unknown): Promise<void> {
 export function shellQuote(value: string): string {
   return "'" + value.replaceAll("'", "'\\''") + "'";
 }
-

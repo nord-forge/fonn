@@ -13,7 +13,7 @@ node packages/cli/dist/cli/main.js --help
 node packages/cli/dist/cli/main.js --cwd /absolute/path/to/project
 ```
 
-The canonical entrypoint is `packages/cli/dist/cli/main.js`. The build also maintains root `dist/cli/main.js` as a local development compatibility shim. The installed command is `fonn`. With no arguments it opens the native Claude or Codex CLI selected by the default profile in the current directory; leading launcher options (`--cwd`, `--profile`, `--filter`, `--state-dir`, or `--`) do the same. `fonn claude` and `fonn codex` explicitly select a provider. SDK tasks and administration use explicit commands such as `fonn run`, `profiles`, `runs`, `show`, `output`, `native-output`, and `doctor`. `fonn --help` and `fonn --version` stay offline.
+The canonical entrypoint is `packages/cli/dist/cli/main.js`. The build also maintains root `dist/cli/main.js` as a local development compatibility shim. The installed command is `fonn`. With no arguments it opens the native Claude or Codex CLI selected by the default profile in the current directory; leading launcher options (`--cwd`, `--profile`, `--filter`, `--subagents`, `--state-dir`, or `--`) do the same. `fonn claude` and `fonn codex` explicitly select a provider. SDK tasks and administration use explicit commands such as `fonn run`, `profiles`, `runs`, `show`, `output`, `native-output`, and `doctor`. `fonn --help` and `fonn --version` stay offline.
 
 A shell alias named `fonn` can shadow the installed command. Inspect `type -a fonn`; if it is an alias, `unalias fonn` removes it from the current shell. Manually remove the alias from your shell configuration to change future shells. No installer or build edits shell configuration automatically.
 

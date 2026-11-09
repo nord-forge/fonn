@@ -60,3 +60,15 @@ Build, typecheck and all 71 offline tests passed, extending the existing profile
 | Independent review | DONE | Reviewer / gpt-6.1-sol high | Source-symlink code-generation finding fixed and independently reproduced as rejected before output creation; no remaining findings. |
 
 Build, typecheck and all 74 offline tests passed (three new cases), followed by the targeted standalone test after the reviewed generator fix. Generated download modules match the shared core, with CI enforcing committed-file parity. No paid model calls were made; the compiled shutdown smoke used fake provider executables. Actual provider lifecycle hook delivery remains subject to native trust/settings and has not been exercised with a paid session. Native resume uses an explicitly labeled picker when no observed session ID exists, and hard kills cannot print a footer. The standalone download/setup guide requires only Node 22+ and an existing native agent; it does not install Fonn or SDKs.
+
+
+## Native automatic delegation and worker filtering
+
+| Task | State | Owner / model | Evidence |
+| --- | --- | --- | --- |
+| Native orchestration hooks | DONE | Builder / gpt-6.1-sol high | Default auto parent guidance, independent off preference, worker filtering notice and fail-open lifecycle adapters; ten focused native tests passed. |
+| CLI, saved preference and docs | DONE | Coordinator | Native-only auto/off flag, provider routing, legacy-off replay, saved preference replay, help and README permission/filtering explanation. |
+| Child filtering coverage | DONE | Builder / gpt-6.1-sol high | Existing cases cover synthetic Opus/Sonnet/Haiku and Codex worker Bash events, exact original recovery, mode combinations and parent lifecycle-ID isolation. |
+| Independent review | DONE | Reviewer / gpt-6.1-sol high | No concrete findings in permissions/trust, JSON contracts, filtering/recovery, flags, saved/legacy resume or docs. |
+
+Build and typecheck passed; all 74 offline tests passed after updating the existing lifecycle fixture for explicit child-ID isolation. No top-level tests were added. No paid model calls or real worker launches were made. Native delegation and concurrency/read-only preferences are model instructions, not hard enforcement. Filtering uses provider session-wide supported Bash hook paths for every model; unknown/unsupported output passes through. Live provider hook inheritance/delivery and model delegation decisions remain unmeasured. Codex hooks require normal manual review/trust. The launcher does not start headless worker CLIs, change permissions/sandbox policy, or widen tool allowlists after a rejected delegation. Existing SDK bounds are unchanged.

@@ -28,9 +28,8 @@ export async function captureNativeSession(event: unknown, stateDirectory: strin
   if (typeof event !== 'object' || event === null) return;
   const input = event as Record<string, unknown>;
   if (input.hook_event_name !== 'SessionStart' && input.hook_event_name !== 'SessionEnd') return;
-  // Claude supplies agent_id for child sessions. Codex reports the parent's
-  // session_id for subagents, so its documented identifier remains usable.
-  if (provider === 'claude' && Object.hasOwn(input, 'agent_id')) return;
+  // Never let explicit child lifecycle metadata replace the parent's resume ID.
+  if (['agent_id', 'parent_session_id', 'parent_agent_id', 'subagent_type'].some(key => Object.hasOwn(input, key))) return;
   const sessionId = sessionIdSchema.safeParse(input.session_id);
   if (!sessionId.success) return;
   const location = await readLaunch(stateDirectory, launchId);

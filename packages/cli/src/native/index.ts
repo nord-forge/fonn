@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { ArtifactSlice, ToolObservation } from '@nord-forge/fonn-core/contracts';
 import { createArtifactStore, createOutputFilter } from '@nord-forge/fonn-core/filtering';
+import { nativeDelegationContext } from './delegation.js';
 import { captureNativeSession, nativeResumeArguments, printNativeResumeHint, resolveNativeProfile } from './session.js';
 
 const executeFile = promisify(execFile);
@@ -52,6 +53,7 @@ async function verifyClaude(executable: string): Promise<void> {
 /** Launches the user's actual CLI, preserving its authentication and permission flow. */
 export async function launchClaude(options: NativeLaunchOptions): Promise<number> {
   const mode = z.enum(['filter', 'observe', 'off']).parse(options.filterMode ?? 'filter');
+  const subagents = z.enum(['auto', 'off']).parse(options.subagents ?? 'auto');
   const args = options.args ?? [];
   validateArguments(args, options.resume !== undefined);
   const resumeArgs = nativeResumeArguments('claude', options.resume);
@@ -72,7 +74,7 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
   entrypoint = path.resolve(entrypoint);
   const launchId = randomUUID();
   const location = await launchDirectory(options.stateDirectory, launchId, true);
-  const record: LaunchRecord = { schemaVersion: 1, launchId, cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
+  const record: LaunchRecord = { schemaVersion: 1, launchId, cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, subagents, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
   const metadata = path.join(location.directory, 'launch.json');
   await atomicJson(metadata, record);
   const settingsPath = path.join(location.directory, 'settings.json');
@@ -82,16 +84,21 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
     // It does not reduce model context; --verbose can override it per launch.
     verbose: false,
     viewMode: 'default',
-    ...(mode === 'off' ? {} : {
+    ...(mode === 'off' && subagents === 'off' ? {} : {
       hooks: {
-        PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }],
+        ...(mode === 'off' ? {} : {
+          PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }],
+        }),
         SessionStart: [{ hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }],
-        SessionEnd: [{ hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }],
+        ...(mode === 'off' ? {} : {
+          SessionEnd: [{ hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }],
+          SubagentStart: [{ hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }],
+        }),
       },
     }),
   };
   await atomicJson(settingsPath, settings);
-  process.stderr.write(`Native Claude launch ${launchId}: ${profile.name}, filtering ${mode}.\n`);
+  process.stderr.write(`Native Claude launch ${launchId}: ${profile.name}, filtering ${mode}, subagents ${subagents}.\n`);
   const child = spawn(executable, ['--settings', settingsPath, '--model', profile.model, '--effort', profile.effort, ...resumeArgs, ...args], { cwd, stdio: 'inherit', env: process.env });
   // A terminal-generated SIGINT already reaches both processes in the same
   // foreground group. Forward only without a terminal, otherwise one Ctrl+C
@@ -121,9 +128,17 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
 export async function runNativeHook(event: unknown, stateDirectory: string, launchId: string): Promise<unknown> {
   if (typeof event !== 'object' || event === null) return {};
   const input = event as Record<string, unknown>;
+  if (input.hook_event_name === 'SubagentStart') {
+    try { return await nativeDelegationContext(event, stateDirectory, launchId, 'claude'); }
+    catch { return {}; }
+  }
   if (input.hook_event_name === 'SessionStart' || input.hook_event_name === 'SessionEnd') {
     try { await captureNativeSession(event, stateDirectory, launchId, 'claude'); }
     catch { /* Lifecycle tracking must not affect the native session. */ }
+    if (input.hook_event_name === 'SessionStart') {
+      try { return await nativeDelegationContext(event, stateDirectory, launchId, 'claude'); }
+      catch { /* Delegation guidance must not affect the native session. */ }
+    }
     return {};
   }
   if (input.hook_event_name !== 'PostToolUse' || input.tool_name !== 'Bash') return {};

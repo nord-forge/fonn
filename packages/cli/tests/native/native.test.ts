@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { createArtifactStore } from '@nord-forge/fonn-core/filtering';
 import { createProfileStore, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
+import { nativeDelegationContext } from '../../src/native/delegation.js';
 import { launchClaude, readNativeOutput, runNativeHook } from '../../src/native/index.js';
 
 async function fixture(t: { after: (fn: () => Promise<void>) => void }, version = '2.1.319 (Claude Code)', exitCode = 7) {
@@ -47,8 +48,8 @@ test('native launcher retains normal Claude auth flow and passes only per-launch
   const command = captured.settings.hooks.PostToolUse[0].hooks[0].command as string;
   assert.match(command, /native-hook/);
   assert.ok(command.includes("'" + f.hookEntrypoint + "'"));
-  assert.deepEqual(Object.keys(captured.settings.hooks), ['PostToolUse', 'SessionStart', 'SessionEnd']);
-  for (const event of ['SessionStart', 'SessionEnd']) {
+  assert.deepEqual(Object.keys(captured.settings.hooks), ['PostToolUse', 'SessionStart', 'SessionEnd', 'SubagentStart']);
+  for (const event of ['SessionStart', 'SessionEnd', 'SubagentStart']) {
     assert.deepEqual(captured.settings.hooks[event], [{ hooks: [{ type: 'command', command, timeout: 5 }] }]);
   }
   const ids = await readdir(path.join(f.state, 'native'));
@@ -56,6 +57,7 @@ test('native launcher retains normal Claude auth flow and passes only per-launch
   const metadata = JSON.parse(await readFile(path.join(f.state, 'native', ids[0], 'launch.json'), 'utf8'));
   assert.equal(metadata.exitCode, 7);
   assert.equal(metadata.profile, 'opus-high');
+  assert.equal(metadata.subagents, 'auto');
   assert.equal((await stat(path.join(f.state, 'native', ids[0], 'settings.json'))).mode & 0o777, 0o600);
   const informational = await fixture(t, '2.1.319 (Claude Code)', 0);
   const messages: string[] = [];
@@ -66,7 +68,7 @@ test('native launcher retains normal Claude auth flow and passes only per-launch
     }
     assert.doesNotMatch(messages.join(''), /resume|picker/i);
     messages.length = 0;
-    assert.equal(await launchClaude({ cwd: informational.cwd, stateDirectory: informational.state, configDirectory: path.join(informational.root, 'config'), executable: informational.executable, hookEntrypoint: informational.hookEntrypoint, filterMode: 'off' }), 0);
+    assert.equal(await launchClaude({ cwd: informational.cwd, stateDirectory: informational.state, configDirectory: path.join(informational.root, 'config'), executable: informational.executable, hookEntrypoint: informational.hookEntrypoint, filterMode: 'off', subagents: 'off' }), 0);
     const fallback = JSON.parse(await readFile(informational.capture, 'utf8'));
     const launchId = path.basename(path.dirname(fallback.args[1]));
     assert.ok(messages.includes(`Choose a session to resume with Fonn:\n  fonn resume ${launchId} --state-dir '${informational.state}'\n`));
@@ -82,6 +84,7 @@ test('native arguments cannot remove required hooks or enable permission bypass'
   for (const argument of ['--resume', '--resume=other', '--resume-session-at=other', '-rother', '--continue', '-c', '-cother', '--fork-session', '--session-id=other']) {
     await assert.rejects(launchClaude({ cwd: f.cwd, resume: 'known-session', args: [argument], stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint }), /controls resume selection/);
   }
+  await assert.rejects(launchClaude({ cwd: f.cwd, stateDirectory: f.state, subagents: 'invalid' as never }), /auto|off/);
   await assert.rejects(stat(f.state), { code: 'ENOENT' });
 });
 
@@ -93,9 +96,20 @@ test('native launcher rejects unvalidated Claude versions before creating state'
 
 test('native filter off starts ordinary Claude without registering a hook', async t => {
   const f = await fixture(t);
-  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint, filterMode: 'off' });
+  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint, filterMode: 'off', subagents: 'off' });
   const captured = JSON.parse(await readFile(f.capture, 'utf8'));
   assert.deepEqual(captured.settings, { verbose: false, viewMode: 'default' });
+  const disabledId = path.basename(path.dirname(captured.args[1]));
+  assert.deepEqual(await runNativeHook({ hook_event_name: 'SessionStart' }, f.state, disabledId), {});
+  assert.deepEqual(await runNativeHook({ hook_event_name: 'SubagentStart', agent_id: 'child' }, f.state, disabledId), {});
+  await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint, filterMode: 'off' });
+  const guidanceOnly = JSON.parse(await readFile(f.capture, 'utf8'));
+  assert.deepEqual(Object.keys(guidanceOnly.settings.hooks), ['SessionStart']);
+  const guidanceId = path.basename(path.dirname(guidanceOnly.args[1]));
+  const context = await runNativeHook({ hook_event_name: 'SessionStart', session_id: 'guidance-only-session' }, f.state, guidanceId) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
+  assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
+  assert.match(context.hookSpecificOutput.additionalContext, /built-in native subagents/);
+  await assert.rejects(stat(path.join(f.state, 'native', guidanceId, 'session.json')), { code: 'ENOENT' });
   const profiles = createProfileStore(path.join(f.root, 'config'));
   await profiles.create({ name: 'light', model: 'sonnet', effort: 'low' });
   await profiles.setDefault('light');
@@ -123,14 +137,39 @@ test('native hook reduces known output and offers a working native recovery comm
   await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint });
   const [id] = await readdir(path.join(f.state, 'native'));
   const lifecycle = { session_id: 'tracked-claude-session', cwd: f.cwd };
-  for (const hook_event_name of ['SessionStart', 'SessionEnd']) {
-    assert.deepEqual(await runNativeHook({ ...lifecycle, hook_event_name }, f.state, id), {});
+  const parentEvent = { ...lifecycle, hook_event_name: 'SessionStart' };
+  const context = await runNativeHook(parentEvent, f.state, id) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
+  assert.equal(context.hookSpecificOutput.hookEventName, 'SessionStart');
+  const guidance = context.hookSpecificOutput.additionalContext;
+  assert.match(guidance, /meaningful, independent scoped work/);
+  assert.match(guidance, /at most two workers and one level/);
+  assert.match(guidance, /retain this session's Fonn filter mode and bounded recovery, regardless of model/);
+  assert.match(guidance, /Never spawn headless fonn, claude, or codex subprocess workers, or widen permissions\/allowlists/);
+  assert.deepEqual(await runNativeHook({ ...lifecycle, hook_event_name: 'SessionEnd' }, f.state, id), {});
+  assert.deepEqual(await nativeDelegationContext(parentEvent, f.state, id, 'codex'), {});
+  assert.deepEqual(await nativeDelegationContext(null, f.state, id, 'claude'), {});
+  for (const marker of ['agent_id', 'parent_session_id', 'parent_agent_id', 'subagent_type']) {
+    assert.deepEqual(await runNativeHook({ ...parentEvent, session_id: 'child-session', [marker]: undefined }, f.state, id), {});
+    assert.deepEqual(await runNativeHook({ ...parentEvent, hook_event_name: 'SessionEnd', session_id: 'child-session', [marker]: undefined }, f.state, id), {});
   }
+  const metadata = path.join(f.state, 'native', id, 'launch.json');
+  const record = JSON.parse(await readFile(metadata, 'utf8'));
+  await writeFile(metadata, JSON.stringify({ ...record, subagents: 'off' }));
+  assert.deepEqual(await runNativeHook(parentEvent, f.state, id), {});
+  const worker = await runNativeHook({ hook_event_name: 'SubagentStart', agent_id: 'worker' }, f.state, id) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
+  assert.equal(worker.hookSpecificOutput.hookEventName, 'SubagentStart');
+  assert.match(worker.hookSpecificOutput.additionalContext, /Fonn filtering mode: filter/);
+  assert.match(worker.hookSpecificOutput.additionalContext, /every native worker and model/);
+  assert.match(worker.hookSpecificOutput.additionalContext, /bounded native-output recovery/);
+  assert.match(worker.hookSpecificOutput.additionalContext, /Do not disable filtering, start external\/headless workers, or delegate further/);
+  delete record.subagents;
+  await writeFile(metadata, JSON.stringify(record));
+  assert.deepEqual(await runNativeHook(parentEvent, f.state, id), {});
   const session = JSON.parse(await readFile(path.join(f.state, 'native', id, 'session.json'), 'utf8'));
   assert.equal(session.sessionId, lifecycle.session_id);
   assert.equal(session.provider, 'claude');
   assert.equal((await stat(path.join(f.state, 'native', id, 'session.json'))).mode & 0o777, 0o600);
-  assert.deepEqual(await runNativeHook({ hook_event_name: 'SessionStart', session_id: '--invalid' }, f.state, id), {});
+  assert.deepEqual(await runNativeHook({ hook_event_name: 'SessionEnd', session_id: '--invalid' }, f.state, id), {});
   assert.deepEqual(await runNativeHook({ hook_event_name: 'SessionEnd', session_id: 'any' }, f.state, 'invalid-launch-id'), {});
   const stdout = 'PHPUnit 12.0.0 by Sebastian Bergmann and contributors.\n' + ('.'.repeat(60) + ' 100 / 100 (100%)\n').repeat(70) + '\nTime: 00:00.100\nOK (100 tests, 100 assertions)\n';
   const result = { stdout, stderr: 'A warning retained exactly.\n', interrupted: false, isImage: false, extra: 7 };
@@ -148,6 +187,17 @@ test('native hook reduces known output and offers a working native recovery comm
   const [decisionFile] = await readdir(path.join(f.state, 'native', id, 'filters'));
   const decision = JSON.parse(await readFile(path.join(f.state, 'native', id, 'filters', decisionFile), 'utf8'));
   assert.equal(decision.status, 'filtered');
+  for (const model of ['sonnet', 'opus', 'haiku']) {
+    const before = new Set(await readdir(path.join(f.state, 'native', id, 'filters')));
+    const child = await runNativeHook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'vendor/bin/phpunit' }, tool_response: result, session_id: 'tracked-claude-session', tool_use_id: `child-${model}`, agent_id: `child-${model}`, agent_type: 'Explore', model, cwd: f.cwd }, f.state, id) as { hookSpecificOutput: { updatedToolOutput: typeof result } };
+    assert.ok(child.hookSpecificOutput.updatedToolOutput.stdout.length < stdout.length);
+    assert.equal(child.hookSpecificOutput.updatedToolOutput.stderr, result.stderr);
+    const childFile = (await readdir(path.join(f.state, 'native', id, 'filters'))).find(file => !before.has(file))!;
+    const childDecision = JSON.parse(await readFile(path.join(f.state, 'native', id, 'filters', childFile), 'utf8'));
+    assert.equal(childDecision.status, 'filtered');
+    const original = await readNativeOutput(id, childDecision.artifactId, { limit: 20000 }, f.state);
+    assert.deepEqual(JSON.parse(original.text), result);
+  }
 });
 
 test('native observe mode retains the full response while saving proposed metrics', async t => {
@@ -155,7 +205,7 @@ test('native observe mode retains the full response while saving proposed metric
   await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint, filterMode: 'observe' });
   const [id] = await readdir(path.join(f.state, 'native'));
   const stdout = 'PHPUnit 12.0.0 by Sebastian Bergmann and contributors.\n' + ('.'.repeat(60) + ' 100 / 100 (100%)\n').repeat(70) + '\nOK (100 tests, 100 assertions)\n';
-  assert.deepEqual(await runNativeHook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'vendor/bin/phpunit' }, tool_response: { stdout }, tool_use_id: 'observe-1' }, f.state, id), {});
+  assert.deepEqual(await runNativeHook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'vendor/bin/phpunit' }, tool_response: { stdout }, tool_use_id: 'observe-1', agent_id: 'observe-child', agent_type: 'Explore', model: 'haiku' }, f.state, id), {});
   const [file] = await readdir(path.join(f.state, 'native', id, 'filters'));
   assert.equal(JSON.parse(await readFile(path.join(f.state, 'native', id, 'filters', file), 'utf8')).status, 'observed');
 });

@@ -25,6 +25,7 @@ test('help, profiles and version run offline and do not import/execute the SDK',
   const h = harness({ runTask: async () => { throw new Error('must not run'); } });
   assert.equal(await h.run(['--help']), 0);
   assert.match(h.out(), /--resume/);
+  assert.match(h.out(), /--subagents/);
   assert.equal(await h.run(['help']), 0);
   for (const args of [['help', 'profiles'], ['profiles', '--help']]) {
     const profileHelp = harness();
@@ -200,7 +201,7 @@ test('native provider routing preserves passthrough and follows explicit or defa
   let called = false;
   const h = harness({ launchClaude: async options => {
     called = true;
-    assert.deepEqual(options, { cwd: '/tmp/project', profile: 'opus-high', filterMode: 'observe', stateDirectory: '/tmp/state', configDirectory: emptyConfigDirectory, args: ['--resume', 'session-id'] });
+    assert.deepEqual(options, { cwd: '/tmp/project', profile: 'opus-high', filterMode: 'observe', subagents: 'auto', stateDirectory: '/tmp/state', configDirectory: emptyConfigDirectory, args: ['--resume', 'session-id'] });
     return 7;
   } });
   assert.equal(await h.run(['claude', '--cwd', '/tmp/project', '--profile', 'opus-high', '--filter', 'observe', '--state-dir', '/tmp/state', '--', '--resume', 'session-id']), 7);
@@ -216,6 +217,7 @@ test('native provider routing preserves passthrough and follows explicit or defa
     const defaultLaunch = harness({ env, launchClaude: async options => {
       assert.equal(options.cwd, process.cwd());
       assert.equal(options.profile, 'quick');
+      assert.equal(options.subagents, 'auto');
       assert.equal(options.configDirectory, configDirectory);
       assert.deepEqual(options.args, []);
       return 0;
@@ -224,7 +226,7 @@ test('native provider routing preserves passthrough and follows explicit or defa
     assert.equal(await defaultLaunch.run(['--profile', 'quick']), 0);
     let codexArgs = ['--search'];
     const codexLaunch = harness({ env, launchCodex: async options => {
-      assert.deepEqual(options, { cwd: process.cwd(), profile: 'codex:sol-medium', filterMode: 'filter', stateDirectory: undefined, configDirectory, args: codexArgs });
+      assert.deepEqual(options, { cwd: process.cwd(), profile: 'codex:sol-medium', filterMode: 'filter', subagents: 'auto', stateDirectory: undefined, configDirectory, args: codexArgs });
       return 3;
     } });
     // An explicit provider falls back to its built-in when the global default differs.
@@ -245,6 +247,19 @@ test('native provider routing preserves passthrough and follows explicit or defa
       assert.doesNotMatch(wrongProvider.err(), /must not launch/);
     }
   } finally { await rm(configDirectory, { recursive: true, force: true }); }
+  for (const provider of ['claude', 'codex'] as const) {
+    const off = harness({ [provider === 'claude' ? 'launchClaude' : 'launchCodex']: async (options: Parameters<CliDependencies['launchClaude']>[0]) => {
+      assert.equal(options.subagents, 'off'); return 0;
+    } });
+    assert.equal(await off.run([provider, '--subagents', 'off']), 0);
+  }
+  const implicitOff = harness({ launchClaude: async options => { assert.equal(options.subagents, 'off'); return 0; } });
+  assert.equal(await implicitOff.run(['--subagents', 'off']), 0);
+  const invalid = harness({ launchClaude: async () => { throw new Error('must not launch'); } });
+  assert.equal(await invalid.run(['--subagents', 'always']), 1);
+  assert.match(invalid.err(), /--subagents must be auto or off/);
+  assert.equal(await harness().run(['claude', '--subagents']), 1);
+  assert.equal(await harness().run(['run', 'Task', '--subagents', 'auto']), 1);
   assert.equal(h.out(), '');
   assert.equal(await harness().run(['claude', '--budget', '2']), 1);
   assert.equal(await harness().run(['claude', '--json']), 1);

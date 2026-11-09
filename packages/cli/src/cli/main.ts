@@ -12,7 +12,7 @@ export interface CliDependencies {
   listRuns: (stateDirectory?: string) => Promise<RunRecord[]>;
   readRun: (taskId: string, stateDirectory?: string) => Promise<RunRecord>;
   readArtifact: (taskId: string, artifactId: string, options: { offset: number; limit: number }, stateDirectory?: string) => Promise<ArtifactSlice>;
-  launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; stateDirectory?: string; configDirectory?: string; args?: string[] }) => Promise<number>;
+  launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; subagents?: 'auto' | 'off'; stateDirectory?: string; configDirectory?: string; args?: string[] }) => Promise<number>;
   launchCodex: CliDependencies['launchClaude'];
   runNativeHook: (event: unknown, stateDirectory: string, launchId: string) => Promise<unknown>;
   runCodexHook: CliDependencies['runNativeHook'];
@@ -31,7 +31,7 @@ export interface CliDependencies {
 const help = `Fonn — native Claude and Codex launchers, Claude Agent SDK tasks
 
 Usage:
-  fonn [--cwd <dir>] [--profile <name>] [--filter <mode>] [--state-dir <path>] [-- <native args>]
+  fonn [--cwd <dir>] [--profile <name>] [--filter <mode>] [--subagents auto|off] [--state-dir <path>] [-- <native args>]
   fonn claude [launcher options] [-- <claude args>]
   fonn codex [launcher options] [-- <codex args>]
   fonn --default [claude|codex] [--json]
@@ -52,6 +52,7 @@ Run options:
   --budget <dollars>     Positive estimated API stop budget (default: 5; can overshoot)
   --max-turns <n>        Positive integer turn limit (default: 20)
   --filter <mode>        filter | observe | off (default: filter)
+  --subagents <mode>     Native only: auto | off (default: auto; delegation guidance)
   --state-dir <path>     Separate local run and raw-output storage
   --resume <task-id>     Resume an existing task with its saved profile
   --json                Emit one JSON value; diagnostics and permissions use stderr
@@ -61,7 +62,9 @@ Use --default claude or --default codex to save the default agent and exit.
 Use --default alone to show it. Explicit agent commands or --profile override it for one launch.
 With no command, the selected profile or configured default chooses the native provider.
 The claude and codex commands use their existing authentication and native controls.
-Codex filtering requires review and trust in /hooks; Fonn does not bypass hook trust.
+Codex filtering and delegation guidance require /hooks review/trust; Fonn does not bypass it.
+Native auto delegation uses built-in agents with normal permissions; off removes Fonn guidance.
+Session-wide filtering also applies to subagent Bash observations, including Haiku.
 SDK budget, structured JSON, and turn-limit flags belong to run, which supports Claude only.
 SDK permission requests require an explicit interactive yes; noninteractive requests are denied.
 Artifact reads default to 4000 characters and are limited to 20000 per request.
@@ -93,7 +96,7 @@ SDK resume retains the saved profile snapshot, even after the profile is edited 
 const codexHelp = `Fonn Codex — ordinary interactive Codex with a saved profile
 
 Usage:
-  fonn codex [--cwd <dir>] [--profile <name>] [--filter filter|observe|off] [--state-dir <path>] [-- <codex args>]
+  fonn codex [--cwd <dir>] [--profile <name>] [--filter filter|observe|off] [--subagents auto|off] [--state-dir <path>] [-- <codex args>]
   fonn codex --profile codex:sol-medium
   fonn --profile codex:sol-medium
   fonn codex -- --search
@@ -103,10 +106,13 @@ Install and authenticate Codex separately. Existing Codex authentication, permis
 project settings and terminal controls remain active. No SDK budgets or usage accounting apply.
 The default Codex profile is codex:sol-medium when the global default belongs to Claude.
 Explicit --profile must name a Codex profile. With no command, the profile selects the provider.
-Filtering requires Codex hook support and manual review/trust in /hooks.
+Filtering and automatic delegation guidance require Codex hook support and manual review/trust in /hooks.
 New or changed hooks remain inactive until trusted; Fonn does not bypass hook trust.
 Filter mode reduces recognized output; observe archives proposals without changing output;
-off registers no Fonn hook. Display visibility alone does not imply fewer model tokens.
+off disables output filtering; --filter off --subagents off registers no Fonn hooks.
+Subagents default to auto guidance using native agents; off removes that guidance.
+Subagent Bash output uses the same filter, subject to hook trust and supported formats.
+Display visibility alone does not imply fewer model tokens.
 Original outputs can be recovered with fonn native-output <launch-id> <artifact-id>.
 fonn run remains Claude SDK only; a programmatic Codex SDK runtime is not implemented.
 `;
@@ -117,7 +123,8 @@ Usage:
   fonn resume <launch-id> [--state-dir <path>]
 
 Use the command shown when a native Claude or Codex launch exits.
-It restores that launch's agent, initial profile, project and filter mode.
+It restores that launch's agent, initial profile, project, filtering and subagent preference.
+Legacy launches without a saved subagent preference keep Fonn delegation guidance off.
 If hooks recorded a session ID, the provider resumes that session directly.
 Otherwise it opens the provider's session picker; Fonn never guesses with --last.
 Changed defaults or deleted custom profiles do not replace a saved profile snapshot.
@@ -171,7 +178,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
   const json = (value: unknown) => writeStdout(JSON.stringify(value, (_key, item: unknown) => typeof item === 'string' ? redact(item) : item) + '\n');
   try {
     // Implicit native launches follow the profile provider; explicit commands pin it.
-    const autoLaunch = args.length === 0 || ['--cwd', '--profile', '--filter', '--state-dir', '--'].includes(args[0]!);
+    const autoLaunch = args.length === 0 || ['--cwd', '--profile', '--filter', '--subagents', '--state-dir', '--'].includes(args[0]!);
     if (autoLaunch) {
       args = ['claude', ...args];
     }
@@ -208,10 +215,12 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
     }
     if (command === 'claude' || command === 'codex') {
       const separator = args.indexOf('--');
-      const parsed = parse(args.slice(1, separator < 0 ? undefined : separator), ['cwd', 'profile', 'filter', 'state-dir']);
+      const parsed = parse(args.slice(1, separator < 0 ? undefined : separator), ['cwd', 'profile', 'filter', 'subagents', 'state-dir']);
       argumentCount(parsed, 0, `${command} [options] [-- <native args>]`);
       const filterMode = stringFlag(parsed, 'filter') ?? 'filter';
       if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
+      const subagents = stringFlag(parsed, 'subagents') ?? 'auto';
+      if (subagents !== 'auto' && subagents !== 'off') throw new Error('--subagents must be auto or off.');
       const configDirectory = getDefaultConfigDirectory(env);
       const profile = autoLaunch
         ? await resolveProfile(stringFlag(parsed, 'profile'), configDirectory)
@@ -219,7 +228,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       const launch = profile.provider === 'codex'
         ? injected.launchCodex ?? (await import('../native/codex.js')).launchCodex
         : injected.launchClaude ?? (await import('../native/index.js')).launchClaude;
-      return await launch({ cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile: profile.name, filterMode: filterMode as FilterMode, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
+      return await launch({ cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile: profile.name, filterMode: filterMode as FilterMode, subagents, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
     }
     if (command === 'codex-hook') {
       const parsed = parse(args.slice(1), []);

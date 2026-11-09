@@ -14,6 +14,8 @@ export async function resumeNativeLaunch(launchId: string, options: { stateDirec
     profile: record.profile,
     ...(record.profileSnapshot === undefined ? {} : { profileSnapshot: record.profileSnapshot }),
     filterMode: record.filterMode,
+    // Legacy launches keep their original behavior rather than opting in on replay.
+    subagents: record.subagents ?? 'off',
     stateDirectory: root,
     resume: sessionId ?? true,
     ...(options.executable === undefined ? {} : { executable: options.executable }),

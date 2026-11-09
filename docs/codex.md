@@ -19,13 +19,19 @@ Pass supported interactive Codex arguments after `--`: one quoted prompt, help/v
 
 The default `--filter filter` requires a Codex version with lifecycle hook support. Fonn supplies a stable hook command for the launch. Open `/hooks` in Codex, inspect the Fonn hook and explicitly trust it. Codex skips new or changed non-managed hook definitions until reviewed; a Fonn update may require another review. Fonn does not use a hook-trust bypass or write trust decisions. See the official [hooks documentation](https://learn.chatgpt.com/docs/hooks).
 
-Until the hook is trusted, Fonn output filtering is inactive. Codex's own project trust and managed requirements still apply. Keep your existing security decisions in place.
+Until the relevant hooks are trusted, Fonn output filtering and automatic delegation guidance are inactive. Codex's own project trust and managed requirements still apply. Keep your existing security decisions in place.
 
-`filter` replaces only recognized noisy shell output represented as text or a stdout record; Codex metadata wrappers and other response shapes can remain unchanged. It preserves warnings, errors and unknown formats. `observe` archives proposed reductions while leaving the delivered tool output unchanged. `off` registers no Fonn hook. The Codex hook uses its supported post-tool feedback contract to deliver a reduced observation; it does not undo a completed tool call or modify source files, instructions or prior history. Output visibility in the terminal alone does not demonstrate fewer model-input tokens.
+`filter` replaces only recognized noisy shell output represented as text or a stdout record; Codex metadata wrappers and other response shapes can remain unchanged. It preserves warnings, errors and unknown formats. `observe` archives proposed reductions while leaving the delivered tool output unchanged. `off` disables output filtering; the startup guidance hook remains when `--subagents auto` is active. Use `--filter off --subagents off` to register no Fonn hooks. The Codex hook uses its supported post-tool feedback contract to deliver a reduced observation; it does not undo a completed tool call or modify source files, instructions or prior history. Output visibility in the terminal alone does not demonstrate fewer model-input tokens.
+
+## Native subagents
+
+Fonn defaults to `--subagents auto`: a SessionStart hook adds concise guidance to use native subagents for meaningful independent work while keeping simple tasks in the parent. `--subagents off` omits that preference without disabling Codex's own subagent tools. Managed/user/project restrictions remain authoritative; Fonn does not force-enable agents, override their model/limits, or alter approvals/sandbox settings.
+
+Session-wide PostToolUse filtering handles native workers' supported Bash output too, independent of model. A SubagentStart hook reminds workers to keep the filter and use bounded original-output recovery. Codex documents that subagent hooks use the parent session ID. Both hooks remain subject to `/hooks` review/trust. Custom tool paths that opt out of hooks remain outside coverage. See [subagents](subagents.md) and the official [hook contract](https://learn.chatgpt.com/docs/hooks).
 
 ## Resume the native session
 
-On shutdown Fonn prints `fonn resume <launch-id>` with the saved state location when needed. It restores the saved initial profile, working directory and filtering, independent of later default/profile edits. Trusted lifecycle hooks record a session ID for direct resume. With hooks off, untrusted or unavailable, Fonn labels the command as a session-picker fallback and never selects an unrelated latest session with `--last`.
+On shutdown Fonn prints `fonn resume <launch-id>` with the saved state location when needed. It restores the saved initial profile, working directory, filtering and subagent preference, independent of later default/profile edits. Trusted lifecycle hooks record a session ID for direct resume. With hooks off, untrusted or unavailable, Fonn labels the command as a session-picker fallback and never selects an unrelated latest session with `--last`.
 
 This generated resume route is supported through Fonn; raw `resume`/`fork` passthrough still requires plain Codex. Hard kills and power loss cannot print a footer. The native client's own messages and terminal controls remain visible.
 

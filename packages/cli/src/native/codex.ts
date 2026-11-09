@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { ToolObservation } from '@nord-forge/fonn-core/contracts';
 import { createArtifactStore, createOutputFilter } from '@nord-forge/fonn-core/filtering';
+import { nativeDelegationContext } from './delegation.js';
 import { captureNativeSession, nativeResumeArguments, printNativeResumeHint, resolveNativeProfile } from './session.js';
 import { atomicJson, launchDirectory, privateDirectory, readLaunch, shellQuote } from './storage.js';
 import type { LaunchRecord, NativeLaunchOptions } from './storage.js';
@@ -54,6 +55,7 @@ async function verifyCodex(executable: string): Promise<void> {
 /** Starts the user's actual Codex with its existing auth, settings, and permission flow. */
 export async function launchCodex(options: NativeLaunchOptions): Promise<number> {
   const mode = z.enum(['filter', 'observe', 'off']).parse(options.filterMode ?? 'filter');
+  const subagents = z.enum(['auto', 'off']).parse(options.subagents ?? 'auto');
   const args = validateArguments(options.args ?? []);
   const resumeArgs = nativeResumeArguments('codex', options.resume);
   const profile = await resolveNativeProfile(options, 'codex');
@@ -73,20 +75,23 @@ export async function launchCodex(options: NativeLaunchOptions): Promise<number>
   entrypoint = path.resolve(entrypoint);
   const launchId = randomUUID();
   const location = await launchDirectory(options.stateDirectory, launchId, true);
-  const record: LaunchRecord = { schemaVersion: 1, launchId, provider: 'codex', cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
+  const record: LaunchRecord = { schemaVersion: 1, launchId, provider: 'codex', cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, subagents, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
   const metadata = path.join(location.directory, 'launch.json');
   await atomicJson(metadata, record);
   const launchArgs = ['--model', profile.model, '-c', `model_reasoning_effort=${JSON.stringify(profile.effort)}`];
-  if (mode !== 'off') {
-    // Keep the exact definition stable so normal /hooks trust can be reused.
+  if (mode !== 'off' || subagents === 'auto') {
+    // Keep the exact definitions stable so normal /hooks trust can be reused.
     // Codex merges hooks from active layers; do not rewrite user/project files.
     const command = [process.execPath, entrypoint, 'codex-hook'].map(shellQuote).join(' ');
-    launchArgs.push('-c', `hooks.PostToolUse=[{matcher="Bash",hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
+    if (mode !== 'off') launchArgs.push('-c', `hooks.PostToolUse=[{matcher="Bash",hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
     launchArgs.push('-c', `hooks.SessionStart=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
-    launchArgs.push('-c', `hooks.SessionEnd=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
-    process.stderr.write('Fonn filtering requires normal Codex /hooks review and trust; managed policy may disable hooks.\n');
+    if (mode !== 'off') {
+      launchArgs.push('-c', `hooks.SessionEnd=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
+      launchArgs.push('-c', `hooks.SubagentStart=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
+    }
+    process.stderr.write('Fonn hooks require normal Codex /hooks review and trust; managed policy may disable hooks.\n');
   }
-  process.stderr.write(`Native Codex launch ${launchId}: ${profile.name}, filtering ${mode}.\n`);
+  process.stderr.write(`Native Codex launch ${launchId}: ${profile.name}, filtering ${mode}, subagents ${subagents}.\n`);
   const child = spawn(executable, [...launchArgs, ...resumeArgs, ...args], {
     cwd, stdio: 'inherit',
     env: { ...process.env, FONN_CODEX_LAUNCH_ID: launchId, FONN_CODEX_STATE_DIR: location.root },
@@ -117,9 +122,17 @@ export async function launchCodex(options: NativeLaunchOptions): Promise<number>
 export async function runCodexHook(event: unknown, stateDirectory: string, launchId: string): Promise<unknown> {
   if (typeof event !== 'object' || event === null) return {};
   const input = event as Record<string, unknown>;
+  if (input.hook_event_name === 'SubagentStart') {
+    try { return await nativeDelegationContext(event, stateDirectory, launchId, 'codex'); }
+    catch { return {}; }
+  }
   if (input.hook_event_name === 'SessionStart' || input.hook_event_name === 'SessionEnd') {
     try { await captureNativeSession(event, stateDirectory, launchId, 'codex'); }
     catch { /* Lifecycle tracking must not affect the native session. */ }
+    if (input.hook_event_name === 'SessionStart') {
+      try { return await nativeDelegationContext(event, stateDirectory, launchId, 'codex'); }
+      catch { /* Delegation guidance must not affect the native session. */ }
+    }
     return {};
   }
   if (input.hook_event_name !== 'PostToolUse' || input.tool_name !== 'Bash') return {};

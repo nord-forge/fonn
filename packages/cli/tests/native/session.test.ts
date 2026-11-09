@@ -61,6 +61,8 @@ test('native tracking validates lifecycle/provider boundaries, bounded private m
   assert.equal(await readNativeSession(f.state, id), undefined);
   const codex = await saveLaunch(f, { name: 'saved-codex', provider: 'codex', model: 'gpt-6.1-sol', effort: 'medium' });
   await captureNativeSession({ ...event, agent_id: 'child' }, f.state, codex.record.launchId, 'codex');
+  assert.equal(await readNativeSession(f.state, codex.record.launchId), undefined);
+  await captureNativeSession(event, f.state, codex.record.launchId, 'codex');
   assert.equal(await readNativeSession(f.state, codex.record.launchId), event.session_id);
   codex.record.filterMode = 'off';
   await atomicJson(path.join(codex.directory, 'launch.json'), codex.record);
@@ -126,6 +128,8 @@ test('native replay restores deleted profile snapshots for both providers and us
     await profiles.create(profile);
     await profiles.setDefault(profile.name);
     const launch = await saveLaunch(f, profile);
+    launch.record.subagents = provider === 'claude' ? 'auto' : 'off';
+    await atomicJson(path.join(launch.directory, 'launch.json'), launch.record);
     await profiles.edit(profile.name, { effort: 'high' });
     await profiles.setDefault('opus-medium');
     await profiles.delete(profile.name);
@@ -160,6 +164,7 @@ process.exit(7);
     assert.ok(replay);
     assert.deepEqual(replay.profileSnapshot, profile);
     assert.equal(replay.filterMode, 'observe');
+    assert.equal(replay.subagents, launch.record.subagents);
     assert.equal(replay.cwd, f.cwd);
   }
   // Old records without a snapshot still use the explicitly saved profile name.
@@ -170,4 +175,7 @@ process.exit(7);
   const legacyCapture = JSON.parse(await readFile(f.capture, 'utf8')) as { args: string[] };
   assert.equal(legacyCapture.args.at(-1), '--resume');
   assert.equal(legacyCapture.args[legacyCapture.args.indexOf('--effort') + 1], 'high');
+  const ids = await readdir(path.join(f.state, 'native'));
+  const records: LaunchRecord[] = await Promise.all(ids.map(async id => JSON.parse(await readFile(path.join(f.state, 'native', id, 'launch.json'), 'utf8'))));
+  assert.equal(records.find(record => record.launchId !== legacy.record.launchId && record.profile === 'opus-high')?.subagents, 'off');
 });

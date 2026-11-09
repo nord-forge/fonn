@@ -60,12 +60,12 @@ test('Codex inherits auth/environment, snapshots its profile, and keeps hook def
   const hook = first.args[5] as string;
   assert.match(hook, /^hooks\.PostToolUse=\[\{matcher="Bash"/);
   assert.match(hook, /codex-hook/);
-  const lifecycleHooks = first.args.filter((argument: string) => /^hooks\.Session(?:Start|End)=/.test(argument));
-  assert.equal(lifecycleHooks.length, 2);
+  const lifecycleHooks = first.args.filter((argument: string) => /^hooks\.(?:Session(?:Start|End)|SubagentStart)=/.test(argument));
+  assert.equal(lifecycleHooks.length, 3);
   const command = JSON.parse(/command=("(?:\\.|[^"\\])*")/.exec(hook)![1]) as string;
   const invoked = await promisify(execFile)('/bin/sh', ['-c', command], { encoding: 'utf8' });
   assert.deepEqual(JSON.parse(invoked.stdout), ['codex-hook']);
-  for (const [index, event] of ['SessionStart', 'SessionEnd'].entries()) {
+  for (const [index, event] of ['SessionStart', 'SessionEnd', 'SubagentStart'].entries()) {
     assert.equal(lifecycleHooks[index], `hooks.${event}=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
   }
   assert.ok(!hook.includes(first.env.FONN_CODEX_LAUNCH_ID));
@@ -82,6 +82,7 @@ test('Codex inherits auth/environment, snapshots its profile, and keeps hook def
   const directory = path.join(f.state, 'native', first.env.FONN_CODEX_LAUNCH_ID);
   const record = JSON.parse(await readFile(path.join(directory, 'launch.json'), 'utf8'));
   assert.equal(record.provider, 'codex');
+  assert.equal(record.subagents, 'auto');
   assert.deepEqual(record.profileSnapshot, { name: 'codex-light', provider: 'codex', model: 'gpt-6.1-sol', effort: 'low' });
   assert.equal(record.exitCode, 7);
   assert.equal((await stat(path.join(directory, 'launch.json'))).mode & 0o777, 0o600);
@@ -126,6 +127,7 @@ test('Codex rejects config/policy/auth/trust overrides, other commands, wrong pr
   await assert.rejects(launchCodex(options), /0\.167\.0/);
   await writeFile(f.versionFile, 'codex-cli 0.167.0-alpha');
   await assert.rejects(launchCodex(options), /0\.167\.0/);
+  await assert.rejects(launchCodex({ ...options, subagents: 'invalid' as never }), /auto|off/);
   await assert.rejects(stat(f.state), { code: 'ENOENT' });
 });
 
@@ -136,15 +138,34 @@ test('Codex off/observe/filter preserve originals, diagnostics, unknown response
   const response = { stdout, stderr: 'Warning retained exactly.\n', exit_code: 0, extra: { retained: true } };
   const event = { hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'vendor/bin/phpunit' }, tool_response: response, session_id: 'test-session', tool_use_id: 'test-tool', cwd: f.cwd };
   for (const mode of ['off', 'observe', 'filter'] as const) {
-    await launchCodex({ ...options, filterMode: mode });
+    await launchCodex({ ...options, filterMode: mode, ...(mode === 'off' ? { subagents: 'off' as const } : {}) });
     const capture = JSON.parse(await readFile(f.capture, 'utf8'));
     const id = capture.env.FONN_CODEX_LAUNCH_ID;
-    assert.equal(capture.args.filter((arg: string) => /^hooks\./.test(arg)).length, mode === 'off' ? 0 : 3);
+    assert.equal(capture.args.filter((arg: string) => /^hooks\./.test(arg)).length, mode === 'off' ? 0 : 4);
     const lifecycle = { session_id: 'tracked-codex-session', cwd: f.cwd };
-    for (const hook_event_name of ['SessionStart', 'SessionEnd']) {
-      assert.deepEqual(await runCodexHook({ ...lifecycle, hook_event_name }, f.state, id), {});
-      assert.deepEqual(await runNativeHook({ ...lifecycle, hook_event_name }, f.state, id), {});
+    const parentEvent = { ...lifecycle, hook_event_name: 'SessionStart' };
+    const context = await runCodexHook(parentEvent, f.state, id) as { hookSpecificOutput?: { hookEventName: string; additionalContext: string } };
+    if (mode === 'off') assert.deepEqual(context, {});
+    else {
+      assert.equal(context.hookSpecificOutput!.hookEventName, 'SessionStart');
+      assert.match(context.hookSpecificOutput!.additionalContext, /built-in native subagents/);
     }
+    assert.deepEqual(await runCodexHook({ ...lifecycle, hook_event_name: 'SessionEnd' }, f.state, id), {});
+    assert.deepEqual(await runNativeHook(parentEvent, f.state, id), {});
+    for (const marker of ['agent_id', 'parent_session_id', 'parent_agent_id', 'subagent_type']) {
+      assert.deepEqual(await runCodexHook({ ...parentEvent, session_id: 'child-session', [marker]: undefined }, f.state, id), {});
+      assert.deepEqual(await runCodexHook({ ...parentEvent, hook_event_name: 'SessionEnd', session_id: 'child-session', [marker]: undefined }, f.state, id), {});
+    }
+    const workerEvent = { hook_event_name: 'SubagentStart', agent_id: 'codex-child', agent_type: 'explorer', model: 'gpt-6.1-sol' };
+    const notice = await runCodexHook(workerEvent, f.state, id) as { hookSpecificOutput?: { hookEventName: string; additionalContext: string } };
+    if (mode === 'off') assert.deepEqual(notice, {});
+    else {
+      assert.equal(notice.hookSpecificOutput!.hookEventName, 'SubagentStart');
+      assert.match(notice.hookSpecificOutput!.additionalContext, new RegExp(`Fonn filtering mode: ${mode}`));
+      assert.match(notice.hookSpecificOutput!.additionalContext, /bounded native-output recovery/);
+      assert.match(notice.hookSpecificOutput!.additionalContext, /or delegate further/);
+    }
+    assert.deepEqual(await runNativeHook(workerEvent, f.state, id), {});
     const sessionFile = path.join(f.state, 'native', id, 'session.json');
     if (mode === 'off') await assert.rejects(stat(sessionFile), { code: 'ENOENT' });
     else {
@@ -153,9 +174,9 @@ test('Codex off/observe/filter preserve originals, diagnostics, unknown response
       assert.equal(session.provider, 'codex');
       assert.equal((await stat(sessionFile)).mode & 0o777, 0o600);
     }
-    assert.deepEqual(await runCodexHook({ hook_event_name: 'SessionStart', session_id: '--invalid' }, f.state, id), {});
+    assert.deepEqual(await runCodexHook({ hook_event_name: 'SessionEnd', session_id: '--invalid' }, f.state, id), {});
     assert.deepEqual(await runCodexHook({ hook_event_name: 'SessionEnd', session_id: 'any' }, f.state, 'invalid-launch-id'), {});
-    const output = await runCodexHook(event, f.state, id) as { continue?: boolean; stopReason?: string };
+    const output = await runCodexHook({ ...event, agent_id: 'worker-observation', agent_type: 'explorer', model: 'gpt-6.1-sol' }, f.state, id) as { continue?: boolean; stopReason?: string };
     assert.deepEqual(await runNativeHook(event, f.state, id), {});
     const directory = path.join(f.state, 'native', id);
     const [metrics] = await readdir(path.join(directory, 'filters'));
@@ -172,6 +193,19 @@ test('Codex off/observe/filter preserve originals, diagnostics, unknown response
       assert.deepEqual(filtered.extra, response.extra);
       const recovered = await readNativeOutput(id, decision.artifactId, { limit: 20000 }, f.state);
       assert.deepEqual(JSON.parse(recovered.text), response);
+      const before = new Set(await readdir(path.join(directory, 'filters')));
+      const child = await runCodexHook({ ...event, tool_use_id: 'codex-child-tool', agent_id: 'codex-child', agent_type: 'explorer', model: 'gpt-6.1-sol' }, f.state, id) as { continue: boolean; stopReason: string };
+      assert.equal(child.continue, false);
+      assert.ok(JSON.parse(child.stopReason).stdout.length < stdout.length);
+      const childFile = (await readdir(path.join(directory, 'filters'))).find(file => !before.has(file))!;
+      const childDecision = JSON.parse(await readFile(path.join(directory, 'filters', childFile), 'utf8'));
+      assert.equal(childDecision.status, 'filtered');
+      assert.deepEqual(JSON.parse((await readNativeOutput(id, childDecision.artifactId, { limit: 20000 }, f.state)).text), response);
+      const metadata = path.join(directory, 'launch.json');
+      const saved = JSON.parse(await readFile(metadata, 'utf8'));
+      await writeFile(metadata, JSON.stringify({ ...saved, subagents: 'off' }));
+      assert.deepEqual(await runCodexHook(parentEvent, f.state, id), {});
+      assert.deepEqual(await runCodexHook(workerEvent, f.state, id), notice);
       const bounded = await readNativeOutput(id, decision.artifactId, { limit: 20 }, f.state);
       assert.equal(bounded.text.length, 20);
       assert.equal(bounded.nextOffset, 20);
@@ -183,6 +217,15 @@ test('Codex off/observe/filter preserve originals, diagnostics, unknown response
       assert.match(stringOutput.stopReason, /OK \(100 tests, 100 assertions\)/);
     } else assert.deepEqual(output, {});
   }
+  await launchCodex({ ...options, filterMode: 'off' });
+  const guidanceOnly = JSON.parse(await readFile(f.capture, 'utf8'));
+  const guidanceId = guidanceOnly.env.FONN_CODEX_LAUNCH_ID;
+  assert.equal(guidanceOnly.args.filter((argument: string) => /^hooks\./.test(argument)).length, 1);
+  assert.ok(guidanceOnly.args.some((argument: string) => /^hooks\.SessionStart=/.test(argument)));
+  const guidance = await runCodexHook({ hook_event_name: 'SessionStart', session_id: 'guidance-only' }, f.state, guidanceId) as { hookSpecificOutput: { additionalContext: string } };
+  assert.match(guidance.hookSpecificOutput.additionalContext, /built-in native subagents/);
+  await assert.rejects(stat(path.join(f.state, 'native', guidanceId, 'session.json')), { code: 'ENOENT' });
+  assert.deepEqual(await runCodexHook({ hook_event_name: 'SubagentStart', agent_id: 'child' }, f.state, guidanceId), {});
   // A legacy Claude record has no provider field and must never run this adapter.
   const [id] = await readdir(path.join(f.state, 'native'));
   const metadata = path.join(f.state, 'native', id, 'launch.json');
