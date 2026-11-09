@@ -5,7 +5,8 @@ A local TypeScript CLI and reusable core for Claude and Codex, with structured t
 This is the `nord-forge/fonn` monorepo. The current product is the core and CLI. A desktop GUI is reserved for later; no desktop app is implemented. Project code is [MIT licensed](LICENSE); upstream dependencies retain [their own terms](THIRD_PARTY_NOTICES.md). Fonn is independent of Anthropic and OpenAI.
 
 ## Noise output?
-Yes, under the hood, both Claude and Codex use more thinking and logic than you as the user get to see. Below you can find an example of what Fonn removes to keep your tokens from being needlessly burned.
+Yes, under the hood, both Claude and Codex use more thinking and logic than you as the user get to see. Below you can find an example of what Fonn removes to keep your tokens from being needlessly burned. Let's say we have the following without Fonn:
+
 ```text
 BEGIN_TASK_PAYLOAD
 {"task":"preserve zero values","code":"return input.limit || 20;"}
@@ -16,7 +17,7 @@ PROGRESS worker=1 status=healthy heartbeat=ok
 OBSERVATION_COMPLETE exit=0
 ```
 
-Claude would instead receive:
+Claude would instead receive this when we use Fonn:
 
 ```text
 BEGIN_TASK_PAYLOAD
