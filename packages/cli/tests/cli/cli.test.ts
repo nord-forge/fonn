@@ -77,7 +77,28 @@ test('profile commands persist custom choices, manage the default and reject inv
     const sdkDefault = harness({ env });
     assert.equal(await sdkDefault.run(['run', 'Unsupported default']), 1);
     assert.equal(sdkDefault.options.length, 0);
+    const agent = async (args: string[]) => {
+      const h = harness({ env, launchClaude: async () => { throw new Error('Must not launch'); }, launchCodex: async () => { throw new Error('Must not launch'); } });
+      assert.equal(await h.run(['--default', ...args, '--json']), 0, h.err());
+      assert.equal(h.options.length, 0);
+      return JSON.parse(h.out());
+    };
+    // Selecting the current agent keeps its custom model/effort profile.
+    assert.deepEqual(await agent(['codex']), { provider: 'codex', profile: 'my-sol' });
+    assert.deepEqual(await agent(['claude']), { provider: 'claude', profile: 'opus-medium' });
+    assert.deepEqual(await agent(['codex']), { provider: 'codex', profile: 'codex:sol-medium' });
+    assert.deepEqual(await agent([]), { provider: 'codex', profile: 'codex:sol-medium' });
     await invoke(['default', 'quick']);
+    assert.deepEqual(await agent(['claude']), { provider: 'claude', profile: 'quick' });
+    const human = harness({ env });
+    assert.equal(await human.run(['--default']), 0);
+    assert.match(human.out(), /Default agent: claude \(profile: quick\)/);
+    for (const args of [['--default', 'other'], ['--default', 'codex', 'extra'], ['--default', 'codex', '--cwd', '/tmp'], ['--default', '--json', '--json']]) {
+      const invalid = harness({ env });
+      assert.equal(await invalid.run(args), 1);
+      assert.equal(invalid.out(), '');
+    }
+    assert.deepEqual(await agent([]), { provider: 'claude', profile: 'quick' });
     for (const args of [ ['edit', 'quick'], ['create', 'missing', '--model', 'haiku'], ['show', 'quick', 'extra'], ['default', 'quick', 'extra'], ['list', '--model', 'haiku'], ['delete', 'quick'], ['delete', 'opus-high'], ['edit', 'opus-high', '--effort', 'low'], ['create', 'bad', '--model', 'haiku', '--effort', 'invalid'], ['create', 'bad', '--provider', 'other', '--model', 'haiku', '--effort', 'low'], ['create', 'bad', '--provider', 'codex', '--model', 'haiku', '--effort', 'low'], ['edit', 'quick', '--provider', 'codex'], ['unknown'] ]) {
       const invalid = harness({ env });
       assert.equal(await invalid.run(['profiles', ...args]), 1, args.join(' '));

@@ -33,6 +33,7 @@ Usage:
   fonn [--cwd <dir>] [--profile <name>] [--filter <mode>] [--state-dir <path>] [-- <native args>]
   fonn claude [launcher options] [-- <claude args>]
   fonn codex [launcher options] [-- <codex args>]
+  fonn --default [claude|codex] [--json]
   fonn profiles [--json]
   fonn help profiles | codex
   fonn run <prompt> [options]
@@ -54,6 +55,8 @@ Run options:
   --json                Emit one JSON value; diagnostics and permissions use stderr
 
 API-key authentication uses ANTHROPIC_API_KEY and separate API billing.
+Use --default claude or --default codex to save the default agent and exit.
+Use --default alone to show it. Explicit agent commands or --profile override it for one launch.
 With no command, the selected profile or configured default chooses the native provider.
 The claude and codex commands use their existing authentication and native controls.
 Codex filtering requires review and trust in /hooks; Fonn does not bypass hook trust.
@@ -168,6 +171,18 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
     if (command === 'codex' && args.length === 2 && args[1] === '--help') { stdout(codexHelp); return 0; }
     if (command === '--help' || command === '-h' || (args.length === 2 && args[1] === '--help')) { stdout(help); return 0; }
     if (command === '--version') { if (args.length !== 1) throw new Error('--version takes no arguments.'); stdout(await version() + '\n'); return 0; }
+    if (command === '--default') {
+      const parsed = parse(args.slice(1), ['json']);
+      if (parsed.positionals.length > 1) throw new Error('Expected --default [claude|codex] [--json].');
+      const name = parsed.positionals[0];
+      const provider = name === undefined ? undefined : providerSchema.parse(name);
+      const store = createProfileStore(getDefaultConfigDirectory(env));
+      const profile = provider === undefined ? await store.get() : await store.setDefaultProvider(provider);
+      const result = { provider: profile.provider ?? 'claude', profile: profile.name };
+      if (parsed.flags.has('json')) json(result);
+      else stdout(`Default agent: ${result.provider} (profile: ${terminalText(result.profile)}).\n`);
+      return 0;
+    }
     if (command === 'claude' || command === 'codex') {
       const separator = args.indexOf('--');
       const parsed = parse(args.slice(1, separator < 0 ? undefined : separator), ['cwd', 'profile', 'filter', 'state-dir']);

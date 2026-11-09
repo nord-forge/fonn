@@ -210,6 +210,17 @@ export function createProfileStore(directory = getDefaultConfigDirectory()) {
         config.profiles = config.profiles.filter((profile) => profile.name !== name);
       });
     },
+    async setDefaultProvider(provider: ProfileProvider): Promise<TaskProfile> {
+      providerSchema.parse(provider);
+      return mutate((config) => {
+        const current = lookup(config, config.defaultProfile);
+        const profile = (current.provider ?? 'claude') === provider
+          ? current
+          : getProfile(provider === 'codex' ? 'codex:sol-medium' : 'opus-medium');
+        config.defaultProfile = profile.name;
+        return profile;
+      });
+    },
     async setDefault(name: string): Promise<TaskProfile> {
       profileNameSchema.parse(name);
       return mutate((config) => {

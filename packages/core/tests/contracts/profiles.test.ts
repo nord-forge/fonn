@@ -38,6 +38,11 @@ test('profile CRUD persists defaults, preserves aliases and returns frozen snaps
     assert.equal((await resolveProfileForProvider('claude', undefined, directory)).name, 'quick-check');
     assert.equal((await resolveProfileForProvider('codex', undefined, directory)).name, 'codex:sol-medium');
     assert.equal((await resolveProfile(undefined, directory)).effort, 'max');
+    assert.equal((await store.setDefaultProvider('claude')).name, 'quick-check');
+    assert.equal((await store.setDefaultProvider('codex')).name, 'codex:sol-medium');
+    assert.equal((await createProfileStore(directory).get()).provider, 'codex');
+    assert.equal((await store.setDefaultProvider('claude')).name, 'opus-medium');
+    await store.setDefault('quick-check');
     await assert.rejects(store.delete('quick-check'), /current default/);
     const snapshot = await store.list();
     assert.equal(Object.isFrozen(snapshot), true);

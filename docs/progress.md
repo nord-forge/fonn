@@ -42,3 +42,9 @@ The cask is checked in with the prepared archive's actual SHA-256. Archive and c
 Build, typecheck and all 71 offline tests passed. The refreshed archive passed an extracted installation check with real Claude/Codex help, custom Codex profile management, compiled hook delivery and exact original recovery, SDK import and uninstall preservation. The smoke used installed Node/npm rather than installing Homebrew Node globally. Ruby cask syntax passed. No paid model calls were made.
 
 Actual Codex hook trust/delivery during model work, model availability for a live account and real-world token savings remain unverified. Unknown response shapes pass through unchanged. Native Codex has no Fonn SDK usage accounting or budget enforcement; programmatic tasks remain Claude SDK only. The cask, archive and checksum are prepared, with no GitHub release or tag published.
+
+## Default coding agent shortcut
+
+`fonn --default claude` and `fonn --default codex` persist the selected agent and exit; `fonn --default` displays it, with optional JSON output. The shortcut updates the existing atomic default-profile setting. Selecting the same provider preserves its custom profile; switching providers chooses its built-in default. Explicit agent commands and profiles remain per-launch overrides.
+
+Build, typecheck and all 71 offline tests passed, extending the existing profile/CLI cases without adding test cases. A compiled CLI smoke confirmed selection, persistence, display and preservation of a matching custom profile in isolated temporary configuration, without launching an agent. The prepared archive and cask checksum were refreshed. No release or tag was published.

@@ -30,6 +30,8 @@ fonn profiles delete quick
 fonn help profiles
 ```
 
+Use `fonn --default codex` or `fonn --default claude` to select the default coding agent without launching it. `fonn --default` shows the current agent and profile; add `--json` for `{ "provider": "codex", "profile": "codex:sol-medium" }`. If the current default profile already belongs to the requested agent it is preserved; switching agents selects that provider's built-in default. This updates the same default profile as `fonn profiles default`, so the two commands stay in sync. Explicit agent commands and `--profile` still take precedence for a single launch without changing the saved default.
+
 Configuration lives in `~/.config/fonn/profiles.json`. Set `XDG_CONFIG_HOME` to use `$XDG_CONFIG_HOME/fonn`, or `FONN_CONFIG_DIR` to choose the Fonn configuration directory directly. This is separate from run and artifact storage selected with `--state-dir`. Profiles contain provider, model and effort choices; keep credentials in your environment or secret manager. Profiles do not change permission settings.
 
 `fonn` with no command follows the selected profile's provider: a Codex default opens Codex, and a Claude default opens Claude. `fonn --profile my-sol` opens Codex directly. Explicit `fonn claude` and `fonn codex` use the global default when it belongs to that provider, otherwise `opus-medium` or `codex:sol-medium` respectively. An explicit `--profile` must match the requested provider.

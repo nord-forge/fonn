@@ -26,6 +26,8 @@ END_TASK_PAYLOAD
 Observation completed. Repetitive PROGRESS heartbeats removed; task payload retained verbatim.
 ```
 
+This example is illustrative: the shipped adapters currently recognize Pest/PHPUnit, PHPStan and TypeScript shell output. Generic `PROGRESS` heartbeat logs like those above pass through unchanged. Fonn filters new tool observations; it does not remove model reasoning or rewrite task payloads.
+
 ## Get the CLI or reuse a script
 
 The CLI is ready to run from a checkout; the GUI is planned. If you want to inspect or reuse a specific part, go straight to its source:
@@ -114,6 +116,17 @@ fonn codex --profile sol
 ```
 
 Codex retains its existing authentication, settings, approval and sandbox policies. New Fonn hooks require review in Codex's `/hooks` browser before filtering can run; Fonn never bypasses hook trust. The native interface remains Codex's own UI. See [Codex support](docs/codex.md), including filtering limits and recovery. Programmatic `fonn run` remains a Claude SDK command.
+
+## Choose your default agent
+
+```sh
+fonn --default codex    # Save Codex as the default, then exit
+fonn --default claude  # Save Claude as the default, then exit
+fonn --default         # Show the saved agent and profile
+fonn                   # Launch your saved default
+```
+
+Explicit `fonn codex`, `fonn claude`, or `fonn --profile <name>` override the default for that launch. Selecting the current agent keeps its custom default profile; switching agents selects `opus-medium` or `codex:sol-medium`. Use `fonn profiles default <name>` to choose a specific custom default instead.
 
 ## Custom profiles
 
