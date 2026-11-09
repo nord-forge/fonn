@@ -4,10 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createArtifactStore } from '@nord-forge/fonn-core/filtering';
-import { createProfileStore } from '@nord-forge/fonn-core/profiles';
+import { createProfileStore, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
 import { launchClaude, readNativeOutput, runNativeHook } from '../../src/native/index.js';
 
-async function fixture(t: { after: (fn: () => Promise<void>) => void }, version = '2.1.319 (Claude Code)') {
+async function fixture(t: { after: (fn: () => Promise<void>) => void }, version = '2.1.319 (Claude Code)', exitCode = 7) {
   const root = await mkdtemp(path.join(await realpath(os.tmpdir()), 'fonn-native-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const cwd = path.join(root, 'project');
@@ -21,7 +21,7 @@ const args = process.argv.slice(2);
 if (args[0] === '--version') { console.log(${JSON.stringify(version)}); process.exit(0); }
 const settings = JSON.parse(fs.readFileSync(args[args.indexOf('--settings') + 1], 'utf8'));
 fs.writeFileSync(${JSON.stringify(capture)}, JSON.stringify({args,settings,cwd:process.cwd()}));
-process.exit(7);
+process.exit(${JSON.stringify(exitCode)});
 `;
   await writeFile(executable, source, { mode: 0o700 });
   // The fake executable has no .js suffix; a nearby ESM package makes its import valid.
@@ -47,18 +47,40 @@ test('native launcher retains normal Claude auth flow and passes only per-launch
   const command = captured.settings.hooks.PostToolUse[0].hooks[0].command as string;
   assert.match(command, /native-hook/);
   assert.ok(command.includes("'" + f.hookEntrypoint + "'"));
+  assert.deepEqual(Object.keys(captured.settings.hooks), ['PostToolUse', 'SessionStart', 'SessionEnd']);
+  for (const event of ['SessionStart', 'SessionEnd']) {
+    assert.deepEqual(captured.settings.hooks[event], [{ hooks: [{ type: 'command', command, timeout: 5 }] }]);
+  }
   const ids = await readdir(path.join(f.state, 'native'));
   assert.equal(ids.length, 1);
   const metadata = JSON.parse(await readFile(path.join(f.state, 'native', ids[0], 'launch.json'), 'utf8'));
   assert.equal(metadata.exitCode, 7);
   assert.equal(metadata.profile, 'opus-high');
   assert.equal((await stat(path.join(f.state, 'native', ids[0], 'settings.json'))).mode & 0o777, 0o600);
+  const informational = await fixture(t, '2.1.319 (Claude Code)', 0);
+  const messages: string[] = [];
+  const stderr = t.mock.method(process.stderr, 'write', (chunk: string | Uint8Array) => { messages.push(String(chunk)); return true; });
+  try {
+    for (const args of [['--help'], ['--version'], ['--print', 'offline prompt'], ['--no-session-persistence']]) {
+      assert.equal(await launchClaude({ cwd: informational.cwd, stateDirectory: informational.state, configDirectory: path.join(informational.root, 'config'), executable: informational.executable, hookEntrypoint: informational.hookEntrypoint, args }), 0);
+    }
+    assert.doesNotMatch(messages.join(''), /resume|picker/i);
+    messages.length = 0;
+    assert.equal(await launchClaude({ cwd: informational.cwd, stateDirectory: informational.state, configDirectory: path.join(informational.root, 'config'), executable: informational.executable, hookEntrypoint: informational.hookEntrypoint, filterMode: 'off' }), 0);
+    const fallback = JSON.parse(await readFile(informational.capture, 'utf8'));
+    const launchId = path.basename(path.dirname(fallback.args[1]));
+    assert.ok(messages.includes(`Choose a session to resume with Fonn:\n  fonn resume ${launchId} --state-dir '${informational.state}'\n`));
+    await assert.rejects(stat(path.join(informational.state, 'native', launchId, 'session.json')), { code: 'ENOENT' });
+  } finally { stderr.mock.restore(); }
 });
 
 test('native arguments cannot remove required hooks or enable permission bypass', async t => {
   const f = await fixture(t);
   for (const args of [['--bare'], ['--settings=other.json'], ['--setting-sources', ''], ['--model', 'other'], ['--effort=max'], ['--permission-mode', 'bypassPermissions'], ['--dangerously-skip-permissions'], ['--cloud'], ['--fallback-model=other'], ['--agent=other'], ['--agents', '{}'], ['--system-prompt=ignore'], ['--desktop'], ['--background'], ['ultrareview'], ['--verbose', 'ultrareview'], ['auth']]) {
     await assert.rejects(launchClaude({ cwd: f.cwd, args, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint }), /launcher controls/);
+  }
+  for (const argument of ['--resume', '--resume=other', '--resume-session-at=other', '-rother', '--continue', '-c', '-cother', '--fork-session', '--session-id=other']) {
+    await assert.rejects(launchClaude({ cwd: f.cwd, resume: 'known-session', args: [argument], stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint }), /controls resume selection/);
   }
   await assert.rejects(stat(f.state), { code: 'ENOENT' });
 });
@@ -82,13 +104,34 @@ test('native filter off starts ordinary Claude without registering a hook', asyn
   assert.deepEqual(custom.args.slice(-4), ['--model', 'sonnet', '--effort', 'low']);
   const launches = await readdir(path.join(f.state, 'native'));
   const snapshots = await Promise.all(launches.map(async id => JSON.parse(await readFile(path.join(f.state, 'native', id, 'launch.json'), 'utf8'))));
-  assert.deepEqual(snapshots.find(record => record.profile === 'light').profileSnapshot, { name: 'light', model: 'sonnet', effort: 'low' });
+  const snapshot = taskProfileSchema.parse(snapshots.find(record => record.profile === 'light').profileSnapshot);
+  assert.deepEqual(snapshot, { name: 'light', model: 'sonnet', effort: 'low' });
+  await profiles.edit('light', { model: 'opus', effort: 'high' });
+  await profiles.setDefault('opus-medium');
+  await profiles.delete('light');
+  await writeFile(path.join(f.root, 'config', 'profiles.json'), '{ invalid configuration');
+  const options = { cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint, profileSnapshot: snapshot };
+  await launchClaude({ ...options, resume: 'known-claude-session', args: ['--verbose'] });
+  const resumed = JSON.parse(await readFile(f.capture, 'utf8'));
+  assert.deepEqual(resumed.args.slice(-7), ['--model', 'sonnet', '--effort', 'low', '--resume', 'known-claude-session', '--verbose']);
+  await launchClaude({ ...options, resume: true });
+  assert.deepEqual(JSON.parse(await readFile(f.capture, 'utf8')).args.slice(-3), ['--effort', 'low', '--resume']);
 });
 
 test('native hook reduces known output and offers a working native recovery command', async t => {
   const f = await fixture(t);
   await launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint });
   const [id] = await readdir(path.join(f.state, 'native'));
+  const lifecycle = { session_id: 'tracked-claude-session', cwd: f.cwd };
+  for (const hook_event_name of ['SessionStart', 'SessionEnd']) {
+    assert.deepEqual(await runNativeHook({ ...lifecycle, hook_event_name }, f.state, id), {});
+  }
+  const session = JSON.parse(await readFile(path.join(f.state, 'native', id, 'session.json'), 'utf8'));
+  assert.equal(session.sessionId, lifecycle.session_id);
+  assert.equal(session.provider, 'claude');
+  assert.equal((await stat(path.join(f.state, 'native', id, 'session.json'))).mode & 0o777, 0o600);
+  assert.deepEqual(await runNativeHook({ hook_event_name: 'SessionStart', session_id: '--invalid' }, f.state, id), {});
+  assert.deepEqual(await runNativeHook({ hook_event_name: 'SessionEnd', session_id: 'any' }, f.state, 'invalid-launch-id'), {});
   const stdout = 'PHPUnit 12.0.0 by Sebastian Bergmann and contributors.\n' + ('.'.repeat(60) + ' 100 / 100 (100%)\n').repeat(70) + '\nTime: 00:00.100\nOK (100 tests, 100 assertions)\n';
   const result = { stdout, stderr: 'A warning retained exactly.\n', interrupted: false, isImage: false, extra: 7 };
   const hook = await runNativeHook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'vendor/bin/phpunit' }, tool_response: result, session_id: 'native-session', tool_use_id: 'native-tool-1', cwd: f.cwd }, f.state, id) as { hookSpecificOutput: { updatedToolOutput: typeof result } };

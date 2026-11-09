@@ -53,6 +53,31 @@ node packages/cli/dist/cli/main.js --help
 
 Then run `node packages/cli/dist/cli/main.js claude` or `node packages/cli/dist/cli/main.js codex` from your project with `--cwd /absolute/path/to/project`. The [Homebrew instructions](docs/distribution.md#first-publication-and-homebrew) cover release installation once the archive is published.
 
+## Use the filter without installing Fonn
+
+You can download just the local filtering files and use them with an existing Claude Code or Codex installation. **Only Node.js 22+ is required—no Fonn CLI, npm dependency install or provider SDK.**
+
+From the project where you want filtering:
+
+```sh
+mkdir -p scripts/fonn-filter
+for file in hook.mjs index.mjs adapters.mjs artifact-store.mjs LICENSE; do
+  curl -fL "https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/$file" \
+    -o "scripts/fonn-filter/$file"
+done
+node scripts/fonn-filter/hook.mjs --help
+```
+
+The [local hook runner](standalone/filtering/hook.mjs) uses the [same generated filtering modules](standalone/filtering) as Fonn. Keep all four modules and the license together. See [the local setup guide](docs/local-filtering.md) for complete Claude/Codex hook examples, observe/off modes, and original-output recovery.
+
+After downloading, give your agent this prompt:
+
+```text
+Read scripts/fonn-filter/*.mjs and its LICENSE. Configure this local filter for the agent I am using: merge a Bash PostToolUse hook into .claude/settings.local.json for Claude Code, or .codex/hooks.json for Codex. Use absolute, correctly quoted paths to Node, hook.mjs and this project's .fonn/filtering directory, with --provider claude or codex and --mode filter. Preserve all existing hooks, permissions and policies; change no global settings and install no CLI, npm packages or SDKs. Add .fonn/ to .gitignore if needed. Explain how to recover full originals using the footer's bounded read command. For Codex, leave the required /hooks review and trust to me; do not bypass it. Show the local changes and any manual step. Do not make model requests to test this.
+```
+
+Filtering only reduces recognized noisy shell output; unknown formats, MCP results and model reasoning are unchanged. It preserves recoverable originals, which may contain private data. Raw artifacts need manual retention and must stay out of Git. The guide also explains how to pin all downloads to one reviewed commit.
+
 ## Local setup
 
 Use Node 22 or later; CI uses Node 24. From the repository root:
@@ -117,6 +142,18 @@ fonn codex --profile sol
 
 Codex retains its existing authentication, settings, approval and sandbox policies. New Fonn hooks require review in Codex's `/hooks` browser before filtering can run; Fonn never bypasses hook trust. The native interface remains Codex's own UI. See [Codex support](docs/codex.md), including filtering limits and recovery. Programmatic `fonn run` remains a Claude SDK command.
 
+## Resume after closing a session
+
+When a native Claude or Codex session exits, Fonn prints a command such as:
+
+```sh
+fonn resume <launch-id>
+```
+
+Copy the printed command to restore the saved agent, initial model/effort profile, project directory and filter mode. A custom `--state-dir` is included when needed. Saved profile snapshots still work after the profile is edited or deleted.
+
+Session lifecycle hooks record the provider's session ID when enabled and, for Codex, trusted. When that ID is unavailable, the footer says **Choose a session to resume** and the same command opens the provider's session picker. Help/version, print-only and nonpersistent launches do not print a resume footer. `fonn help resume` explains the command; SDK tasks continue to use `fonn run --resume <task-id>`.
+
 ## Choose your default agent
 
 ```sh
@@ -160,6 +197,7 @@ The commands below use the installed `fonn` name. In a local checkout, substitut
 | `[launcher options] [-- <native args>]` | Open the native CLI selected by the chosen/default profile. |
 | `claude [options] [-- <claude args>]` | Open native Claude with a Claude profile. |
 | `codex [options] [-- <codex args>]` | Open native Codex with a Codex profile. |
+| `resume <launch-id> [--state-dir <path>]` | Reopen a native launch with its saved settings. |
 | `profiles [--json]` | List built-in and custom profiles, marking the default. |
 | `run <prompt> [options]` | Start a task or continue with `--resume <task-id>`. Quote the prompt as one argument. |
 | `runs [--state-dir <path>] [--json]` | List saved SDK runs. |

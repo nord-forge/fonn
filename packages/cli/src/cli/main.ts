@@ -16,6 +16,7 @@ export interface CliDependencies {
   launchCodex: CliDependencies['launchClaude'];
   runNativeHook: (event: unknown, stateDirectory: string, launchId: string) => Promise<unknown>;
   runCodexHook: CliDependencies['runNativeHook'];
+  resumeNativeLaunch: (launchId: string, options: { stateDirectory?: string }) => Promise<number>;
   readNativeOutput: (launchId: string, artifactId: string, options: { offset: number; limit: number }, stateDirectory?: string) => Promise<ArtifactSlice>;
   readStdin: () => Promise<string>;
   stdout: (text: string) => void;
@@ -34,8 +35,9 @@ Usage:
   fonn claude [launcher options] [-- <claude args>]
   fonn codex [launcher options] [-- <codex args>]
   fonn --default [claude|codex] [--json]
+  fonn resume <launch-id> [--state-dir <path>]
   fonn profiles [--json]
-  fonn help profiles | codex
+  fonn help profiles | codex | resume
   fonn run <prompt> [options]
   fonn runs [--state-dir <path>] [--json]
   fonn show <task-id> [--state-dir <path>] [--json]
@@ -109,6 +111,19 @@ Original outputs can be recovered with fonn native-output <launch-id> <artifact-
 fonn run remains Claude SDK only; a programmatic Codex SDK runtime is not implemented.
 `;
 
+const resumeHelp = `Fonn resume — reopen a saved native launch
+
+Usage:
+  fonn resume <launch-id> [--state-dir <path>]
+
+Use the command shown when a native Claude or Codex launch exits.
+It restores that launch's agent, initial profile, project and filter mode.
+If hooks recorded a session ID, the provider resumes that session directly.
+Otherwise it opens the provider's session picker; Fonn never guesses with --last.
+Changed defaults or deleted custom profiles do not replace a saved profile snapshot.
+This is separate from fonn run --resume, which resumes a Claude SDK task.
+`;
+
 interface Parsed { positionals: string[]; flags: Map<string, string | true> }
 function parse(args: string[], allowed: string[]): Parsed {
   const flags = new Map<string, string | true>();
@@ -165,12 +180,20 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       if (args.length === 1) { stdout(help); return 0; }
       if (args.length === 2 && args[1] === 'profiles') { stdout(profilesHelp); return 0; }
       if (args.length === 2 && args[1] === 'codex') { stdout(codexHelp); return 0; }
-      throw new Error('Expected help [profiles|codex]. Use --help for usage.');
+      if (args.length === 2 && args[1] === 'resume') { stdout(resumeHelp); return 0; }
+      throw new Error('Expected help [profiles|codex|resume]. Use --help for usage.');
     }
     if (command === 'profiles' && args.length === 2 && args[1] === '--help') { stdout(profilesHelp); return 0; }
     if (command === 'codex' && args.length === 2 && args[1] === '--help') { stdout(codexHelp); return 0; }
+    if (command === 'resume' && args.length === 2 && args[1] === '--help') { stdout(resumeHelp); return 0; }
     if (command === '--help' || command === '-h' || (args.length === 2 && args[1] === '--help')) { stdout(help); return 0; }
     if (command === '--version') { if (args.length !== 1) throw new Error('--version takes no arguments.'); stdout(await version() + '\n'); return 0; }
+    if (command === 'resume') {
+      const parsed = parse(args.slice(1), ['state-dir']);
+      argumentCount(parsed, 1, 'resume <launch-id> [--state-dir <path>]');
+      const resume = injected.resumeNativeLaunch ?? (await import('../native/resume.js')).resumeNativeLaunch;
+      return await resume(parsed.positionals[0]!, { stateDirectory: stringFlag(parsed, 'state-dir') });
+    }
     if (command === '--default') {
       const parsed = parse(args.slice(1), ['json']);
       if (parsed.positionals.length > 1) throw new Error('Expected --default [claude|codex] [--json].');

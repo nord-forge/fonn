@@ -27,5 +27,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Typecheck, mocked tests, and build
         run: npm run check
+      - name: Verify committed standalone filters match the shared build
+        run: git diff --exit-code -- standalone/filtering
       - name: Prepare local CLI release artifacts
         run: npm run release:prepare

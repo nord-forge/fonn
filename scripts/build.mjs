@@ -1,3 +1,4 @@
+import { generateStandalone } from './build-standalone-filter.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdir, rm, writeFile, chmod, lstat, realpath } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -28,3 +29,5 @@ for (const [name, args] of [['main', 'process.argv.slice(2)']]) {
   await chmod(file, 0o755);
 }
 for (const name of ['main']) await chmod(path.join(root, 'packages/cli/dist/cli', `${name}.js`), 0o755);
+
+await generateStandalone({ root });

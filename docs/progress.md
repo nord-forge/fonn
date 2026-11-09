@@ -48,3 +48,15 @@ Actual Codex hook trust/delivery during model work, model availability for a liv
 `fonn --default claude` and `fonn --default codex` persist the selected agent and exit; `fonn --default` displays it, with optional JSON output. The shortcut updates the existing atomic default-profile setting. Selecting the same provider preserves its custom profile; switching providers chooses its built-in default. Explicit agent commands and profiles remain per-launch overrides.
 
 Build, typecheck and all 71 offline tests passed, extending the existing profile/CLI cases without adding test cases. A compiled CLI smoke confirmed selection, persistence, display and preservation of a matching custom profile in isolated temporary configuration, without launching an agent. The prepared archive and cask checksum were refreshed. No release or tag was published.
+
+## Native resume footer and standalone local filtering
+
+| Task | State | Owner / model | Evidence |
+| --- | --- | --- | --- |
+| Session state and native replay | DONE | Builder / gpt-6.1-sol high | Two focused cases cover lifecycle IDs, private bounded state, provider binding, exact/picker replay and immutable saved profiles. |
+| Native shutdown hints | DONE | Builder / gpt-6.1-sol high | Existing Claude/Codex cases cover lifecycle routes, off mode, informational-call suppression, arguments and exit-code preservation. |
+| Local downloadable filters | DONE | Builder / gpt-6.1-sol high | One focused case runs four modules plus license without npm dependencies, including both hook protocols, exact recovery and confinement. |
+| CLI/docs integration | DONE | Coordinator | Resume help/routing and README download/setup prompt; compiled CLI replayed printed shutdown commands for both mocked providers with quoted state paths and invalid current profile configuration. |
+| Independent review | DONE | Reviewer / gpt-6.1-sol high | Source-symlink code-generation finding fixed and independently reproduced as rejected before output creation; no remaining findings. |
+
+Build, typecheck and all 74 offline tests passed (three new cases), followed by the targeted standalone test after the reviewed generator fix. Generated download modules match the shared core, with CI enforcing committed-file parity. No paid model calls were made; the compiled shutdown smoke used fake provider executables. Actual provider lifecycle hook delivery remains subject to native trust/settings and has not been exercised with a paid session. Native resume uses an explicitly labeled picker when no observed session ID exists, and hard kills cannot print a footer. The standalone download/setup guide requires only Node 22+ and an existing native agent; it does not install Fonn or SDKs.

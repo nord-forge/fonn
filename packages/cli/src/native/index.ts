@@ -1,89 +1,21 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { constants } from 'node:fs';
-import { access, lstat, mkdir, open, realpath, rename, writeFile } from 'node:fs/promises';
+import { access, lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import type { ArtifactSlice, FilterMode, ProfileName, ToolObservation } from '@nord-forge/fonn-core/contracts';
+import type { ArtifactSlice, ToolObservation } from '@nord-forge/fonn-core/contracts';
 import { createArtifactStore, createOutputFilter } from '@nord-forge/fonn-core/filtering';
-import { profileNameSchema, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
-import { getDefaultStateDirectory } from '@nord-forge/fonn-core/state';
+import { captureNativeSession, nativeResumeArguments, printNativeResumeHint, resolveNativeProfile } from './session.js';
 
 const executeFile = promisify(execFile);
-const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const launchSchema = z.object({
-  schemaVersion: z.literal(1),
-  launchId: z.string().regex(idPattern),
-  provider: z.enum(['claude', 'codex']).optional(),
-  cwd: z.string(),
-  profile: profileNameSchema,
-  profileSnapshot: taskProfileSchema.optional(),
-  filterMode: z.enum(['filter', 'observe', 'off']),
-  createdAt: z.string(),
-  hookEntrypoint: z.string(),
-  finishedAt: z.string().optional(),
-  exitCode: z.number().int().optional(),
-}).strict().refine(record => record.profileSnapshot === undefined || record.profileSnapshot.name === record.profile, 'Profile snapshot must match the launch profile').refine(record => record.provider === undefined || record.profileSnapshot === undefined || record.provider === (record.profileSnapshot.provider ?? 'claude'), 'Profile provider must match the launch provider');
-export type LaunchRecord = z.infer<typeof launchSchema>;
+import { atomicJson, launchDirectory, privateDirectory, readLaunch, shellQuote } from './storage.js';
+import type { LaunchRecord, NativeLaunchOptions } from './storage.js';
+export { atomicJson, launchDirectory, privateDirectory, readLaunch, shellQuote } from './storage.js';
+export type { LaunchRecord, NativeLaunchOptions } from './storage.js';
 
-export interface NativeLaunchOptions {
-  cwd: string;
-  profile?: ProfileName;
-  configDirectory?: string;
-  filterMode?: FilterMode;
-  stateDirectory?: string;
-  args?: string[];
-  executable?: string;
-  hookEntrypoint?: string;
-}
-
-function validateId(id: string): void {
-  if (!idPattern.test(id)) throw new Error('Invalid native launch ID.');
-}
-
-export async function privateDirectory(directory: string, create: boolean): Promise<string> {
-  if (create) await mkdir(directory, { recursive: true, mode: 0o700 });
-  const stat = await lstat(directory);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Native state directories must be real directories.');
-  return realpath(directory);
-}
-
-export async function launchDirectory(stateDirectory: string | undefined, launchId: string, create = false): Promise<{ root: string; directory: string }> {
-  validateId(launchId);
-  const root = await privateDirectory(path.resolve(stateDirectory ?? getDefaultStateDirectory()), create);
-  const parent = await privateDirectory(path.join(root, 'native'), create);
-  if (path.dirname(parent) !== root) throw new Error('Native state escaped its configured root.');
-  const directory = await privateDirectory(path.join(parent, launchId), create);
-  if (path.dirname(directory) !== parent) throw new Error('Native launch escaped its configured root.');
-  return { root, directory };
-}
-
-export async function readLaunch(stateDirectory: string | undefined, launchId: string): Promise<{ root: string; directory: string; record: LaunchRecord }> {
-  const location = await launchDirectory(stateDirectory, launchId);
-  const handle = await open(path.join(location.directory, 'launch.json'), constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    if (!(await handle.stat()).isFile()) throw new Error('Invalid native launch metadata.');
-    const record = launchSchema.parse(JSON.parse(await handle.readFile('utf8')));
-    if (record.launchId !== launchId) throw new Error('Native launch metadata does not match its directory.');
-    return { ...location, record };
-  } finally {
-    await handle.close();
-  }
-}
-
-export async function atomicJson(file: string, data: unknown): Promise<void> {
-  const temporary = `${file}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify(data, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-  await rename(temporary, file);
-}
-
-export function shellQuote(value: string): string {
-  return "'" + value.replaceAll("'", "'\\''") + "'";
-}
-
-function validateArguments(args: string[]): void {
+function validateArguments(args: string[], resuming: boolean): void {
   const managementCommands = new Set(['agents', 'attach', 'auth', 'auto-mode', 'doctor', 'gateway', 'import', 'install', 'logs', 'mcp', 'plugin', 'plugins', 'purge', 'respawn', 'rm', 'setup-token', 'stop', 'kill', 'ultrareview', 'update', 'upgrade']);
   const reserved = new Set([
     '--settings', '--setting-sources', '--safe-mode', '--bare', '--restricted',
@@ -93,6 +25,9 @@ function validateArguments(args: string[]): void {
     '--desktop', '--bg', '--background',
   ]);
   for (const argument of args) {
+    if (resuming && (/^--(?:resume(?:-session-at)?|continue|fork-session|session-id)(?:=|$)/.test(argument) || /^-[cr]/.test(argument))) {
+      throw new Error('The native launcher controls resume selection. Remove conflicting Claude resume, continue, fork, or session-id arguments.');
+    }
     if (managementCommands.has(argument)) throw new Error('The native launcher controls interactive launches only. Run plain Claude Code for management or cloud subcommands.');
     if (reserved.has(argument.split('=', 1)[0])) {
       throw new Error(`The native launcher controls ${argument.split('=', 1)[0]}. Use launcher profiles and filter options; permission bypass and remote launches are unsupported.`);
@@ -118,8 +53,9 @@ async function verifyClaude(executable: string): Promise<void> {
 export async function launchClaude(options: NativeLaunchOptions): Promise<number> {
   const mode = z.enum(['filter', 'observe', 'off']).parse(options.filterMode ?? 'filter');
   const args = options.args ?? [];
-  validateArguments(args);
-  const profile = await resolveProfileForProvider('claude', options.profile, options.configDirectory);
+  validateArguments(args, options.resume !== undefined);
+  const resumeArgs = nativeResumeArguments('claude', options.resume);
+  const profile = await resolveNativeProfile(options, 'claude');
   const cwd = await realpath(options.cwd);
   if (!(await lstat(cwd)).isDirectory()) throw new Error('The target working directory is not a directory.');
   const executable = options.executable ?? 'claude';
@@ -147,12 +83,16 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
     verbose: false,
     viewMode: 'default',
     ...(mode === 'off' ? {} : {
-      hooks: { PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }] },
+      hooks: {
+        PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }],
+        SessionStart: [{ hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }],
+        SessionEnd: [{ hooks: [{ type: 'command', command: hookCommand, timeout: 5 }] }],
+      },
     }),
   };
   await atomicJson(settingsPath, settings);
   process.stderr.write(`Native Claude launch ${launchId}: ${profile.name}, filtering ${mode}.\n`);
-  const child = spawn(executable, ['--settings', settingsPath, '--model', profile.model, '--effort', profile.effort, ...args], { cwd, stdio: 'inherit', env: process.env });
+  const child = spawn(executable, ['--settings', settingsPath, '--model', profile.model, '--effort', profile.effort, ...resumeArgs, ...args], { cwd, stdio: 'inherit', env: process.env });
   // A terminal-generated SIGINT already reaches both processes in the same
   // foreground group. Forward only without a terminal, otherwise one Ctrl+C
   // becomes two interrupts in Claude's interactive UI.
@@ -170,7 +110,10 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
     process.off('SIGINT', forwardInterrupt);
     process.off('SIGTERM', forwardTermination);
   }
-  await atomicJson(metadata, { ...record, finishedAt: new Date().toISOString(), exitCode });
+  const finished = { ...record, finishedAt: new Date().toISOString(), exitCode };
+  await atomicJson(metadata, finished);
+  try { await printNativeResumeHint(finished, location.root, args, exitCode); }
+  catch { /* Resume guidance must never replace the native process exit status. */ }
   return exitCode;
 }
 
@@ -178,6 +121,11 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
 export async function runNativeHook(event: unknown, stateDirectory: string, launchId: string): Promise<unknown> {
   if (typeof event !== 'object' || event === null) return {};
   const input = event as Record<string, unknown>;
+  if (input.hook_event_name === 'SessionStart' || input.hook_event_name === 'SessionEnd') {
+    try { await captureNativeSession(event, stateDirectory, launchId, 'claude'); }
+    catch { /* Lifecycle tracking must not affect the native session. */ }
+    return {};
+  }
   if (input.hook_event_name !== 'PostToolUse' || input.tool_name !== 'Bash') return {};
   const location = await readLaunch(stateDirectory, launchId);
   if (location.record.provider === 'codex' || location.record.profileSnapshot?.provider === 'codex') return {};

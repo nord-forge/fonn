@@ -36,6 +36,9 @@ test('help, profiles and version run offline and do not import/execute the SDK',
     assert.equal(await codexHelp.run(args), 0);
     assert.match(codexHelp.out(), /manual review\/trust in \/hooks/);
   }
+  const resumeHelp = harness({ env: { FONN_CONFIG_DIR: '/dev/null/unreadable' } });
+  assert.equal(await resumeHelp.run(['help', 'resume']), 0);
+  assert.match(resumeHelp.out(), /never guesses with --last/);
   const p = harness();
   assert.equal(await p.run(['profiles', '--json']), 0);
   assert.equal(JSON.parse(p.out()).length, 4);
@@ -284,6 +287,14 @@ test('native output routes bounded recovery to the launch store', async () => {
   } });
   assert.equal(await h.run(['native-output', 'launch-1', 'artifact-1']), 0);
   assert.equal(h.out(), 'Original\n');
+  const resume = harness({ resumeNativeLaunch: async (id, options) => {
+    assert.equal(id, 'launch-1');
+    assert.deepEqual(options, { stateDirectory: '/tmp/saved-state' });
+    return 7;
+  } });
+  assert.equal(await resume.run(['resume', 'launch-1', '--state-dir', '/tmp/saved-state']), 7);
+  assert.equal(await resume.run(['resume']), 1);
+  assert.equal(await resume.run(['resume', 'launch-1', '--profile', 'opus-high']), 1);
 });
 
 test('SIGINT aborts and cleans handlers while rendering saved cancellation', async () => {

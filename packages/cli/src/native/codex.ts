@@ -7,9 +7,9 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { ToolObservation } from '@nord-forge/fonn-core/contracts';
 import { createArtifactStore, createOutputFilter } from '@nord-forge/fonn-core/filtering';
-import { resolveProfileForProvider } from '@nord-forge/fonn-core/profiles';
-import { atomicJson, launchDirectory, privateDirectory, readLaunch, shellQuote } from './index.js';
-import type { LaunchRecord, NativeLaunchOptions } from './index.js';
+import { captureNativeSession, nativeResumeArguments, printNativeResumeHint, resolveNativeProfile } from './session.js';
+import { atomicJson, launchDirectory, privateDirectory, readLaunch, shellQuote } from './storage.js';
+import type { LaunchRecord, NativeLaunchOptions } from './storage.js';
 
 const executeFile = promisify(execFile);
 
@@ -55,7 +55,8 @@ async function verifyCodex(executable: string): Promise<void> {
 export async function launchCodex(options: NativeLaunchOptions): Promise<number> {
   const mode = z.enum(['filter', 'observe', 'off']).parse(options.filterMode ?? 'filter');
   const args = validateArguments(options.args ?? []);
-  const profile = await resolveProfileForProvider('codex', options.profile, options.configDirectory);
+  const resumeArgs = nativeResumeArguments('codex', options.resume);
+  const profile = await resolveNativeProfile(options, 'codex');
   const cwd = await realpath(options.cwd);
   if (!(await lstat(cwd)).isDirectory()) throw new Error('The target working directory is not a directory.');
   const executable = options.executable ?? 'codex';
@@ -81,10 +82,12 @@ export async function launchCodex(options: NativeLaunchOptions): Promise<number>
     // Codex merges hooks from active layers; do not rewrite user/project files.
     const command = [process.execPath, entrypoint, 'codex-hook'].map(shellQuote).join(' ');
     launchArgs.push('-c', `hooks.PostToolUse=[{matcher="Bash",hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
+    launchArgs.push('-c', `hooks.SessionStart=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
+    launchArgs.push('-c', `hooks.SessionEnd=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
     process.stderr.write('Fonn filtering requires normal Codex /hooks review and trust; managed policy may disable hooks.\n');
   }
   process.stderr.write(`Native Codex launch ${launchId}: ${profile.name}, filtering ${mode}.\n`);
-  const child = spawn(executable, [...launchArgs, ...args], {
+  const child = spawn(executable, [...launchArgs, ...resumeArgs, ...args], {
     cwd, stdio: 'inherit',
     env: { ...process.env, FONN_CODEX_LAUNCH_ID: launchId, FONN_CODEX_STATE_DIR: location.root },
   });
@@ -103,7 +106,10 @@ export async function launchCodex(options: NativeLaunchOptions): Promise<number>
     process.off('SIGINT', forwardInterrupt);
     process.off('SIGTERM', forwardTermination);
   }
-  await atomicJson(metadata, { ...record, finishedAt: new Date().toISOString(), exitCode });
+  const finished = { ...record, finishedAt: new Date().toISOString(), exitCode };
+  await atomicJson(metadata, finished);
+  try { await printNativeResumeHint(finished, location.root, args, exitCode); }
+  catch { /* Resume guidance must never replace the native process exit status. */ }
   return exitCode;
 }
 
@@ -111,6 +117,11 @@ export async function launchCodex(options: NativeLaunchOptions): Promise<number>
 export async function runCodexHook(event: unknown, stateDirectory: string, launchId: string): Promise<unknown> {
   if (typeof event !== 'object' || event === null) return {};
   const input = event as Record<string, unknown>;
+  if (input.hook_event_name === 'SessionStart' || input.hook_event_name === 'SessionEnd') {
+    try { await captureNativeSession(event, stateDirectory, launchId, 'codex'); }
+    catch { /* Lifecycle tracking must not affect the native session. */ }
+    return {};
+  }
   if (input.hook_event_name !== 'PostToolUse' || input.tool_name !== 'Bash') return {};
   const location = await readLaunch(stateDirectory, launchId);
   if (location.record.provider !== 'codex') return {};

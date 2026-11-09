@@ -9,7 +9,7 @@ import { createProfileStore } from '@nord-forge/fonn-core/profiles';
 import { launchCodex, runCodexHook } from '../../src/native/codex.js';
 import { launchClaude, readNativeOutput, runNativeHook } from '../../src/native/index.js';
 
-async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
+async function fixture(t: { after: (fn: () => Promise<void>) => void }, exitCode = 7) {
   const root = await mkdtemp(path.join(await realpath(os.tmpdir()), 'fonn-codex-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const cwd = path.join(root, 'project');
@@ -29,7 +29,7 @@ const keys = ['FONN_CODEX_LAUNCH_ID','FONN_CODEX_STATE_DIR'];
 if (process.env.OPENAI_API_KEY === 'synthetic-test-key' && process.env.FONN_TEST_INHERIT === 'retained') keys.push('FONN_TEST_INHERIT','OPENAI_API_KEY','CODEX_HOME');
 const env = Object.fromEntries(keys.map(key => [key,process.env[key]]));
 fs.writeFileSync(${JSON.stringify(capture)}, JSON.stringify({args,env,cwd:process.cwd()}));
-process.exit(7);
+process.exit(${JSON.stringify(exitCode)});
 `, { mode: 0o700 });
   await writeFile(path.join(root, 'package.json'), '{"type":"module"}');
   const hookEntrypoint = path.join(root, "hook 'entry.js");
@@ -60,15 +60,21 @@ test('Codex inherits auth/environment, snapshots its profile, and keeps hook def
   const hook = first.args[5] as string;
   assert.match(hook, /^hooks\.PostToolUse=\[\{matcher="Bash"/);
   assert.match(hook, /codex-hook/);
+  const lifecycleHooks = first.args.filter((argument: string) => /^hooks\.Session(?:Start|End)=/.test(argument));
+  assert.equal(lifecycleHooks.length, 2);
   const command = JSON.parse(/command=("(?:\\.|[^"\\])*")/.exec(hook)![1]) as string;
   const invoked = await promisify(execFile)('/bin/sh', ['-c', command], { encoding: 'utf8' });
   assert.deepEqual(JSON.parse(invoked.stdout), ['codex-hook']);
+  for (const [index, event] of ['SessionStart', 'SessionEnd'].entries()) {
+    assert.equal(lifecycleHooks[index], `hooks.${event}=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=5}]}]`);
+  }
   assert.ok(!hook.includes(first.env.FONN_CODEX_LAUNCH_ID));
   assert.ok(!hook.includes(f.state));
   assert.ok(!first.args.some((argument: string) => /bypass|sandbox|approval|provider|CODEX_HOME/.test(argument)));
   assert.equal(await launchCodex({ ...options, args: ['future-command'] }), 7);
   const second = JSON.parse(await readFile(f.capture, 'utf8'));
   assert.equal(second.args[5], hook);
+  assert.deepEqual(second.args.filter((argument: string) => /^hooks\./.test(argument)), [hook, ...lifecycleHooks]);
   assert.deepEqual(second.args.slice(-2), ['--', 'future-command']);
   assert.notEqual(second.env.FONN_CODEX_LAUNCH_ID, first.env.FONN_CODEX_LAUNCH_ID);
   assert.equal(process.listenerCount('SIGINT'), interrupts);
@@ -80,6 +86,28 @@ test('Codex inherits auth/environment, snapshots its profile, and keeps hook def
   assert.equal(record.exitCode, 7);
   assert.equal((await stat(path.join(directory, 'launch.json'))).mode & 0o777, 0o600);
   assert.equal((await stat(directory)).mode & 0o777, 0o700);
+  await profiles.edit('codex-light', { model: 'gpt-6.1-other', effort: 'high' });
+  await profiles.setDefault('codex:sol-medium');
+  await profiles.delete('codex-light');
+  await writeFile(path.join(f.config, 'profiles.json'), '{ invalid configuration');
+  await launchCodex({ ...options, profileSnapshot: record.profileSnapshot, resume: 'known-codex-session', args: ['--no-alt-screen'] });
+  const resumed = JSON.parse(await readFile(f.capture, 'utf8'));
+  assert.deepEqual(resumed.args.slice(0, 4), ['--model', 'gpt-6.1-sol', '-c', 'model_reasoning_effort="low"']);
+  assert.deepEqual(resumed.args.slice(-3), ['resume', 'known-codex-session', '--no-alt-screen']);
+  assert.deepEqual(resumed.args.filter((argument: string) => /^hooks\./.test(argument)), [hook, ...lifecycleHooks]);
+  await launchCodex({ ...options, profileSnapshot: record.profileSnapshot, resume: true });
+  const picker = JSON.parse(await readFile(f.capture, 'utf8'));
+  assert.equal(picker.args.at(-1), 'resume');
+  assert.ok(!picker.args.includes('--last'));
+  const informational = await fixture(t, 0);
+  const messages: string[] = [];
+  const stderr = t.mock.method(process.stderr, 'write', (chunk: string | Uint8Array) => { messages.push(String(chunk)); return true; });
+  try {
+    for (const args of [['--help'], ['--version']]) {
+      assert.equal(await launchCodex({ cwd: informational.cwd, stateDirectory: informational.state, configDirectory: informational.config, executable: informational.executable, hookEntrypoint: informational.hookEntrypoint, args }), 0);
+    }
+  } finally { stderr.mock.restore(); }
+  assert.doesNotMatch(messages.join(''), /resume|picker/i);
 });
 
 test('Codex rejects config/policy/auth/trust overrides, other commands, wrong profiles, and old versions before state', async t => {
@@ -111,7 +139,22 @@ test('Codex off/observe/filter preserve originals, diagnostics, unknown response
     await launchCodex({ ...options, filterMode: mode });
     const capture = JSON.parse(await readFile(f.capture, 'utf8'));
     const id = capture.env.FONN_CODEX_LAUNCH_ID;
-    assert.equal(capture.args.some((arg: string) => arg.startsWith('hooks.PostToolUse=')), mode !== 'off');
+    assert.equal(capture.args.filter((arg: string) => /^hooks\./.test(arg)).length, mode === 'off' ? 0 : 3);
+    const lifecycle = { session_id: 'tracked-codex-session', cwd: f.cwd };
+    for (const hook_event_name of ['SessionStart', 'SessionEnd']) {
+      assert.deepEqual(await runCodexHook({ ...lifecycle, hook_event_name }, f.state, id), {});
+      assert.deepEqual(await runNativeHook({ ...lifecycle, hook_event_name }, f.state, id), {});
+    }
+    const sessionFile = path.join(f.state, 'native', id, 'session.json');
+    if (mode === 'off') await assert.rejects(stat(sessionFile), { code: 'ENOENT' });
+    else {
+      const session = JSON.parse(await readFile(sessionFile, 'utf8'));
+      assert.equal(session.sessionId, lifecycle.session_id);
+      assert.equal(session.provider, 'codex');
+      assert.equal((await stat(sessionFile)).mode & 0o777, 0o600);
+    }
+    assert.deepEqual(await runCodexHook({ hook_event_name: 'SessionStart', session_id: '--invalid' }, f.state, id), {});
+    assert.deepEqual(await runCodexHook({ hook_event_name: 'SessionEnd', session_id: 'any' }, f.state, 'invalid-launch-id'), {});
     const output = await runCodexHook(event, f.state, id) as { continue?: boolean; stopReason?: string };
     assert.deepEqual(await runNativeHook(event, f.state, id), {});
     const directory = path.join(f.state, 'native', id);

@@ -23,6 +23,12 @@ Until the hook is trusted, Fonn output filtering is inactive. Codex's own projec
 
 `filter` replaces only recognized noisy shell output represented as text or a stdout record; Codex metadata wrappers and other response shapes can remain unchanged. It preserves warnings, errors and unknown formats. `observe` archives proposed reductions while leaving the delivered tool output unchanged. `off` registers no Fonn hook. The Codex hook uses its supported post-tool feedback contract to deliver a reduced observation; it does not undo a completed tool call or modify source files, instructions or prior history. Output visibility in the terminal alone does not demonstrate fewer model-input tokens.
 
+## Resume the native session
+
+On shutdown Fonn prints `fonn resume <launch-id>` with the saved state location when needed. It restores the saved initial profile, working directory and filtering, independent of later default/profile edits. Trusted lifecycle hooks record a session ID for direct resume. With hooks off, untrusted or unavailable, Fonn labels the command as a session-picker fallback and never selects an unrelated latest session with `--last`.
+
+This generated resume route is supported through Fonn; raw `resume`/`fork` passthrough still requires plain Codex. Hard kills and power loss cannot print a footer. The native client's own messages and terminal controls remain visible.
+
 ## Recover original output
 
 Fonn records a launch ID and keeps recoverable originals in its native launch store. Use the ID and artifact hint shown for a filtered observation:

@@ -15,7 +15,7 @@ This is an independent TypeScript CLI and reusable library for native Claude and
 
 Use Node 22 or later; CI uses Node 24. From the root run `npm ci` and `npm run check` (typecheck, mocked tests, build). `npm run release:prepare` creates the CLI release archive and matching cask; `npm run release:check` validates release packaging. Inspect the scripts before assuming which prerequisites they run.
 
-Tests must use fixtures and mocked SDK messages. Normal checks must never make paid model calls. Keep new dependencies minimal and pin exact versions. Cover meaningful behavior rather than duplicating implementation assertions. Never use real credentials, personal state, stored prompts, or private source as fixtures or release content.
+Tests must use fixtures and mocked SDK messages. Normal checks must never make paid model calls. Keep new dependencies minimal and pin exact versions. Regenerate and commit `standalone/filtering` with shared filter changes; downloaded modules must remain Node-builtin-only and match the compiled core. Cover meaningful behavior rather than duplicating implementation assertions. Never use real credentials, personal state, stored prompts, or private source as fixtures or release content.
 
 ## Product boundaries
 
