@@ -82,6 +82,7 @@ test('all invalid inputs and missing explicit key fail before query without expo
       await assert.rejects(runtime.runTask({ ...f.options, ...extra } as RunTaskOptions), /Invalid task options/);
     }
     await assert.rejects(runtime.runTask({ ...f.options, profile: 'unknown' }), /Unknown profile/);
+    await assert.rejects(runtime.runTask({ ...f.options, profile: 'codex:sol-medium' }), /Claude profiles only/);
     await assert.rejects(runtime.runTask({ ...f.options, cwd: join(f.root, 'absent') }));
     assert.equal(calls, 0);
     const failing = createRuntime({ getApiKey: () => secret, query: async function* () { throw new Error(`${secret} ${f.options.prompt}`); } });

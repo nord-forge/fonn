@@ -1,10 +1,10 @@
 cask "fonn" do
   version "0.1.0"
-  sha256 "9143b6ca1cc88ab3dc8f00cb40048c9b99e26f07ccc8038eacff24ade3005ffa"
+  sha256 "50a57747f2b8e3af6a76f80cdac5a0d27390db59fa88da5f7e659d7fd9e2a556"
 
   url "https://github.com/nord-forge/fonn/releases/download/v#{version}/fonn-#{version}.tar.gz"
   name "Fonn"
-  desc "Local Claude agent harness and interactive launcher"
+  desc "Local coding agent harness for Claude and Codex"
   homepage "https://github.com/nord-forge/fonn"
 
   depends_on formula: "node"
@@ -29,8 +29,8 @@ cask "fonn" do
 
   caveats <<~EOS
     Installation downloads pinned npm runtime dependencies on this machine.
-    For interactive Claude, install and authenticate Claude Code separately.
-    fonn opens the interactive Claude launcher. SDK runs require your own API key.
+    Install and authenticate Claude Code or Codex separately for native launches.
+    fonn opens the native CLI selected by your profile. SDK runs require your own API key.
     Uninstall keeps your Fonn records and Claude settings.
   EOS
 end

@@ -1,7 +1,9 @@
 export type FilterMode = 'filter' | 'observe' | 'off';
 export type ProfileName = string;
+export type ProfileProvider = 'claude' | 'codex';
 export type ProfileEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export interface TaskProfile {
+  provider?: ProfileProvider;
   name: ProfileName;
   model: string;
   effort: ProfileEffort;

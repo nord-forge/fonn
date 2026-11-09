@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import type { ArtifactSlice, FilterMode, PermissionRequest, ProfileName, RunRecord, RunTaskOptions, TaskProfile } from '@nord-forge/fonn-core/contracts';
-import { createProfileStore, effortSchema, getDefaultConfigDirectory, modelSchema, resolveProfile, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
+import { createProfileStore, effortSchema, getDefaultConfigDirectory, modelSchema, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
 import { renderRun, runExitCode, terminalText, validateResult } from './render.js';
 
 export interface CliDependencies {
@@ -13,7 +13,9 @@ export interface CliDependencies {
   readRun: (taskId: string, stateDirectory?: string) => Promise<RunRecord>;
   readArtifact: (taskId: string, artifactId: string, options: { offset: number; limit: number }, stateDirectory?: string) => Promise<ArtifactSlice>;
   launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; stateDirectory?: string; configDirectory?: string; args?: string[] }) => Promise<number>;
+  launchCodex: CliDependencies['launchClaude'];
   runNativeHook: (event: unknown, stateDirectory: string, launchId: string) => Promise<unknown>;
+  runCodexHook: CliDependencies['runNativeHook'];
   readNativeOutput: (launchId: string, artifactId: string, options: { offset: number; limit: number }, stateDirectory?: string) => Promise<ArtifactSlice>;
   readStdin: () => Promise<string>;
   stdout: (text: string) => void;
@@ -25,12 +27,14 @@ export interface CliDependencies {
   nodeVersion: string;
 }
 
-const help = `Fonn — local Claude Agent SDK tasks
+const help = `Fonn — native Claude and Codex launchers, Claude Agent SDK tasks
 
 Usage:
-  fonn [--cwd <dir>] [--profile <name>] [--filter <mode>] [--state-dir <path>] [-- <claude args>]
+  fonn [--cwd <dir>] [--profile <name>] [--filter <mode>] [--state-dir <path>] [-- <native args>]
+  fonn claude [launcher options] [-- <claude args>]
+  fonn codex [launcher options] [-- <codex args>]
   fonn profiles [--json]
-  fonn help profiles
+  fonn help profiles | codex
   fonn run <prompt> [options]
   fonn runs [--state-dir <path>] [--json]
   fonn show <task-id> [--state-dir <path>] [--json]
@@ -50,30 +54,56 @@ Run options:
   --json                Emit one JSON value; diagnostics and permissions use stderr
 
 API-key authentication uses ANTHROPIC_API_KEY and separate API billing.
-The claude command opens ordinary interactive Claude with its existing authentication.
-SDK budget, structured JSON, and turn-limit flags belong to run, not claude.
-Permission requests require an explicit interactive yes; noninteractive requests are denied.
+With no command, the selected profile or configured default chooses the native provider.
+The claude and codex commands use their existing authentication and native controls.
+Codex filtering requires review and trust in /hooks; Fonn does not bypass hook trust.
+SDK budget, structured JSON, and turn-limit flags belong to run, which supports Claude only.
+SDK permission requests require an explicit interactive yes; noninteractive requests are denied.
 Artifact reads default to 4000 characters and are limited to 20000 per request.
 `;
 
-const profilesHelp = `Fonn profiles — saved model and effort choices
+const profilesHelp = `Fonn profiles — saved provider, model and effort choices
 
 Usage:
   fonn profiles [list] [--json]
   fonn profiles show <name> [--json]
-  fonn profiles create <name> --model <model> --effort <level> [--json]
-  fonn profiles edit <name> [--model <model>] [--effort <level>] [--json]
+  fonn profiles create <name> [--provider claude|codex] --model <model> --effort <level> [--json]
+  fonn profiles edit <name> [--provider claude|codex] [--model <model>] [--effort <level>] [--json]
   fonn profiles delete <name> [--json]
   fonn profiles default [<name>] [--json]
   fonn help profiles | profiles --help
 
-Models: opus, sonnet, haiku, or a Claude model ID. Availability is not verified.
+Provider defaults to Claude when creating a profile.
+Claude models: opus, sonnet, haiku, or a Claude model ID.
+Codex models: gpt-* or o-series model IDs, for example gpt-6.1-sol.
+Provider/model pairs are validated for syntax; model availability is not verified.
 Effort: low | medium | high | xhigh | max. Model support is not verified.
 Edit requires at least one change. Built-in profiles cannot be edited or deleted.
 Choose another default before deleting the current default profile.
 Configuration: ~/.config/fonn/profiles.json; XDG_CONFIG_HOME and FONN_CONFIG_DIR override it.
-Profiles store model and effort only; credentials and permission settings remain separate.
+Profiles store provider, model and effort only; credentials and permission settings remain separate.
 SDK resume retains the saved profile snapshot, even after the profile is edited or deleted.
+`;
+
+const codexHelp = `Fonn Codex — ordinary interactive Codex with a saved profile
+
+Usage:
+  fonn codex [--cwd <dir>] [--profile <name>] [--filter filter|observe|off] [--state-dir <path>] [-- <codex args>]
+  fonn codex --profile codex:sol-medium
+  fonn --profile codex:sol-medium
+  fonn codex -- --search
+  fonn profiles create my-sol --provider codex --model gpt-6.1-sol --effort high
+
+Install and authenticate Codex separately. Existing Codex authentication, permissions,
+project settings and terminal controls remain active. No SDK budgets or usage accounting apply.
+The default Codex profile is codex:sol-medium when the global default belongs to Claude.
+Explicit --profile must name a Codex profile. With no command, the profile selects the provider.
+Filtering requires Codex hook support and manual review/trust in /hooks.
+New or changed hooks remain inactive until trusted; Fonn does not bypass hook trust.
+Filter mode reduces recognized output; observe archives proposals without changing output;
+off registers no Fonn hook. Display visibility alone does not imply fewer model tokens.
+Original outputs can be recovered with fonn native-output <launch-id> <artifact-id>.
+fonn run remains Claude SDK only; a programmatic Codex SDK runtime is not implemented.
 `;
 
 interface Parsed { positionals: string[]; flags: Map<string, string | true> }
@@ -122,29 +152,49 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
   const stderr = (value: string) => (injected.stderr ?? (text => process.stderr.write(text)))(terminalText(redact(value)) + (value.endsWith('\n') ? '' : '\n'));
   const json = (value: unknown) => writeStdout(JSON.stringify(value, (_key, item: unknown) => typeof item === 'string' ? redact(item) : item) + '\n');
   try {
-    // Native Claude is the default; explicit SDK/admin commands remain separate.
-    if (args.length === 0 || ['--cwd', '--profile', '--filter', '--state-dir', '--'].includes(args[0]!)) {
+    // Implicit native launches follow the profile provider; explicit commands pin it.
+    const autoLaunch = args.length === 0 || ['--cwd', '--profile', '--filter', '--state-dir', '--'].includes(args[0]!);
+    if (autoLaunch) {
       args = ['claude', ...args];
     }
     const command = args[0]!;
     if (command === 'help') {
       if (args.length === 1) { stdout(help); return 0; }
       if (args.length === 2 && args[1] === 'profiles') { stdout(profilesHelp); return 0; }
-      throw new Error('Expected help [profiles]. Use --help for usage.');
+      if (args.length === 2 && args[1] === 'codex') { stdout(codexHelp); return 0; }
+      throw new Error('Expected help [profiles|codex]. Use --help for usage.');
     }
     if (command === 'profiles' && args.length === 2 && args[1] === '--help') { stdout(profilesHelp); return 0; }
+    if (command === 'codex' && args.length === 2 && args[1] === '--help') { stdout(codexHelp); return 0; }
     if (command === '--help' || command === '-h' || (args.length === 2 && args[1] === '--help')) { stdout(help); return 0; }
     if (command === '--version') { if (args.length !== 1) throw new Error('--version takes no arguments.'); stdout(await version() + '\n'); return 0; }
-    if (command === 'claude') {
+    if (command === 'claude' || command === 'codex') {
       const separator = args.indexOf('--');
       const parsed = parse(args.slice(1, separator < 0 ? undefined : separator), ['cwd', 'profile', 'filter', 'state-dir']);
-      argumentCount(parsed, 0, 'claude [options] [-- <claude args>]');
+      argumentCount(parsed, 0, `${command} [options] [-- <native args>]`);
       const filterMode = stringFlag(parsed, 'filter') ?? 'filter';
       if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
       const configDirectory = getDefaultConfigDirectory(env);
-      const profile = await resolveProfile(stringFlag(parsed, 'profile'), configDirectory);
-      const launch = injected.launchClaude ?? (await import('../native/index.js')).launchClaude;
+      const profile = autoLaunch
+        ? await resolveProfile(stringFlag(parsed, 'profile'), configDirectory)
+        : await resolveProfileForProvider(command, stringFlag(parsed, 'profile'), configDirectory);
+      const launch = profile.provider === 'codex'
+        ? injected.launchCodex ?? (await import('../native/codex.js')).launchCodex
+        : injected.launchClaude ?? (await import('../native/index.js')).launchClaude;
       return await launch({ cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile: profile.name, filterMode: filterMode as FilterMode, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
+    }
+    if (command === 'codex-hook') {
+      const parsed = parse(args.slice(1), []);
+      argumentCount(parsed, 0, 'codex-hook');
+      const stateDirectory = env.FONN_CODEX_STATE_DIR;
+      const launchId = env.FONN_CODEX_LAUNCH_ID;
+      if (!stateDirectory?.trim() || !launchId?.trim()) throw new Error('codex-hook requires FONN_CODEX_STATE_DIR and FONN_CODEX_LAUNCH_ID.');
+      const input = await (injected.readStdin ?? readStdin)();
+      let event: unknown;
+      try { event = JSON.parse(input); } catch { throw new Error('codex-hook requires a JSON event on stdin.'); }
+      const hook = injected.runCodexHook ?? (await import('../native/codex.js')).runCodexHook;
+      json(await hook(event, stateDirectory, launchId));
+      return 0;
     }
     if (command === 'native-hook') {
       const parsed = parse(args.slice(1), ['state-dir', 'launch-id']);
@@ -162,12 +212,12 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
     if (command === 'profiles') {
       const action = args[1] && !args[1].startsWith('--') ? args[1] : 'list';
       if (!['list', 'show', 'create', 'edit', 'delete', 'default'].includes(action)) throw new Error(`Unknown profiles command ${action}. Use fonn help profiles for usage.`);
-      const parsed = parse(args.slice(args[1] === action ? 2 : 1), action === 'create' || action === 'edit' ? ['model', 'effort', 'json'] : ['json']);
+      const parsed = parse(args.slice(args[1] === action ? 2 : 1), action === 'create' || action === 'edit' ? ['provider', 'model', 'effort', 'json'] : ['json']);
       if (action === 'default') {
         if (parsed.positionals.length > 1) throw new Error('Expected profiles default [<name>]. Use fonn help profiles for usage.');
       } else argumentCount(parsed, action === 'list' ? 0 : 1, action === 'list' ? 'profiles list' : `profiles ${action} <name>`);
       const store = createProfileStore(getDefaultConfigDirectory(env));
-      const renderProfile = (profile: { name: string; model: string; effort: string }) => `${terminalText(profile.name)}: ${terminalText(profile.model)}, effort ${terminalText(profile.effort)}`;
+      const renderProfile = (profile: TaskProfile) => `${terminalText(profile.name)} [${terminalText(profile.provider ?? 'claude')}]: ${terminalText(profile.model)}, effort ${terminalText(profile.effort)}`;
       if (action === 'list') {
         const listing = await store.list();
         if (parsed.flags.has('json')) json(listing.profiles);
@@ -184,10 +234,11 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       let profile: TaskProfile;
       if (action === 'create') {
         if (!parsed.flags.has('model') || !parsed.flags.has('effort')) throw new Error('profiles create requires --model and --effort.');
-        profile = await store.create(taskProfileSchema.parse({ name, model: stringFlag(parsed, 'model'), effort: stringFlag(parsed, 'effort') }));
+        profile = await store.create(taskProfileSchema.parse({ name, ...(parsed.flags.has('provider') ? { provider: providerSchema.parse(stringFlag(parsed, 'provider')) } : {}), model: stringFlag(parsed, 'model'), effort: stringFlag(parsed, 'effort') }));
       } else if (action === 'edit') {
-        if (!parsed.flags.has('model') && !parsed.flags.has('effort')) throw new Error('profiles edit requires --model or --effort.');
+        if (!parsed.flags.has('provider') && !parsed.flags.has('model') && !parsed.flags.has('effort')) throw new Error('profiles edit requires --provider, --model or --effort.');
         profile = await store.edit(name!, {
+          ...(parsed.flags.has('provider') ? { provider: providerSchema.parse(stringFlag(parsed, 'provider')) } : {}),
           ...(parsed.flags.has('model') ? { model: modelSchema.parse(stringFlag(parsed, 'model')) } : {}),
           ...(parsed.flags.has('effort') ? { effort: effortSchema.parse(stringFlag(parsed, 'effort')) } : {}),
         });
@@ -212,7 +263,12 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       argumentCount(parsed, 1, 'run <prompt>');
       if (!parsed.positionals[0]!.trim()) throw new Error('The prompt must not be empty.');
       const configDirectory = getDefaultConfigDirectory(env);
-      const profile = parsed.flags.has('resume') ? stringFlag(parsed, 'profile') : (await resolveProfile(stringFlag(parsed, 'profile'), configDirectory)).name;
+      let profile = stringFlag(parsed, 'profile');
+      if (!parsed.flags.has('resume')) {
+        const selected = await resolveProfile(profile, configDirectory);
+        if (selected.provider === 'codex') throw new Error(`fonn run supports Claude SDK profiles only. Use fonn codex --profile ${selected.name} for native Codex, or run with --profile opus-medium.`);
+        profile = selected.name;
+      }
       const filterMode = stringFlag(parsed, 'filter') ?? 'filter';
       if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
       const budgetUsd = numeric(parsed.flags.get('budget'), '--budget', 5);

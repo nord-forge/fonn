@@ -54,6 +54,7 @@ function subagent(agent: 'explorer' | 'reviewer'): AgentDefinition {
 /** Construct options without starting the SDK. Each call closes over one task's capabilities. */
 export function buildSdkOptions(context: BuildOptionsContext): Options {
   const { options, profile, filter, store, abortController } = context;
+  if (profile.provider === 'codex') throw new Error('The Claude SDK cannot run a Codex profile. Use the native Codex launcher.');
   const seenObservations = new Set<string>();
   const startedDelegations = new Set<string>();
   const activeDelegations = new Set<string>();

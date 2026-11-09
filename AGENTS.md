@@ -1,14 +1,14 @@
 # Fonn
 
-This is an independent TypeScript CLI and reusable library built around the Claude Agent SDK. Read `README.md` and `packages/core/src/contracts.ts` before changing public behavior.
+This is an independent TypeScript CLI and reusable library for native Claude and Codex, with structured tasks through the Claude Agent SDK. Read `README.md` and `packages/core/src/contracts.ts` before changing public behavior.
 
 ## Workspace ownership
 
 - `packages/core` (`@nord-forge/fonn-core`) owns contracts, profiles, schemas, filtering, artifact recovery, SDK runtime.
-- `packages/cli` (`@nord-forge/fonn-cli`) owns terminal I/O, native Claude launch services, command dispatch, rendering, and interactive approval/question handling. Import the core package rather than duplicating it.
+- `packages/cli` (`@nord-forge/fonn-cli`) owns terminal I/O, native Claude and Codex launch services, command dispatch, rendering, and interactive approval/question handling. Import the core package rather than duplicating it.
 - `apps/desktop/README.md` reserves the future desktop host. No GUI, `.app`, signing/notarization pipeline, or GUI cask is implemented.
 - `packages/cli/dist/cli/main.js` is the canonical built CLI entrypoint. Keep the root `dist/cli/main.js` compatibility shim for local development.
-- `fonn` with no arguments or leading launcher options opens native Claude; `fonn claude` is the explicit equivalent. Preserve the explicit SDK and administration commands. `--help` and `--version` remain offline.
+- `fonn` with no arguments or leading launcher options opens the native CLI selected by its profile; `fonn claude` and `fonn codex` explicitly select a provider. Preserve the explicit SDK and administration commands. `--help` and `--version` remain offline.
 - The root is a private npm-workspace coordinator. Keep workspace, root, and lockfile versions consistent. Shared contracts, package manifests, and the lockfile have one owner during parallel work.
 
 ## Verification
@@ -21,7 +21,7 @@ Tests must use fixtures and mocked SDK messages. Normal checks must never make p
 
 - Preserve the target project's user, project, local, and managed policy settings.
 - Use the Claude Code system-prompt preset. Never add permission bypass or silently approve writes and shell commands.
-- SDK authentication initially requires an explicitly supplied `ANTHROPIC_API_KEY`. Do not extract subscription OAuth credentials or imply subscription quotas apply to API use. The native launcher inherits unmodified Claude authentication.
+- SDK authentication initially requires an explicitly supplied `ANTHROPIC_API_KEY`. Do not extract subscription OAuth credentials or imply subscription quotas apply to API use. Native launchers inherit their corresponding CLI authentication and policy layers. Never extract either provider’s subscription credentials or bypass Codex hook trust.
 - SDK dollar figures and stop budgets are estimates. A request may overshoot a threshold. Never call estimates invoices or guarantee savings.
 - A filter rewrites only a new tool observation. It must not rewrite history, source files, user instructions, or reasoning blocks.
 - Reduce only recognized output formats. Preserve warnings, failures, stderr, and unknown content. Keep originals recoverable and reads bounded within the current task store and validated same-session/project ancestry.

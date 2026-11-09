@@ -16,7 +16,7 @@
     "url": "https://github.com/nord-forge/fonn/issues"
   },
   "name": "@nord-forge/fonn-cli",
-  "description": "Local Fonn CLI and native Claude launcher.",
+  "description": "Local Fonn CLI with native Claude and Codex launchers.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

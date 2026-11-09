@@ -13,7 +13,7 @@ node packages/cli/dist/cli/main.js --help
 node packages/cli/dist/cli/main.js --cwd /absolute/path/to/project
 ```
 
-The canonical entrypoint is `packages/cli/dist/cli/main.js`. The build also maintains root `dist/cli/main.js` as a local development compatibility shim. The installed command is `fonn`. With no arguments it opens ordinary interactive Claude in the current directory; leading launcher options (`--cwd`, `--profile`, `--filter`, `--state-dir`, or `--`) do the same. `fonn claude` is the explicit equivalent. SDK tasks and administration use explicit commands such as `fonn run`, `profiles`, `runs`, `show`, `output`, `native-output`, and `doctor`. `fonn --help` and `fonn --version` stay offline.
+The canonical entrypoint is `packages/cli/dist/cli/main.js`. The build also maintains root `dist/cli/main.js` as a local development compatibility shim. The installed command is `fonn`. With no arguments it opens the native Claude or Codex CLI selected by the default profile in the current directory; leading launcher options (`--cwd`, `--profile`, `--filter`, `--state-dir`, or `--`) do the same. `fonn claude` and `fonn codex` explicitly select a provider. SDK tasks and administration use explicit commands such as `fonn run`, `profiles`, `runs`, `show`, `output`, `native-output`, and `doctor`. `fonn --help` and `fonn --version` stay offline.
 
 A shell alias named `fonn` can shadow the installed command. Inspect `type -a fonn`; if it is an alias, `unalias fonn` removes it from the current shell. Manually remove the alias from your shell configuration to change future shells. No installer or build edits shell configuration automatically.
 
@@ -38,9 +38,11 @@ The same JavaScript archive supports Apple Silicon and Intel macOS through Homeb
 
 The cask depends on the Homebrew `node` formula. During installation it runs `npm ci --omit=dev --ignore-scripts --no-audit --no-fund` against the shipped manifests and lockfile to obtain runtime dependencies directly on the user's machine. Installation requires registry access and can fail if downloads are unavailable. It uses the user's normal network and npm configuration files, while clearing inherited npm environment overrides and `NODE_OPTIONS`. It does not use `sudo`. The upstream SDK and its applicable runtime components are installed as dependencies under their own terms rather than redistributed inside our archive.
 
-Ordinary Claude Code must be installed and authenticated separately for native launches. Installing Fonn does not sign in to Claude, configure API billing, supply credentials, or change global Claude settings. `fonn --help`, `--version`, `profiles`, and `doctor` stay offline; `doctor` checks API-key presence and can exit nonzero when no key is set. SDK `fonn run` can incur API charges.
+Install and authenticate Claude Code or Codex separately for the corresponding native launcher. Installing Fonn does not sign in to either provider, configure API billing, supply credentials, or change global Claude settings. `fonn --help`, `--version`, `profiles`, and `doctor` stay offline; `doctor` checks API-key presence and can exit nonzero when no key is set. SDK `fonn run` can incur API charges.
 
 ## First publication and Homebrew
+
+You do not need a separate Homebrew publisher account. Your GitHub account and permission to publish releases in `nord-forge/fonn` are enough for this repository-hosted tap. There is no central Homebrew submission required to distribute through your own tap; see the official [tap guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap).
 
 **Installation is unavailable until the first GitHub release archive and matching checked-in cask are published.** The public source repository alone, a locally prepared archive, or a workflow artifact does not make the cask's download URL available. No release or tag has been published as part of this preparation.
 

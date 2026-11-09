@@ -31,9 +31,14 @@ test('help, profiles and version run offline and do not import/execute the SDK',
     assert.equal(await profileHelp.run(args), 0);
     assert.match(profileHelp.out(), /profiles create <name>/);
   }
+  for (const args of [['help', 'codex'], ['codex', '--help']]) {
+    const codexHelp = harness({ env: { FONN_CONFIG_DIR: '/dev/null/unreadable' } });
+    assert.equal(await codexHelp.run(args), 0);
+    assert.match(codexHelp.out(), /manual review\/trust in \/hooks/);
+  }
   const p = harness();
   assert.equal(await p.run(['profiles', '--json']), 0);
-  assert.equal(JSON.parse(p.out()).length, 3);
+  assert.equal(JSON.parse(p.out()).length, 4);
   const v = harness();
   assert.equal(await v.run(['--version']), 0);
   assert.match(v.out(), /^0\.1\.0\n$/);
@@ -54,19 +59,34 @@ test('profile commands persist custom choices, manage the default and reject inv
     assert.equal(JSON.parse(await invoke(['edit', 'quick', '--effort', 'max', '--json'])).effort, 'max');
     assert.equal(JSON.parse(await invoke(['default', 'quick', '--json'])).name, 'quick');
     assert.equal(JSON.parse(await invoke(['default', '--json'])).name, 'quick');
-    assert.match(await invoke(['list']), /quick: haiku, effort max \(default\)/);
-    assert.equal(JSON.parse(await invoke(['list', '--json'])).length, 4);
+    assert.match(await invoke(['list']), /quick \[claude\]: haiku, effort max \(default\)/);
+    assert.equal(JSON.parse(await invoke(['list', '--json'])).length, 5);
     const fresh = harness({ env });
     assert.equal(await fresh.run(['run', 'Use configured default']), 0);
     assert.equal(fresh.options[0]?.profile, 'quick');
-    for (const args of [ ['edit', 'quick'], ['create', 'missing', '--model', 'haiku'], ['show', 'quick', 'extra'], ['default', 'quick', 'extra'], ['list', '--model', 'haiku'], ['delete', 'quick'], ['delete', 'opus-high'], ['edit', 'opus-high', '--effort', 'low'], ['create', 'bad', '--model', 'haiku', '--effort', 'invalid'], ['unknown'] ]) {
+    const codex = { name: 'my-sol', provider: 'codex', model: 'gpt-6.1-sol', effort: 'high' };
+    assert.deepEqual(JSON.parse(await invoke(['create', 'my-sol', '--provider', 'codex', '--model', 'gpt-6.1-sol', '--effort', 'high', '--json'])), codex);
+    assert.match(await invoke(['show', 'my-sol']), /my-sol \[codex\]/);
+    assert.equal(JSON.parse(await invoke(['edit', 'my-sol', '--provider', 'claude', '--model', 'sonnet', '--json'])).provider, 'claude');
+    await invoke(['edit', 'my-sol', '--provider', 'codex', '--model', 'gpt-6.1-sol']);
+    const sdkCodex = harness({ env });
+    assert.equal(await sdkCodex.run(['run', 'Unsupported SDK provider', '--profile', 'my-sol']), 1);
+    assert.match(sdkCodex.err(), /Use fonn codex --profile my-sol/);
+    assert.equal(sdkCodex.options.length, 0);
+    await invoke(['default', 'my-sol']);
+    const sdkDefault = harness({ env });
+    assert.equal(await sdkDefault.run(['run', 'Unsupported default']), 1);
+    assert.equal(sdkDefault.options.length, 0);
+    await invoke(['default', 'quick']);
+    for (const args of [ ['edit', 'quick'], ['create', 'missing', '--model', 'haiku'], ['show', 'quick', 'extra'], ['default', 'quick', 'extra'], ['list', '--model', 'haiku'], ['delete', 'quick'], ['delete', 'opus-high'], ['edit', 'opus-high', '--effort', 'low'], ['create', 'bad', '--model', 'haiku', '--effort', 'invalid'], ['create', 'bad', '--provider', 'other', '--model', 'haiku', '--effort', 'low'], ['create', 'bad', '--provider', 'codex', '--model', 'haiku', '--effort', 'low'], ['edit', 'quick', '--provider', 'codex'], ['unknown'] ]) {
       const invalid = harness({ env });
       assert.equal(await invalid.run(['profiles', ...args]), 1, args.join(' '));
       assert.equal(invalid.out(), '');
     }
     await invoke(['default', 'opus-medium']);
     assert.deepEqual(JSON.parse(await invoke(['delete', 'quick', '--json'])), { deleted: 'quick' });
-    assert.equal(JSON.parse(await invoke(['--json'])).length, 3);
+    await invoke(['delete', 'my-sol']);
+    assert.equal(JSON.parse(await invoke(['--json'])).length, 4);
   } finally { await rm(configDirectory, { recursive: true, force: true }); }
 });
 
@@ -152,7 +172,7 @@ test('questions use interactive text answers and remain unresolved headlessly', 
   }
 });
 
-test('native claude routing preserves passthrough without requiring an API key', async () => {
+test('native provider routing preserves passthrough and follows explicit or default profiles', async () => {
   let called = false;
   const h = harness({ launchClaude: async options => {
     called = true;
@@ -178,10 +198,34 @@ test('native claude routing preserves passthrough without requiring an API key',
     } });
     assert.equal(await defaultLaunch.run([]), 0);
     assert.equal(await defaultLaunch.run(['--profile', 'quick']), 0);
+    let codexArgs = ['--search'];
+    const codexLaunch = harness({ env, launchCodex: async options => {
+      assert.deepEqual(options, { cwd: process.cwd(), profile: 'codex:sol-medium', filterMode: 'filter', stateDirectory: undefined, configDirectory, args: codexArgs });
+      return 3;
+    } });
+    // An explicit provider falls back to its built-in when the global default differs.
+    assert.equal(await codexLaunch.run(['codex', '--', '--search']), 3);
+    assert.equal(await codexLaunch.run(['--profile', 'codex:sol-medium', '--', '--search']), 3);
+    assert.equal(await setup.run(['profiles', 'default', 'codex:sol-medium']), 0);
+    assert.equal(await codexLaunch.run(['--', '--search']), 3);
+    codexArgs = [];
+    assert.equal(await codexLaunch.run([]), 3);
+    const claudeFallback = harness({ env, launchClaude: async options => {
+      assert.equal(options.profile, 'opus-medium');
+      return 0;
+    } });
+    assert.equal(await claudeFallback.run(['claude']), 0);
+    for (const args of [['claude', '--profile', 'codex:sol-medium'], ['codex', '--profile', 'quick']]) {
+      const wrongProvider = harness({ env, launchClaude: async () => { throw new Error('must not launch'); }, launchCodex: async () => { throw new Error('must not launch'); } });
+      assert.equal(await wrongProvider.run(args), 1);
+      assert.doesNotMatch(wrongProvider.err(), /must not launch/);
+    }
   } finally { await rm(configDirectory, { recursive: true, force: true }); }
   assert.equal(h.out(), '');
   assert.equal(await harness().run(['claude', '--budget', '2']), 1);
   assert.equal(await harness().run(['claude', '--json']), 1);
+  assert.equal(await harness().run(['codex', '--budget', '2']), 1);
+  assert.equal(await harness().run(['codex', '--json']), 1);
 });
 
 test('native hook reads stdin JSON and writes one JSON response', async () => {
@@ -197,6 +241,19 @@ test('native hook reads stdin JSON and writes one JSON response', async () => {
   const invalid = harness({ readStdin: async () => 'bad' });
   assert.equal(await invalid.run(['native-hook', '--launch-id', 'launch-1', '--state-dir', '/tmp/state']), 1);
   assert.match(invalid.err(), /JSON event/);
+  const codex = harness({ env: { FONN_CODEX_STATE_DIR: '/tmp/state', FONN_CODEX_LAUNCH_ID: 'launch-codex' }, readStdin: async () => '{"hook_event_name":"PostToolUse"}', runCodexHook: async (event, state, launch) => {
+    assert.deepEqual(event, { hook_event_name: 'PostToolUse' });
+    assert.equal(state, '/tmp/state'); assert.equal(launch, 'launch-codex');
+    return { continue: false, stopReason: 'Filtered output' };
+  } });
+  assert.equal(await codex.run(['codex-hook']), 0);
+  assert.deepEqual(JSON.parse(codex.out()), { continue: false, stopReason: 'Filtered output' });
+  assert.equal(await harness().run(['codex-hook']), 1);
+  assert.equal(await harness({ env: { FONN_CODEX_STATE_DIR: ' ', FONN_CODEX_LAUNCH_ID: 'launch' } }).run(['codex-hook']), 1);
+  const badCodexEvent = harness({ env: { FONN_CODEX_STATE_DIR: '/tmp/state', FONN_CODEX_LAUNCH_ID: 'launch' }, readStdin: async () => 'bad' });
+  assert.equal(await badCodexEvent.run(['codex-hook']), 1);
+  assert.match(badCodexEvent.err(), /JSON event/);
+  assert.equal(await codex.run(['codex-hook', 'extra']), 1);
 });
 
 test('native output routes bounded recovery to the launch store', async () => {

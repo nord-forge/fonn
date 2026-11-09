@@ -75,6 +75,7 @@ export function createRuntime(dependencies: RuntimeDependencies = {}) {
       if (parent && options.profile && options.profile !== parent.profile.name) throw new Error('A resumed task must retain its session profile');
       // Resumes use the saved snapshot even if its named profile was edited or deleted.
       const profile = Object.freeze({ ...(parent?.profile ?? await resolveProfile(options.profile, options.configDirectory ?? getDefaultConfigDirectory(dependencies.environment ?? process.env))) });
+      if (profile.provider === 'codex') throw new Error('SDK tasks currently support Claude profiles only. Use fonn codex for native Codex, or select a Claude profile.');
       // Hold the same-session lock across leaf validation, the query, and record persistence.
       const releaseResumeLock = parent ? await acquireResumeLock(parent.sessionId!, stateDirectory) : undefined;
       try {

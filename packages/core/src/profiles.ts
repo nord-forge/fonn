@@ -4,12 +4,13 @@ import { chmod, lstat, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, parse, resolve } from 'node:path';
 import { z } from 'zod';
-import type { ProfileName, TaskProfile } from './contracts.js';
+import type { ProfileName, ProfileProvider, TaskProfile } from './contracts.js';
 
 export const profiles: Readonly<Record<ProfileName, TaskProfile>> = Object.freeze({
   'opus-high': Object.freeze({ name: 'opus-high', model: 'claude-opus-5-5', effort: 'high' }),
   'opus-medium': Object.freeze({ name: 'opus-medium', model: 'claude-opus-5-5', effort: 'medium' }),
   'sonnet-medium': Object.freeze({ name: 'sonnet-medium', model: 'claude-sonnet-5-5', effort: 'medium' }),
+  'codex:sol-medium': Object.freeze({ name: 'codex:sol-medium', provider: 'codex', model: 'gpt-6.1-sol', effort: 'medium' }),
 });
 
 /** Synchronous compatibility API: resolves built-in profiles only. */
@@ -18,11 +19,19 @@ export function getProfile(name: string = 'opus-medium'): TaskProfile {
   return profiles[name as ProfileName]!;
 }
 
-export const profileNameSchema = z.string().max(48).regex(/^[a-z][a-z0-9-]*$/)
+export const profileNameSchema = z.string().max(48).refine(name => /^[a-z][a-z0-9-]*$/.test(name) || Object.hasOwn(profiles, name), 'Use lowercase letters, digits and hyphens for custom profile names')
   .refine((name) => !['constructor', 'prototype', '__proto__', 'default'].includes(name), 'This profile name is reserved');
-export const modelSchema = z.string().max(128).regex(/^(?:claude-[A-Za-z0-9._-]+|opus|sonnet|haiku)$/);
+export const providerSchema = z.enum(['claude', 'codex']);
+const claudeModelPattern = /^(?:claude-[A-Za-z0-9._-]+|opus|sonnet|haiku)$/;
+const codexModelPattern = /^(?:gpt-[A-Za-z0-9._-]+|o[1-9][0-9]*(?:-[A-Za-z0-9._-]+)?)$/;
+/** Syntactic validation only; model availability and supported efforts are checked upstream. */
+export const modelSchema = z.string().max(128).refine((model) => claudeModelPattern.test(model) || codexModelPattern.test(model), 'Expected a Claude model ID or alias, GPT model ID, or o-series model ID');
 export const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
-export const taskProfileSchema = z.object({ name: profileNameSchema, model: modelSchema, effort: effortSchema }).strict();
+export const taskProfileSchema = z.object({ name: profileNameSchema, provider: providerSchema.optional(), model: modelSchema, effort: effortSchema }).strict().superRefine((profile, context) => {
+  const provider = profile.provider ?? 'claude';
+  const matches = provider === 'claude' ? claudeModelPattern.test(profile.model) : codexModelPattern.test(profile.model);
+  if (!matches) context.addIssue({ code: 'custom', path: ['model'], message: provider === 'claude' ? 'Claude profiles require a Claude model ID or alias; OpenAI model IDs require provider codex' : 'Codex profiles require a GPT or o-series model ID; Claude models require provider claude' });
+});
 
 const maximumConfigBytes = 128 * 1024;
 const configSchema = z.object({
@@ -183,12 +192,12 @@ export function createProfileStore(directory = getDefaultConfigDirectory()) {
         return Object.freeze({ ...validated });
       });
     },
-    async edit(name: string, changes: { model?: string; effort?: TaskProfile['effort'] }): Promise<TaskProfile> {
+    async edit(name: string, changes: { provider?: ProfileProvider; model?: string; effort?: TaskProfile['effort'] }): Promise<TaskProfile> {
       assertCustom(name);
-      const validated = z.object({ model: modelSchema.optional(), effort: effortSchema.optional() }).strict().parse(changes);
+      const validated = z.object({ provider: providerSchema.optional(), model: modelSchema.optional(), effort: effortSchema.optional() }).strict().parse(changes);
       return mutate((config) => {
         const profile = lookup(config, name);
-        const updated = taskProfileSchema.parse({ ...profile, model: validated.model ?? profile.model, effort: validated.effort ?? profile.effort });
+        const updated = taskProfileSchema.parse({ ...profile, ...(validated.provider === undefined ? {} : { provider: validated.provider }), model: validated.model ?? profile.model, effort: validated.effort ?? profile.effort });
         config.profiles[config.profiles.findIndex((item) => item.name === name)] = updated;
         return Object.freeze({ ...updated });
       });
@@ -214,4 +223,13 @@ export function createProfileStore(directory = getDefaultConfigDirectory()) {
 
 export async function resolveProfile(name?: string, directory?: string): Promise<TaskProfile> {
   return createProfileStore(directory).get(name);
+}
+
+/** Explicit launchers use their provider's built-in default when the global default belongs to another provider. */
+export async function resolveProfileForProvider(provider: ProfileProvider, name?: string, directory?: string): Promise<TaskProfile> {
+  providerSchema.parse(provider);
+  const profile = await resolveProfile(name, directory);
+  if ((profile.provider ?? 'claude') === provider) return profile;
+  if (name !== undefined) throw new Error(`Profile ${name} belongs to ${profile.provider ?? 'claude'}, not ${provider}. Select a ${provider} profile.`);
+  return getProfile(provider === 'codex' ? 'codex:sol-medium' : 'opus-medium');
 }

@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, un
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { createProfileStore, effortSchema, getDefaultConfigDirectory, getProfile, modelSchema, profileNameSchema, profiles, resolveProfile, taskProfileSchema } from '../../src/profiles.js';
+import { createProfileStore, effortSchema, getDefaultConfigDirectory, getProfile, modelSchema, profileNameSchema, profiles, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '../../src/profiles.js';
 
 test('profile CRUD persists defaults, preserves aliases and returns frozen snapshots without creating on reads', async () => {
   const temporary = await mkdtemp(join(await realpath(tmpdir()), 'fonn-profiles-'));
@@ -12,6 +12,11 @@ test('profile CRUD persists defaults, preserves aliases and returns frozen snaps
     const store = createProfileStore(directory);
     assert.equal((await store.get()).name, 'opus-medium');
     assert.deepEqual((await store.list()).profiles, Object.values(profiles));
+    assert.equal((await store.list()).profiles.length, 4);
+    assert.deepEqual(getProfile('opus-medium'), { name: 'opus-medium', model: 'claude-opus-5-5', effort: 'medium' });
+    assert.deepEqual(getProfile('codex:sol-medium'), { name: 'codex:sol-medium', provider: 'codex', model: 'gpt-6.1-sol', effort: 'medium' });
+    assert.equal((await resolveProfileForProvider('claude', undefined, directory)).name, 'opus-medium');
+    assert.equal((await resolveProfileForProvider('codex', undefined, directory)).name, 'codex:sol-medium');
     await assert.rejects(lstat(directory), { code: 'ENOENT' });
     assert.equal(getDefaultConfigDirectory({ FONN_CONFIG_DIR: './chosen' }), resolve('chosen'));
     assert.equal(getDefaultConfigDirectory({ XDG_CONFIG_HOME: temporary }), join(temporary, 'fonn'));
@@ -27,12 +32,33 @@ test('profile CRUD persists defaults, preserves aliases and returns frozen snaps
     assert.deepEqual(await store.edit('quick-check', { model: 'claude-custom_1.2', effort: 'max' }), { name: 'quick-check', model: 'claude-custom_1.2', effort: 'max' });
     await store.setDefault('quick-check');
     assert.equal((await createProfileStore(directory).get()).name, 'quick-check');
+    const oldFormat = JSON.parse(await readFile(join(directory, 'profiles.json'), 'utf8'));
+    assert.equal(oldFormat.schemaVersion, 1);
+    assert.equal(Object.hasOwn(oldFormat.profiles[0], 'provider'), false);
+    assert.equal((await resolveProfileForProvider('claude', undefined, directory)).name, 'quick-check');
+    assert.equal((await resolveProfileForProvider('codex', undefined, directory)).name, 'codex:sol-medium');
     assert.equal((await resolveProfile(undefined, directory)).effort, 'max');
     await assert.rejects(store.delete('quick-check'), /current default/);
     const snapshot = await store.list();
     assert.equal(Object.isFrozen(snapshot), true);
     assert.equal(Object.isFrozen(snapshot.profiles), true);
     assert.ok(snapshot.profiles.every(Object.isFrozen));
+    const codexCreated = await store.create({ name: 'codex-review', provider: 'codex', model: 'gpt-6.1-sol', effort: 'xhigh' });
+    assert.equal(Object.isFrozen(codexCreated), true);
+    assert.deepEqual(await createProfileStore(directory).get('codex-review'), codexCreated);
+    await store.setDefault('codex-review');
+    assert.equal((await resolveProfile(undefined, directory)).provider, 'codex');
+    assert.equal((await resolveProfileForProvider('codex', undefined, directory)).name, 'codex-review');
+    assert.equal((await resolveProfileForProvider('claude', undefined, directory)).name, 'opus-medium');
+    await assert.rejects(resolveProfileForProvider('claude', 'codex-review', directory), /belongs to codex/);
+    await assert.rejects(resolveProfileForProvider('codex', 'quick-check', directory), /belongs to claude/);
+    await assert.rejects(store.edit('quick-check', { model: 'gpt-6.1-sol' }), /provider/);
+    await assert.rejects(store.edit('codex-review', { model: 'claude-opus-5-5' }), /provider/);
+    assert.deepEqual(await store.edit('quick-check', { provider: 'codex', model: 'o3-mini' }), { name: 'quick-check', provider: 'codex', model: 'o3-mini', effort: 'max' });
+    assert.deepEqual(await store.edit('quick-check', { provider: 'claude', model: 'haiku' }), { name: 'quick-check', provider: 'claude', model: 'haiku', effort: 'max' });
+    await store.setDefault('codex:sol-medium');
+    assert.deepEqual(await resolveProfile(undefined, directory), getProfile('codex:sol-medium'));
+    assert.equal((await resolveProfileForProvider('claude', undefined, directory)).name, 'opus-medium');
     await store.setDefault('sonnet-medium');
     await store.delete('quick-check');
     await assert.rejects(store.get('quick-check'), /Unknown profile/);
@@ -40,6 +66,17 @@ test('profile CRUD persists defaults, preserves aliases and returns frozen snaps
     assert.equal(getProfile().name, 'opus-medium');
     assert.equal(Object.isFrozen(profiles), true);
     assert.throws(() => getProfile('quick-check'), /Unknown profile/);
+    // This exact v1 custom name was valid before adding Codex built-ins.
+    const legacy = { name: 'sol-medium', model: 'sonnet', effort: 'medium' };
+    await writeFile(join(directory, 'profiles.json'), JSON.stringify({ schemaVersion: 1, defaultProfile: legacy.name, profiles: [legacy] }));
+    assert.deepEqual(await store.get(), legacy);
+    assert.equal((await store.get('opus-medium')).name, 'opus-medium');
+    assert.equal((await resolveProfileForProvider('claude', undefined, directory)).name, legacy.name);
+    assert.equal((await resolveProfileForProvider('codex', undefined, directory)).name, 'codex:sol-medium');
+    assert.equal((await store.list()).profiles.filter(profile => profile.name === legacy.name).length, 1);
+    await store.edit(legacy.name, { effort: 'high' });
+    await store.setDefault('opus-medium');
+    await store.delete(legacy.name);
   } finally { await rm(temporary, { recursive: true, force: true }); }
 });
 
@@ -53,10 +90,19 @@ test('invalid names, schema versions, duplicate or shadowed profiles and broken 
       assert.throws(() => getProfile(name), /Unknown profile/);
       await assert.rejects(store.create({ ...profile, name }));
     }
-    for (const model of ['opus', 'sonnet', 'haiku', 'claude-opus-5-5', 'claude-Test_1.2']) assert.equal(modelSchema.parse(model), model);
-    for (const model of ['', 'unknown', 'claude-', 'opus --unsafe', 'claude-a/b', `claude-${'a'.repeat(128)}`]) assert.equal(modelSchema.safeParse(model).success, false);
+    for (const model of ['opus', 'sonnet', 'haiku', 'claude-opus-5-5', 'claude-Test_1.2', 'gpt-6.1-sol', 'gpt-custom_1.2', 'o1', 'o3-mini', 'o4-mini']) assert.equal(modelSchema.parse(model), model);
+    for (const model of ['', 'unknown', 'claude-', 'gpt-', 'o', 'o0', 'opus --unsafe', 'claude-a/b', `claude-${'a'.repeat(128)}`]) assert.equal(modelSchema.safeParse(model).success, false);
+    for (const provider of ['claude', 'codex']) assert.equal(providerSchema.safeParse(provider).success, true);
+    assert.equal(providerSchema.safeParse('other').success, false);
     for (const effort of ['low', 'medium', 'high', 'xhigh', 'max']) assert.equal(effortSchema.safeParse(effort).success, true);
     assert.equal(taskProfileSchema.safeParse({ ...profile, extra: true }).success, false);
+    assert.equal(taskProfileSchema.safeParse({ ...profile, provider: 'claude' }).success, true);
+    for (const model of ['gpt-6.1-sol', 'o3-mini']) {
+      assert.equal(taskProfileSchema.safeParse({ ...profile, model }).success, false);
+      assert.equal(taskProfileSchema.safeParse({ ...profile, provider: 'claude', model }).success, false);
+      assert.equal(taskProfileSchema.safeParse({ ...profile, provider: 'codex', model }).success, true);
+    }
+    for (const model of ['claude-opus-5-5', 'opus', 'sonnet', 'haiku']) assert.equal(taskProfileSchema.safeParse({ ...profile, provider: 'codex', model }).success, false);
     for (const builtin of Object.values(profiles)) {
       await assert.rejects(store.create(builtin), /immutable/);
       await assert.rejects(store.edit(builtin.name, { effort: 'low' }), /immutable/);
@@ -69,6 +115,8 @@ test('invalid names, schema versions, duplicate or shadowed profiles and broken 
       { ...valid, profiles: [getProfile()] },
       { ...valid, defaultProfile: 'missing' },
       { ...valid, extra: true },
+      { ...valid, profiles: [{ ...profile, model: 'gpt-6.1-sol' }] },
+      { ...valid, profiles: [{ ...profile, provider: 'codex' }] },
       { ...valid, profiles: Array.from({ length: 101 }, (_, index) => ({ ...profile, name: `custom-${index}` })) },
     ];
     const path = join(directory, 'profiles.json');

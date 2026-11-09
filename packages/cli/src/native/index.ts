@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { ArtifactSlice, FilterMode, ProfileName, ToolObservation } from '@nord-forge/fonn-core/contracts';
 import { createArtifactStore, createOutputFilter } from '@nord-forge/fonn-core/filtering';
-import { profileNameSchema, resolveProfile, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
+import { profileNameSchema, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
 import { getDefaultStateDirectory } from '@nord-forge/fonn-core/state';
 
 const executeFile = promisify(execFile);
@@ -16,6 +16,7 @@ const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a
 const launchSchema = z.object({
   schemaVersion: z.literal(1),
   launchId: z.string().regex(idPattern),
+  provider: z.enum(['claude', 'codex']).optional(),
   cwd: z.string(),
   profile: profileNameSchema,
   profileSnapshot: taskProfileSchema.optional(),
@@ -24,8 +25,8 @@ const launchSchema = z.object({
   hookEntrypoint: z.string(),
   finishedAt: z.string().optional(),
   exitCode: z.number().int().optional(),
-}).strict().refine(record => record.profileSnapshot === undefined || record.profileSnapshot.name === record.profile, 'Profile snapshot must match the launch profile');
-type LaunchRecord = z.infer<typeof launchSchema>;
+}).strict().refine(record => record.profileSnapshot === undefined || record.profileSnapshot.name === record.profile, 'Profile snapshot must match the launch profile').refine(record => record.provider === undefined || record.profileSnapshot === undefined || record.provider === (record.profileSnapshot.provider ?? 'claude'), 'Profile provider must match the launch provider');
+export type LaunchRecord = z.infer<typeof launchSchema>;
 
 export interface NativeLaunchOptions {
   cwd: string;
@@ -42,14 +43,14 @@ function validateId(id: string): void {
   if (!idPattern.test(id)) throw new Error('Invalid native launch ID.');
 }
 
-async function privateDirectory(directory: string, create: boolean): Promise<string> {
+export async function privateDirectory(directory: string, create: boolean): Promise<string> {
   if (create) await mkdir(directory, { recursive: true, mode: 0o700 });
   const stat = await lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Native state directories must be real directories.');
   return realpath(directory);
 }
 
-async function launchDirectory(stateDirectory: string | undefined, launchId: string, create = false): Promise<{ root: string; directory: string }> {
+export async function launchDirectory(stateDirectory: string | undefined, launchId: string, create = false): Promise<{ root: string; directory: string }> {
   validateId(launchId);
   const root = await privateDirectory(path.resolve(stateDirectory ?? getDefaultStateDirectory()), create);
   const parent = await privateDirectory(path.join(root, 'native'), create);
@@ -59,7 +60,7 @@ async function launchDirectory(stateDirectory: string | undefined, launchId: str
   return { root, directory };
 }
 
-async function readLaunch(stateDirectory: string | undefined, launchId: string): Promise<{ root: string; directory: string; record: LaunchRecord }> {
+export async function readLaunch(stateDirectory: string | undefined, launchId: string): Promise<{ root: string; directory: string; record: LaunchRecord }> {
   const location = await launchDirectory(stateDirectory, launchId);
   const handle = await open(path.join(location.directory, 'launch.json'), constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
@@ -72,13 +73,13 @@ async function readLaunch(stateDirectory: string | undefined, launchId: string):
   }
 }
 
-async function atomicJson(file: string, data: unknown): Promise<void> {
+export async function atomicJson(file: string, data: unknown): Promise<void> {
   const temporary = `${file}.${randomUUID()}.tmp`;
   await writeFile(temporary, JSON.stringify(data, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
   await rename(temporary, file);
 }
 
-function shellQuote(value: string): string {
+export function shellQuote(value: string): string {
   return "'" + value.replaceAll("'", "'\\''") + "'";
 }
 
@@ -118,7 +119,7 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
   const mode = z.enum(['filter', 'observe', 'off']).parse(options.filterMode ?? 'filter');
   const args = options.args ?? [];
   validateArguments(args);
-  const profile = await resolveProfile(options.profile, options.configDirectory);
+  const profile = await resolveProfileForProvider('claude', options.profile, options.configDirectory);
   const cwd = await realpath(options.cwd);
   if (!(await lstat(cwd)).isDirectory()) throw new Error('The target working directory is not a directory.');
   const executable = options.executable ?? 'claude';
@@ -179,6 +180,7 @@ export async function runNativeHook(event: unknown, stateDirectory: string, laun
   const input = event as Record<string, unknown>;
   if (input.hook_event_name !== 'PostToolUse' || input.tool_name !== 'Bash') return {};
   const location = await readLaunch(stateDirectory, launchId);
+  if (location.record.provider === 'codex' || location.record.profileSnapshot?.provider === 'codex') return {};
   const observation: ToolObservation = {
     toolName: 'Bash', toolInput: input.tool_input, response: input.tool_response,
     sessionId: typeof input.session_id === 'string' ? input.session_id : '',

@@ -1,8 +1,33 @@
 # Fonn
 
-A local TypeScript CLI and reusable core around the Claude Agent SDK. Run `fonn` to open ordinary interactive Claude with per-launch settings, or `fonn run` to start a structured SDK task with estimated usage accounting. Recognized noisy tool output can be shortened conservatively while originals remain recoverable.
+A local TypeScript CLI and reusable core for Claude and Codex, with structured task execution through the Claude Agent SDK. Run `fonn` to open the native CLI selected by your default profile, or `fonn run` to start a structured SDK task with estimated usage accounting. Recognized noisy tool output can be shortened conservatively while originals remain recoverable.
 
-This is the `nord-forge/fonn` monorepo. The current product is the core and CLI. A desktop GUI is reserved for later; no desktop app is implemented. Project code is [MIT licensed](LICENSE); upstream dependencies retain [their own terms](THIRD_PARTY_NOTICES.md). Fonn is independent of Anthropic.
+This is the `nord-forge/fonn` monorepo. The current product is the core and CLI. A desktop GUI is reserved for later; no desktop app is implemented. Project code is [MIT licensed](LICENSE); upstream dependencies retain [their own terms](THIRD_PARTY_NOTICES.md). Fonn is independent of Anthropic and OpenAI.
+
+## Get the CLI or reuse a script
+
+The CLI is ready to run from a checkout; the GUI is planned. If you want to inspect or reuse a specific part, go straight to its source:
+
+| Script / entrypoint | Purpose |
+| --- | --- |
+| [CLI entrypoint](packages/cli/src/cli/main.ts) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/packages/cli/src/cli/main.ts) | Commands, help, profiles, provider selection and task dispatch. |
+| [Claude launcher and hook](packages/cli/src/native/index.ts) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/packages/cli/src/native/index.ts) | Per-launch Claude settings and recoverable output filtering. |
+| [Codex launcher and hook](packages/cli/src/native/codex.ts) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/packages/cli/src/native/codex.ts) | Native Codex launch settings and its post-tool adapter. |
+| [Output filter](packages/core/src/filtering/index.ts) · [format adapters](packages/core/src/filtering/adapters.ts) | Conservative reductions for recognized noisy shell output. |
+| [Release preparation](scripts/release/prepare.mjs) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/scripts/release/prepare.mjs) | Build the archive, checksum and matching cask after compilation. |
+| [Homebrew runtime installer](packaging/homebrew/runtime.mjs) · [command launcher](packaging/homebrew/launcher.mjs) | Install locked runtime dependencies and start the staged CLI. |
+
+These source files use the repository's modules and dependencies. For a working CLI immediately, use the checkout below; individual entrypoint downloads are not standalone executables:
+
+```sh
+git clone https://github.com/nord-forge/fonn.git
+cd fonn
+npm ci --ignore-scripts
+npm run build
+node packages/cli/dist/cli/main.js --help
+```
+
+Then run `node packages/cli/dist/cli/main.js claude` or `node packages/cli/dist/cli/main.js codex` from your project with `--cwd /absolute/path/to/project`. The [Homebrew instructions](docs/distribution.md#first-publication-and-homebrew) cover release installation once the archive is published.
 
 ## Local setup
 
@@ -21,7 +46,7 @@ node packages/cli/dist/cli/main.js doctor
 | Workspace | Responsibility |
 | --- | --- |
 | `packages/core` · `@nord-forge/fonn-core` | Contracts, profiles, schemas, filtering, artifact recovery, SDK runtime. |
-| `packages/cli` · `@nord-forge/fonn-cli` | CLI parsing, native Claude launch services, terminal rendering, approval and question input. |
+| `packages/cli` · `@nord-forge/fonn-cli` | CLI parsing, native Claude and Codex launch services, terminal rendering, approval and question input. |
 | `apps/desktop` | Documentation placeholder for a future GUI using the core. |
 
 The repository root is a private workspace coordinator; that flag does not make the GitHub repository private. Package names identify workspace imports and do not imply the packages have been published to npm. Root `dist/cli/main.js` remains a local development compatibility shim; use the canonical entrypoint above for new integrations.
@@ -50,15 +75,27 @@ node packages/cli/dist/cli/main.js --cwd /absolute/path/to/project --profile opu
 node packages/cli/dist/cli/main.js --filter observe -- --resume
 ```
 
-After Homebrew installation, run `fonn` in your project, or `fonn --cwd /absolute/path/to/project`. No arguments, or leading launcher options (`--cwd`, `--profile`, `--filter`, `--state-dir`, or `--`), select the native launcher. `fonn claude [options]` is also supported. The launcher opens the unmodified interactive Claude CLI with its own terminal UI, authentication, permissions, settings, and questions. A profile, compact tool display, and output-filter hook apply to that launch; global Claude settings are not automatically changed. Billing follows ordinary Claude's active authentication, including any API key in the environment. Subscription billing is not guaranteed. SDK budgets, turn limits, structured results, and usage accounting do not apply to native launches.
+After Homebrew installation, run `fonn claude` in your project, or `fonn claude --cwd /absolute/path/to/project`. Bare `fonn` also opens Claude while your selected/default profile belongs to Claude; a Codex profile selects Codex instead. The launcher opens the unmodified interactive Claude CLI with its own terminal UI, authentication, permissions, settings, and questions. A profile, compact tool display, and output-filter hook apply to that launch; global Claude settings are not automatically changed. Billing follows ordinary Claude's active authentication, including any API key in the environment. Subscription billing is not guaranteed. SDK budgets, turn limits, structured results, and usage accounting do not apply to native launches.
 
 Tool details start collapsed; press **Ctrl+O** to expand them or use `fonn -- --verbose` for verbose display. Collapsing does not reduce model-input tokens. See [MCP output and context limits](docs/mcp-output.md) for the separate large-result offload option.
 
 Pass ordinary Claude arguments after `--`. Options that override the selected launch model/effort, hook/settings sources, or permission policy are rejected, including permission-bypass flags. Management and cloud subcommands are unsupported through this launcher; use plain `claude` for those. The profile sets the initial model and effort; interactive `/model` and `/effort` remain available. Launch IDs and state locations are recorded for original-output recovery. `native-hook` is an internal stdin-JSON command used by generated hook settings.
 
+## Open interactive Codex
+
+Install and authenticate the Codex CLI separately, then run:
+
+```sh
+fonn codex
+fonn profiles create sol --provider codex --model gpt-6.1-sol --effort medium
+fonn codex --profile sol
+```
+
+Codex retains its existing authentication, settings, approval and sandbox policies. New Fonn hooks require review in Codex's `/hooks` browser before filtering can run; Fonn never bypasses hook trust. The native interface remains Codex's own UI. See [Codex support](docs/codex.md), including filtering limits and recovery. Programmatic `fonn run` remains a Claude SDK command.
+
 ## Custom profiles
 
-Save a model and effort choice, then use it for native Claude or an SDK task:
+Save a provider, model and effort choice, then use it for the matching native CLI. Claude profiles also work with SDK tasks:
 
 ```sh
 fonn profiles create focused --model sonnet --effort medium
@@ -67,7 +104,7 @@ fonn profiles
 fonn --profile focused
 ```
 
-Use `fonn help profiles` for create, edit, show, delete, and default commands. Profiles are stored locally in `~/.config/fonn/profiles.json`, with `XDG_CONFIG_HOME` and `FONN_CONFIG_DIR` overrides. Built-in profiles remain unchanged. Saved SDK tasks keep their original profile snapshot when resumed, even after edits or deletion. See [profiles](docs/profiles.md).
+Use `fonn help profiles` for create, edit, show, delete, and default commands. A Codex default makes bare `fonn` open Codex; `fonn claude` and `fonn codex` explicitly select a provider. Profiles are stored locally in `~/.config/fonn/profiles.json`, with `XDG_CONFIG_HOME` and `FONN_CONFIG_DIR` overrides. Built-in profiles remain unchanged. Saved SDK tasks keep their original profile snapshot when resumed, even after edits or deletion. See [profiles](docs/profiles.md).
 
 ## Run an SDK task
 
@@ -85,8 +122,9 @@ The commands below use the installed `fonn` name. In a local checkout, substitut
 
 | Command | Purpose |
 | --- | --- |
-| `[launcher options] [-- <claude args>]` | Open ordinary interactive Claude; this is the default when no command is supplied. |
-| `claude [options] [-- <claude args>]` | Explicit form of the same native launcher. |
+| `[launcher options] [-- <native args>]` | Open the native CLI selected by the chosen/default profile. |
+| `claude [options] [-- <claude args>]` | Open native Claude with a Claude profile. |
+| `codex [options] [-- <codex args>]` | Open native Codex with a Codex profile. |
 | `profiles [--json]` | List built-in and custom profiles, marking the default. |
 | `run <prompt> [options]` | Start a task or continue with `--resume <task-id>`. Quote the prompt as one argument. |
 | `runs [--state-dir <path>] [--json]` | List saved SDK runs. |
@@ -96,7 +134,7 @@ The commands below use the installed `fonn` name. In a local checkout, substitut
 | `doctor [--json]` | Check local compatibility and key presence offline. |
 | `--help`, `--version` | Print usage or package version offline. |
 
-SDK options include `--cwd`, `--profile`, `--budget`, `--max-turns`, `--filter`, `--state-dir`, `--resume`, and `--json`. Defaults are the configured profile (initially `opus-medium`), an estimated $5 stop threshold, 20 turns, and conservative `filter` mode. Requests may overshoot the threshold. Profiles are fixed for an SDK task; resume retains the saved profile and project directory. `observe` records potential reductions without changing delivered output; `off` disables reduction.
+SDK options include `--cwd`, `--profile`, `--budget`, `--max-turns`, `--filter`, `--state-dir`, `--resume`, and `--json`. New SDK tasks require a Claude profile; select one explicitly if your global default is Codex. Otherwise defaults are the configured profile (initially `opus-medium`), an estimated $5 stop threshold, 20 turns, and conservative `filter` mode. Requests may overshoot the threshold. Profiles are fixed for an SDK task; resume retains the saved profile and project directory. `observe` records potential reductions without changing delivered output; `off` disables reduction.
 
 `--json` reserves stdout for one machine-readable value on successful dispatch; progress, permissions, and errors use stderr. Errors may leave stdout empty. Failed, cancelled, budget-stopped, invalid, and failed-check outcomes exit nonzero. Ctrl+C requests cancellation; a saved cancelled outcome is shown when the runtime can produce one. Human-readable model/tool text escapes terminal controls.
 

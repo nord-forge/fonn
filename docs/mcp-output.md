@@ -29,7 +29,7 @@ Source: [MCP output limits and warnings](https://code.claude.com/docs/en/mcp#mcp
 
 ## Current Fonn behavior
 
-`fonn` (or the explicit `fonn claude`) sets `verbose: false` and `viewMode: "default"` in its private per-launch settings, including when filtering is off. Global Claude settings are unchanged. Press Ctrl+O to expand details, or pass `-- --verbose` to request the verbose view for one launch. The current native `PostToolUse` hook matches only `Bash`, and its handler rejects other tool names. SDK mode receives all successful tool observations, but the shared filter recognizes shell-output formats and leaves MCP content-block objects unchanged. Consequently, the current filter does not shorten arbitrary issue descriptions returned by an MCP server.
+Native Claude (`fonn claude`, or bare `fonn` with a Claude profile) sets `verbose: false` and `viewMode: "default"` in its private per-launch settings, including when filtering is off. Global Claude settings are unchanged. Press Ctrl+O to expand details, or pass `-- --verbose` to request the verbose view for one launch. The current native `PostToolUse` hook matches only `Bash`, and its handler rejects other tool names. SDK mode receives all successful tool observations, but the shared filter recognizes shell-output formats and leaves MCP content-block objects unchanged. Consequently, the current filter does not shorten arbitrary issue descriptions returned by an MCP server.
 
 Relevant implementation: `packages/cli/src/native/index.ts`, `packages/core/src/runtime/options.ts`, and `packages/core/src/filtering/index.ts`.
 
