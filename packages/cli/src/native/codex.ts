@@ -60,7 +60,9 @@ async function verifyCodex(executable: string): Promise<void> {
  */
 export function sourceArguments(source: TaskProfile['source']): string[] {
   if (source === undefined) return [];
-  if (source === 'ollama' || source === 'lmstudio') return ['--oss', '--local-provider', source];
+  // Codex 0.167 also needs the provider set; with --oss alone its app server
+  // keeps OpenAI and refuses the turn with a provider mismatch.
+  if (source === 'ollama' || source === 'lmstudio') return ['--oss', '--local-provider', source, '-c', `model_provider=${JSON.stringify(source)}`];
   return ['-c', `model_provider=${JSON.stringify(source.slice('provider:'.length))}`];
 }
 

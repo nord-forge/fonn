@@ -21,6 +21,14 @@ fonn profiles create qwen-local --provider codex --model qwen3-coder:30b --effor
 fonn --profile qwen-local
 ```
 
+Give the model a large context. Codex's first request carries its instructions and every tool it knows, including your plugins and MCP servers, and in testing it came to about 72,000 tokens. Ollama's default is much smaller and the request then fails with "exceeds the available context size". Start Ollama with a larger window, as far as your memory allows, and check the CONTEXT column of `ollama ps`:
+
+```sh
+OLLAMA_CONTEXT_LENGTH=131072 ollama serve
+```
+
+For an `ollama` or `lmstudio` source, Fonn passes `--oss --local-provider <source>` and also `-c model_provider="<source>"`, which Codex 0.167 needs to use the local provider for the whole session.
+
 Small models often struggle with tool calls and long sessions. That is the model, not Fonn, but it does affect how well an agent works.
 
 ## Hosted providers
