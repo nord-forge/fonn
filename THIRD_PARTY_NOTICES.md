@@ -4,7 +4,7 @@ Fonn's own code is covered by the root [MIT license](LICENSE). That license does
 
 ## Claude Agent SDK and Claude Code
 
-The pinned `@anthropic-ai/claude-agent-sdk` dependency is maintained by Anthropic. The installed `0.3.319` package declares `SEE LICENSE IN README.md`; its included license notice states that Anthropic retains its rights and refers users to [Anthropic's legal and compliance documentation](https://code.claude.com/docs/en/legal-and-compliance). Those terms apply independently of this project's MIT license. Refer to the installed dependency's own license/readme and current applicable agreements for the complete terms.
+The pinned `@anthropic-ai/claude-agent-sdk` dependency is maintained by Anthropic. The installed `0.3.321` package declares `SEE LICENSE IN README.md`; its included license notice states that Anthropic retains its rights and refers users to [Anthropic's legal and compliance documentation](https://code.claude.com/docs/en/legal-and-compliance). Those terms apply independently of this project's MIT license. Refer to the installed dependency's own license/readme and current applicable agreements for the complete terms.
 
 Our release archive does not include `node_modules`, the SDK, or Claude Code binaries. The CLI cask fetches locked runtime dependencies through `npm ci --omit=dev --ignore-scripts` on the end user's machine. Those dependencies retain their own terms and are not bundled into our release archive. Native launches use the user's separately installed, unmodified Claude Code and its normal authentication. SDK tasks require the user's own explicit API key and incur separate API billing; the project does not collect subscription credentials or supply Anthropic service access. See [billing](docs/billing.md).
 

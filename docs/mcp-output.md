@@ -45,4 +45,4 @@ If model-input reduction is requested separately, prefer narrower server queries
 
 The supported hook mechanism is synchronous `PostToolUse` with `hookSpecificOutput.updatedToolOutput`; the replacement must preserve the tool output's shape. `updatedMCPToolOutput` is the older MCP-only field. `additionalContext` appends text, and `decision: "block"` leaves the original output visible to Claude, so neither is an output-saving replacement. A hook cannot undo a tool's completed side effects, and telemetry may retain the original result.
 
-Source: [PostToolUse decision control](https://code.claude.com/docs/en/hooks#posttooluse-decision-control). The installed Agent SDK 0.3.319 types also expose `updatedToolOutput`.
+Source: [PostToolUse decision control](https://code.claude.com/docs/en/hooks#posttooluse-decision-control). The installed Agent SDK 0.3.321 types also expose `updatedToolOutput`.

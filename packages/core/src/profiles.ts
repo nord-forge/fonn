@@ -10,6 +10,8 @@ export const profiles: Readonly<Record<ProfileName, TaskProfile>> = Object.freez
   'opus-high': Object.freeze({ name: 'opus-high', model: 'claude-opus-5-5', effort: 'high' }),
   'opus-medium': Object.freeze({ name: 'opus-medium', model: 'claude-opus-5-5', effort: 'medium' }),
   'sonnet-medium': Object.freeze({ name: 'sonnet-medium', model: 'claude-sonnet-5-5', effort: 'medium' }),
+  'claude:fable-medium': Object.freeze({ name: 'claude:fable-medium', model: 'claude-fable-5-2', effort: 'medium' }),
+  'claude:mythos-medium': Object.freeze({ name: 'claude:mythos-medium', model: 'claude-mythos-5-2', effort: 'medium' }),
   'codex:sol-medium': Object.freeze({ name: 'codex:sol-medium', provider: 'codex', model: 'gpt-6.1-sol', effort: 'medium' }),
 });
 
@@ -22,10 +24,13 @@ export function getProfile(name: string = 'opus-medium'): TaskProfile {
 export const profileNameSchema = z.string().max(48).refine(name => /^[a-z][a-z0-9-]*$/.test(name) || Object.hasOwn(profiles, name), 'Use lowercase letters, digits and hyphens for custom profile names')
   .refine((name) => !['constructor', 'prototype', '__proto__', 'default'].includes(name), 'This profile name is reserved');
 export const providerSchema = z.enum(['claude', 'codex']);
-const claudeModelPattern = /^(?:claude-[A-Za-z0-9._-]+|opus|sonnet|haiku)$/;
+const claudeModelPattern = /^(?:claude-[A-Za-z0-9._-]+|opus|sonnet|haiku|fable|mythos)$/;
 const codexModelPattern = /^(?:gpt-[A-Za-z0-9._-]+|o[1-9][0-9]*(?:-[A-Za-z0-9._-]+)?)$/;
+// Fonn's new family names are pinned before persistence, launch and replay.
+const pinnedClaudeAliases: Readonly<Record<string, string>> = Object.freeze({ fable: 'claude-fable-5-2', mythos: 'claude-mythos-5-2' });
 /** Syntactic validation only; model availability and supported efforts are checked upstream. */
-export const modelSchema = z.string().max(128).refine((model) => claudeModelPattern.test(model) || codexModelPattern.test(model), 'Expected a Claude model ID or alias, GPT model ID, or o-series model ID');
+export const modelSchema = z.string().max(128).refine((model) => claudeModelPattern.test(model) || codexModelPattern.test(model), 'Expected a Claude model ID or alias, GPT model ID, or o-series model ID')
+  .transform(model => Object.hasOwn(pinnedClaudeAliases, model) ? pinnedClaudeAliases[model]! : model);
 export const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 export const taskProfileSchema = z.object({ name: profileNameSchema, provider: providerSchema.optional(), model: modelSchema, effort: effortSchema }).strict().superRefine((profile, context) => {
   const provider = profile.provider ?? 'claude';

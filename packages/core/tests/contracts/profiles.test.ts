@@ -12,8 +12,11 @@ test('profile CRUD persists defaults, preserves aliases and returns frozen snaps
     const store = createProfileStore(directory);
     assert.equal((await store.get()).name, 'opus-medium');
     assert.deepEqual((await store.list()).profiles, Object.values(profiles));
-    assert.equal((await store.list()).profiles.length, 4);
+    assert.equal((await store.list()).profiles.length, 6);
     assert.deepEqual(getProfile('opus-medium'), { name: 'opus-medium', model: 'claude-opus-5-5', effort: 'medium' });
+    for (const family of ['fable', 'mythos']) {
+      assert.deepEqual(getProfile(`claude:${family}-medium`), { name: `claude:${family}-medium`, model: `claude-${family}-5-2`, effort: 'medium' });
+    }
     assert.deepEqual(getProfile('codex:sol-medium'), { name: 'codex:sol-medium', provider: 'codex', model: 'gpt-6.1-sol', effort: 'medium' });
     assert.equal((await resolveProfileForProvider('claude', undefined, directory)).name, 'opus-medium');
     assert.equal((await resolveProfileForProvider('codex', undefined, directory)).name, 'codex:sol-medium');
@@ -82,6 +85,20 @@ test('profile CRUD persists defaults, preserves aliases and returns frozen snaps
     await store.edit(legacy.name, { effort: 'high' });
     await store.setDefault('opus-medium');
     await store.delete(legacy.name);
+    for (const name of ['fable-medium', 'mythos-medium']) {
+      const custom = await store.create({ name, model: 'sonnet', effort: 'high' });
+      await store.setDefault(name);
+      assert.deepEqual(await createProfileStore(directory).get(), custom);
+      assert.equal(getProfile(`claude:${name}`).model, `claude-${name.split('-')[0]}-5-2`);
+      await store.setDefault('opus-medium');
+      await store.delete(name);
+    }
+    for (const family of ['fable', 'mythos']) {
+      const saved = await store.create({ name: `${family}-custom`, model: family, effort: 'high' });
+      assert.equal(saved.model, `claude-${family}-5-2`);
+      assert.deepEqual(await createProfileStore(directory).get(saved.name), saved);
+      await store.delete(saved.name);
+    }
   } finally { await rm(temporary, { recursive: true, force: true }); }
 });
 
@@ -96,6 +113,7 @@ test('invalid names, schema versions, duplicate or shadowed profiles and broken 
       await assert.rejects(store.create({ ...profile, name }));
     }
     for (const model of ['opus', 'sonnet', 'haiku', 'claude-opus-5-5', 'claude-Test_1.2', 'gpt-6.1-sol', 'gpt-custom_1.2', 'o1', 'o3-mini', 'o4-mini']) assert.equal(modelSchema.parse(model), model);
+    for (const family of ['fable', 'mythos']) assert.equal(modelSchema.parse(family), `claude-${family}-5-2`);
     for (const model of ['', 'unknown', 'claude-', 'gpt-', 'o', 'o0', 'opus --unsafe', 'claude-a/b', `claude-${'a'.repeat(128)}`]) assert.equal(modelSchema.safeParse(model).success, false);
     for (const provider of ['claude', 'codex']) assert.equal(providerSchema.safeParse(provider).success, true);
     assert.equal(providerSchema.safeParse('other').success, false);
@@ -107,7 +125,7 @@ test('invalid names, schema versions, duplicate or shadowed profiles and broken 
       assert.equal(taskProfileSchema.safeParse({ ...profile, provider: 'claude', model }).success, false);
       assert.equal(taskProfileSchema.safeParse({ ...profile, provider: 'codex', model }).success, true);
     }
-    for (const model of ['claude-opus-5-5', 'opus', 'sonnet', 'haiku']) assert.equal(taskProfileSchema.safeParse({ ...profile, provider: 'codex', model }).success, false);
+    for (const model of ['claude-opus-5-5', 'opus', 'sonnet', 'haiku', 'fable', 'mythos', 'claude-fable-5-2', 'claude-mythos-5-2']) assert.equal(taskProfileSchema.safeParse({ ...profile, provider: 'codex', model }).success, false);
     for (const builtin of Object.values(profiles)) {
       await assert.rejects(store.create(builtin), /immutable/);
       await assert.rejects(store.edit(builtin.name, { effort: 'low' }), /immutable/);

@@ -92,6 +92,21 @@ test('native launcher rejects unvalidated Claude versions before creating state'
   const f = await fixture(t, '2.1.318 (Claude Code)');
   await assert.rejects(launchClaude({ cwd: f.cwd, stateDirectory: f.state, configDirectory: path.join(f.root, 'config'), executable: f.executable, hookEntrypoint: f.hookEntrypoint }), /2\.1\.319/);
   await assert.rejects(stat(f.state), { code: 'ENOENT' });
+  const old = await fixture(t, '2.1.320 (Claude Code)');
+  const current = await fixture(t, '2.1.321 (Claude Code)');
+  for (const family of ['fable', 'mythos']) {
+    const profile = `claude:${family}-medium`;
+    await assert.rejects(launchClaude({ cwd: old.cwd, stateDirectory: old.state, configDirectory: path.join(old.root, 'config'), executable: old.executable, hookEntrypoint: old.hookEntrypoint, profile }), /2\.1\.321/);
+    await assert.rejects(stat(old.state), { code: 'ENOENT' });
+    assert.equal(await launchClaude({ cwd: current.cwd, stateDirectory: current.state, configDirectory: path.join(current.root, 'config'), executable: current.executable, hookEntrypoint: current.hookEntrypoint, profile }), 7);
+    const capture = JSON.parse(await readFile(current.capture, 'utf8'));
+    assert.deepEqual(capture.args.slice(-4), ['--model', `claude-${family}-5-2`, '--effort', 'medium']);
+    assert.equal(capture.settings.hooks.PostToolUse[0].matcher, 'Bash');
+    assert.ok(capture.settings.hooks.SubagentStart);
+    const id = path.basename(path.dirname(capture.args[1]));
+    const context = await runNativeHook({ hook_event_name: 'SessionStart', session_id: `${family}-session` }, current.state, id) as { hookSpecificOutput: { additionalContext: string } };
+    assert.match(context.hookSpecificOutput.additionalContext, /built-in native subagents/);
+  }
 });
 
 test('native filter off starts ordinary Claude without registering a hook', async t => {
@@ -187,7 +202,7 @@ test('native hook reduces known output and offers a working native recovery comm
   const [decisionFile] = await readdir(path.join(f.state, 'native', id, 'filters'));
   const decision = JSON.parse(await readFile(path.join(f.state, 'native', id, 'filters', decisionFile), 'utf8'));
   assert.equal(decision.status, 'filtered');
-  for (const model of ['sonnet', 'opus', 'haiku']) {
+  for (const model of ['sonnet', 'opus', 'haiku', 'claude-fable-5-2', 'claude-mythos-5-2']) {
     const before = new Set(await readdir(path.join(f.state, 'native', id, 'filters')));
     const child = await runNativeHook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'vendor/bin/phpunit' }, tool_response: result, session_id: 'tracked-claude-session', tool_use_id: `child-${model}`, agent_id: `child-${model}`, agent_type: 'Explore', model, cwd: f.cwd }, f.state, id) as { hookSpecificOutput: { updatedToolOutput: typeof result } };
     assert.ok(child.hookSpecificOutput.updatedToolOutput.stdout.length < stdout.length);
