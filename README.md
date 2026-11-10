@@ -194,6 +194,10 @@ Fonn also accepts `--model fable` or `--model mythos` when creating/editing a cu
 
 The profiles also work with Claude SDK tasks, which require an explicit API key and separate API billing. Existing defaults stay unchanged. Anthropic controls account access and billing; Mythos requires an eligible verified account. Model choice does not disable filtering or native subagent hooks. SDK explorer/reviewer workers keep their fixed read-only Sonnet/Opus configuration. See [model profiles and access](docs/profiles.md#fable-and-mythos) and Anthropic's [Fable](https://platform.claude.com/docs/en/models/fable-5-2/overview), [Mythos](https://platform.claude.com/docs/en/models/mythos-5-2/overview) and [Claude Code model configuration](https://code.claude.com/docs/en/model-config) documentation.
 
+## Fonn UI
+
+`fonn ui` opens a local web interface to change your global and project settings, write and test filter rules, manage profiles, and look through launches, runs and filter decisions. It listens on `127.0.0.1` only, behind a new private link each time. See [the Fonn UI guide](docs/ui.md).
+
 ## Project settings
 
 Set defaults for all projects, for one repository shared with the team in `.fonn.json`, or for one repository just for you in `.fonn/settings.local.json`. Flags still win, and launches print any value that came from project files.

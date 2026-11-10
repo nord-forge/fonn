@@ -113,12 +113,26 @@ function collapseTsc(text: string): Reduction {
   return { adapter: 'tsc', text: result, removedLines };
 }
 
+/**
+ * A user rule: when the command starts with `command`, remove lines that
+ * contain any of the `remove` texts. Plain text matching only, no patterns.
+ * Validated in settings.ts before it gets here.
+ */
+export interface FilterRule {
+  name: string;
+  command: string;
+  remove: string[];
+}
+
 export interface ReductionOptions {
   /** strict: adapters only. standard (default): adds identical lines. similar: adds similar lines. */
   level?: 'strict' | 'standard' | 'similar';
+  /** User rules. They apply at every level, before the adapters and generic reductions. */
+  rules?: readonly FilterRule[];
 }
 
 export const repeatedLineNote = '[fonn: identical line occurred ';
+export const ruleNote = '[fonn: lines removed by rule ';
 export const similarLinesNote = '[fonn: similar lines omitted; ';
 
 // Masks the parts of a log line that usually change between otherwise identical
@@ -179,6 +193,51 @@ function collapseRepeatedLines(text: string, similarLines: boolean): Reduction {
   return { adapter: similarUsed ? 'similar-lines' : 'repeated-lines', text: result, removedLines };
 }
 
+// Rules can come from files other people write, so they also keep lines about
+// security and upcoming breakage, which the built-in reductions never touch anyway.
+const ruleProtected = /vulnerab|deprecat|severity|security|insecure|unsafe|\bcves?\b|\bcritical\b|\bhigh\b|\bdanger|\bERR!|^\s*not ok\b|[✖✗×]|exit(?:ed)? (?:code|status|with)|\bexit code\b/i;
+// Error codes such as ELIFECYCLE, EADDRINUSE or ENOENT; case-sensitive on purpose.
+const errorCode = /\bE[A-Z]{3,}\b/;
+
+function ruleApplies(rule: FilterRule, command: string): boolean {
+  return command === rule.command || command.startsWith(`${rule.command} `);
+}
+
+/**
+ * Removes lines matched by the user's rules. Each run of removed lines leaves
+ * one note naming the rule and the count. Lines that mention a problem are
+ * never removed, whatever the rule says.
+ */
+function applyRules(input: unknown, text: string, rules: readonly FilterRule[]): Reduction | undefined {
+  if (!rules.length || !input || typeof input !== 'object' || !('command' in input) || typeof input.command !== 'string') return;
+  const command = input.command.trim();
+  const active = rules.filter((rule) => ruleApplies(rule, command));
+  if (!active.length) return;
+
+  let removedLines = 0;
+  let result = '';
+  let run: { rule: FilterRule; count: number } | undefined;
+  const flush = () => {
+    if (run) result += `${ruleNote}"${run.rule.name}": ${run.count}; originals archived]\n`;
+    run = undefined;
+  };
+  for (const line of linesOf(text)) {
+    const content = plain(line);
+    const rule = problem.test(content) || ruleProtected.test(content) || errorCode.test(content) ? undefined : active.find((candidate) => candidate.remove.some((needle) => content.includes(needle)));
+    if (!rule) {
+      flush();
+      result += line;
+      continue;
+    }
+    if (run && run.rule !== rule) flush();
+    run = run ?? { rule, count: 0 };
+    run.count++;
+    removedLines++;
+  }
+  flush();
+  return removedLines ? { adapter: `rule:${active.map((rule) => rule.name).join(',')}`, text: result, removedLines } : undefined;
+}
+
 function reduceKnownFormat(adapter: Adapter, text: string): Reduction | undefined {
   if (adapter === 'tsc') return collapseTsc(text);
   if (adapter === 'js-test') return removeLines(text, 'jest') ?? removeLines(text, 'vitest');
@@ -191,10 +250,19 @@ function reduceKnownFormat(adapter: Adapter, text: string): Reduction | undefine
   return removeProgress(text, adapter);
 }
 
-export function reduceRecognizedOutput(input: unknown, text: string, options: ReductionOptions = {}): Reduction | undefined {
+export function reduceRecognizedOutput(input: unknown, original: string, options: ReductionOptions = {}): Reduction | undefined {
   // ANSI-rich and carriage-return output has cursor semantics we cannot safely
   // reconstruct. Preserve it, including progress written over previous lines.
-  if (/\u001b|\r(?!\n)/.test(text)) return;
+  if (/\u001b|\r(?!\n)/.test(original)) return;
+  // User rules run first; the built-in reductions then work on what is left.
+  const ruled = applyRules(input, original, options.rules ?? []);
+  const rest = reduceBuiltIn(input, ruled?.text ?? original, options);
+  if (!ruled) return rest;
+  if (!rest || rest.text === ruled.text) return ruled;
+  return { adapter: `${ruled.adapter}+${rest.adapter}`, text: rest.text, removedLines: ruled.removedLines + rest.removedLines };
+}
+
+function reduceBuiltIn(input: unknown, text: string, options: ReductionOptions): Reduction | undefined {
   // A recognized single direct invocation uses its format adapter first.
   const adapter = adapterFor(input);
   const known = adapter ? reduceKnownFormat(adapter, text) : undefined;

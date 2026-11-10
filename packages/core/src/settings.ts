@@ -9,7 +9,7 @@
 // global defaults in ~/.config/fonn, then built-in defaults. Only a few plain
 // values are allowed. Paths, commands and credentials can never be set here,
 // because a shared file comes from whoever wrote the repository.
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, rename, stat, unlink } from 'node:fs/promises';
 import { dirname, join, parse, resolve } from 'node:path';
@@ -21,15 +21,21 @@ export const SHARED_SETTINGS_FILE = '.fonn.json';
 export const LOCAL_SETTINGS_FILE = join('.fonn', 'settings.local.json');
 const MAX_BYTES = 16 * 1024;
 
+export { filterRuleSchema, filterRulesSchema, mergedFilterRulesSchema } from './rules.js';
+import { filterRulesSchema, type filterRuleSchema } from './rules.js';
+
 export const projectSettingsSchema = z.object({
   profile: profileNameSchema.optional(),
   filterLevel: filterLevelSchema.optional(),
   filterMode: z.enum(['filter', 'observe', 'off']).optional(),
   subagents: z.enum(['auto', 'off']).optional(),
+  rules: filterRulesSchema.optional(),
 }).strict();
 
+export type FilterRuleSetting = z.infer<typeof filterRuleSchema>;
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
-export type SettingKey = keyof ProjectSettings;
+/** The four single-value settings. Rules are a list and are merged instead. */
+export type SettingKey = Exclude<keyof ProjectSettings, 'rules'>;
 export type SettingScope = 'shared' | 'local';
 export type SettingSource = 'flag' | 'local' | 'shared' | 'global' | 'default';
 
@@ -123,10 +129,14 @@ export async function writeProjectSettings(root: string, scope: SettingScope, se
     if (!(await isDirectory(folder))) throw new Error(`Expected a folder at ${folder}`);
   }
 
+  // Never write a file that reads would refuse; that would break every launch in the project.
+  const text = `${JSON.stringify(validated, null, 2)}\n`;
+  if (Buffer.byteLength(text, 'utf8') > MAX_BYTES) throw new Error('Fonn settings would be larger than 16 KiB. Remove some rules or shorten them.');
+
   const temporary = `${path}.${randomUUID()}.tmp`;
   const file = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644);
   try {
-    await file.writeFile(`${JSON.stringify(validated, null, 2)}\n`, 'utf8');
+    await file.writeFile(text, 'utf8');
     await file.sync();
   } finally {
     await file.close();
@@ -145,11 +155,19 @@ export interface ResolvedSetting<T> {
   source: SettingSource;
 }
 
+export interface ResolvedRule extends FilterRuleSetting {
+  source: 'global' | 'shared' | 'local';
+}
+
 export interface ResolvedSettings {
   profile: ResolvedSetting<string>;
   filterLevel: ResolvedSetting<FilterLevel>;
   filterMode: ResolvedSetting<FilterMode>;
   subagents: ResolvedSetting<'auto' | 'off'>;
+  /** Global, shared and personal rules together. A rule with the same name in a more specific file replaces the broader one. */
+  rules: ResolvedRule[];
+  /** Project rules that were not applied because the user has not approved them for this project. */
+  unapprovedRules: ResolvedRule[];
 }
 
 export interface SettingInputs {
@@ -157,18 +175,43 @@ export interface SettingInputs {
   files?: Pick<ProjectSettingsFiles, 'shared' | 'local'>;
   /** Global settings that are actually saved; the profile is always known. */
   global: { profile: string } & Omit<ProjectSettings, 'profile'>;
+  /**
+   * Whether the user approved this project's rules (see projectRulesFingerprint).
+   * Project files can come from anyone who can commit to the repository, so
+   * their rules only apply once approved. Defaults to false.
+   */
+  projectRulesApproved?: boolean;
+}
+
+/**
+ * A fingerprint of a project's filter rules, or undefined when the project
+ * has none. Approval is stored against it, so changed rules need approving again.
+ */
+export function projectRulesFingerprint(root: string, files: Pick<ProjectSettingsFiles, 'shared' | 'local'>): string | undefined {
+  const shared = files.shared.settings.rules ?? [];
+  const local = files.local.settings.rules ?? [];
+  if (!shared.length && !local.length) return undefined;
+  return createHash('sha256').update(JSON.stringify([resolve(root), shared, local])).digest('hex');
 }
 
 const BUILT_IN = { filterLevel: 'standard', filterMode: 'filter', subagents: 'auto' } as const;
 
 /** Applies the precedence order and records where each value came from. */
-export function resolveSettings({ flags = {}, files, global }: SettingInputs): ResolvedSettings {
+export function resolveSettings({ flags = {}, files, global, projectRulesApproved = false }: SettingInputs): ResolvedSettings {
   const layers: Array<[SettingSource, ProjectSettings]> = [
     ['flag', flags],
     ['local', files?.local.settings ?? {}],
     ['shared', files?.shared.settings ?? {}],
     ['global', global],
   ];
+  const merged = new Map<string, ResolvedRule>();
+  const unapprovedRules: ResolvedRule[] = [];
+  for (const [source, list] of [['global', global.rules], ['shared', files?.shared.settings.rules], ['local', files?.local.settings.rules]] as const) {
+    for (const rule of list ?? []) {
+      if (source !== 'global' && !projectRulesApproved) unapprovedRules.push({ ...rule, source });
+      else merged.set(rule.name, { ...rule, source });
+    }
+  }
   function pick<K extends SettingKey>(key: K, fallback: ResolvedSetting<NonNullable<ProjectSettings[K]>>) {
     for (const [source, values] of layers) {
       const value = values[key];
@@ -181,6 +224,8 @@ export function resolveSettings({ flags = {}, files, global }: SettingInputs): R
     filterLevel: pick('filterLevel', { value: BUILT_IN.filterLevel, source: 'default' }),
     filterMode: pick('filterMode', { value: BUILT_IN.filterMode, source: 'default' }),
     subagents: pick('subagents', { value: BUILT_IN.subagents, source: 'default' }),
+    rules: [...merged.values()],
+    unapprovedRules,
   };
 }
 
