@@ -1,4 +1,5 @@
 import { button, el } from './components.js';
+import { dropdown } from './dropdown.js';
 
 let sequence = 0;
 export const explanations = {
@@ -13,20 +14,8 @@ export const settingValues = {
   subagents: ['auto', 'off'],
 };
 
-export function select(values, value = '', placeholder) {
-  const input = el('select');
-  const entries = placeholder === undefined ? [...values] : [['', placeholder], ...values];
-  // Keep a saved value visible if a custom profile has since been removed.
-  if (value && !values.some((entry) => (Array.isArray(entry) ? entry[0] : entry) === value)) entries.push(value);
-  for (const entry of entries) {
-    const [key, label] = Array.isArray(entry) ? entry : [entry, entry];
-    const option = el('option', '', label);
-    option.value = key;
-    input.append(option);
-  }
-  input.value = value;
-  return input;
-}
+/** Every dropdown in the UI is the shared listbox in dropdown.js. */
+export const select = dropdown;
 
 export function field(label, input = el('input'), hint = '') {
   const node = el('div', 'form-field');

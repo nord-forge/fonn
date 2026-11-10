@@ -1,4 +1,4 @@
-import { get, projectRoute } from '../api.js';
+import { get, projectRoute, send } from '../api.js';
 import { button, card, date, el, empty, link, loadSection, pageHeader } from '../components.js';
 import { describeControls, feedback, field } from '../forms.js';
 
@@ -17,11 +17,37 @@ export async function openProjectView(target, signal) {
   const open = button('Open project', () => {}, 'primary');
   open.type = 'submit';
   const actions = el('div', 'form-actions');
-  actions.append(open);
+  // Shown only when this system has a folder dialog the server can open.
+  const choose = button('Choose folder…', () => pick());
+  choose.hidden = true;
+  actions.append(open, choose);
   form.append(path.node, actions, status.node);
   describeControls(form, status.node);
   section.append(form);
   form.addEventListener('input', () => { path.error(); status.show(); });
+  async function pick() {
+    if (choose.disabled) return;
+    choose.disabled = true;
+    open.disabled = true;
+    status.show('A folder dialog is open. If you cannot see it, look behind this browser window.');
+    try {
+      const { path: chosen } = await send('POST', 'pick-folder', {});
+      if (!chosen) { status.show('No folder chosen.'); return; }
+      path.input.value = chosen;
+      open.disabled = false;
+      form.requestSubmit();
+    } catch (error) {
+      status.show(error.message, true);
+    } finally {
+      choose.disabled = false;
+      open.disabled = false;
+    }
+  }
+  get('pick-folder', { signal }).then((info) => {
+    choose.hidden = !info.supported;
+    if (info.supported) path.node.querySelector('.field-hint').textContent = 'An absolute path, such as /Users/you/code/my-app. Or use Choose folder to pick it in a dialog.';
+  }).catch(() => {});
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (open.disabled) return;
