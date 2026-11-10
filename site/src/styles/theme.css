@@ -166,3 +166,14 @@
   text-transform: uppercase;
   color: var(--accent);
 }
+
+/* Tab labels stay on one line; Starlight's tab bar scrolls when they do not fit. */
+starlight-tabs [role="tab"] {
+  white-space: nowrap;
+}
+
+@media (max-width: 40rem) {
+  starlight-tabs [role="tab"] {
+    padding-inline: 0.9rem;
+  }
+}

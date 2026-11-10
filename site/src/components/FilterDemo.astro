@@ -40,16 +40,31 @@ const stats = filtered
 
 <div class="filter-demo not-content">
   <p class="demo-command"><span>$</span> {sample.command}{level !== 'standard' && <span class="demo-level">--filter-level {level}</span>}</p>
-  <p class="demo-label">Original observation</p>
-  <pre class="output demo-output" tabindex="0"><code>{sample.stdout.trimEnd()}</code></pre>
-  {compare && filtered && (
+  {compare && filtered ? (
     <>
+      {/* On phones the original starts collapsed: its 80-column rows wrap badly there. */}
+      <details class="demo-original" open>
+        <summary>Original observation <span>{format(decision.originalCharacters)} chars</span></summary>
+        <pre class="output demo-output" tabindex="0"><code>{sample.stdout.trimEnd()}</code></pre>
+      </details>
       <p class="demo-label">What the model receives</p>
       <pre class="output demo-output" tabindex="0"><code>{response.stdout.trimEnd()}</code></pre>
+    </>
+  ) : (
+    <>
+      <p class="demo-label">Original observation</p>
+      <pre class="output demo-output" tabindex="0"><code>{sample.stdout.trimEnd()}</code></pre>
     </>
   )}
   <p class="demo-stats">{stats}</p>
 </div>
+
+<script>
+  // Collapse the originals on phones. Without JavaScript they stay open.
+  if (window.matchMedia('(max-width: 40rem)').matches) {
+    for (const details of document.querySelectorAll('.demo-original')) details.open = false;
+  }
+</script>
 
 <style>
   .filter-demo {
@@ -73,6 +88,47 @@ const stats = filtered
     color: var(--accent);
   }
 
+  .demo-original summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    margin: 8px 0 6px;
+    cursor: pointer;
+    font: 600 0.75rem var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* display: flex hides the browser's marker, so draw a chevron instead. */
+  .demo-original summary::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.15s ease;
+    align-self: center;
+  }
+
+  .demo-original[open] summary::before {
+    transform: rotate(45deg);
+  }
+
+  .demo-original summary span {
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 400;
+  }
+
+  .demo-original:not([open]) summary {
+    padding: 10px 12px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+
   .demo-label {
     margin: 8px 0 0;
     font: 600 0.75rem var(--mono);
@@ -87,6 +143,14 @@ const stats = filtered
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     overflow-x: hidden;
+  }
+
+  /* Slightly smaller on phones, so typical 45-character log lines fit. */
+  @media (max-width: 40rem) {
+    .demo-output {
+      font-size: 0.7rem;
+      padding: 10px;
+    }
   }
 
   .demo-stats {
