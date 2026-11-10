@@ -16,3 +16,6 @@ coverage/
 
 # Pre-rename private local data
 .workbench/
+
+# Vercel project settings and build output from npm run docs:deploy
+.vercel/

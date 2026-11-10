@@ -36,6 +36,6 @@ The public repository and Homebrew tap are the same `nord-forge/fonn` repository
 
 Project code is MIT licensed; upstream SDK code remains under its own terms. Do not relabel dependencies as MIT or imply Anthropic endorsement.
 
-CI and manual preparation workflows may build, test, and upload review artifacts only. They must not publish packages/releases, create tags/remotes, or deploy. Do not commit, push, publish, or deploy unless the user specifically authorizes the relevant action. Check repository policy and automation side effects before any remote mutation.
+CI and manual preparation workflows may build, test, and upload review artifacts only. The docs site is deployed manually by the maintainer with `npm run docs:deploy`; Vercel's Git builds stay disabled. They must not publish packages/releases, create tags/remotes, or deploy. Do not commit, push, publish, or deploy unless the user specifically authorizes the relevant action. Check repository policy and automation side effects before any remote mutation.
 
 Keep changes within the assigned scope. Do not revert other contributors' work. Keep `docs/progress.md` as the verification record and preserve its existing evidence.
