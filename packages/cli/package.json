@@ -38,6 +38,6 @@
   },
   "dependencies": {
     "@nord-forge/fonn-core": "0.1.0",
-    "zod": "4.1.12"
+    "zod": "4.6.7"
   }
 }
