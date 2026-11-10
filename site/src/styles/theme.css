@@ -177,3 +177,19 @@ starlight-tabs [role="tab"] {
     padding-inline: 0.9rem;
   }
 }
+
+/*
+ * Sideways scrolling rows (scripts/scroll-fade.js): fade only the edges that
+ * have more content beyond them, so it is clear the row scrolls.
+ */
+[data-fade-end="true"] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+
+[data-fade-start="true"] {
+  mask-image: linear-gradient(to right, transparent, #000 40px);
+}
+
+[data-fade-start="true"][data-fade-end="true"] {
+  mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
