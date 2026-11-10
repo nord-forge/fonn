@@ -195,11 +195,6 @@ legend {
     scrollbar-width: none;
   }
 
-  /* A soft fade on the right edge hints that the rows scroll. */
-  .viz-controls .chips .chip-row,
-  .viz-options {
-    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-  }
 
   .viz-controls .chips {
     flex: 1 1 100%;
