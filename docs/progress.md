@@ -147,3 +147,16 @@ A clean `npm ci --ignore-scripts --prefix site` (0 vulnerabilities) and `npm run
 `npm audit` reported a high-severity zod advisory: versions below 4.6.6 can exhaust memory while validating oversized constrained collections. zod is a runtime dependency of the core and the CLI, and it is shared with the Claude Agent SDK. Both pins moved from 4.1.12 to 4.6.7, a non-major release from 2026-10-12. The lockfile now resolves a single zod 4.6.7 for every dependent, and `npm audit --omit=dev` reports no vulnerabilities. The release preparation pin and its packaging test fixtures were updated, and the zod license notice is unchanged. `npm run check` passed with all 76 offline tests. A regenerated release archive was installed the way the cask does it (`npm ci --omit=dev --ignore-scripts`) in a scratch directory: 107 packages, no vulnerabilities, and the CLI ran offline. `Casks/fonn.rb` carries the new checksum. The site already used zod 4.6.7 through Starlight.
 
 The docs site's install page now orders the routes by ease of use: Homebrew (awaiting the first release, with a pointer to the source route), source checkout, then standalone filters.
+
+
+## Docs site publication and delivery
+
+| Task | State | Evidence |
+| --- | --- | --- |
+| Phone readability | DONE | Sample tabs stay on one line, original output starts collapsed on phones, the dock sheet separates group labels from links, and sideways-scrolling rows fade only at edges with more content (PR #5). |
+| Custom theme menu | DONE | Starlight's native theme select is replaced by a custom listbox shared with the dock (PR #6). Browser QA covered mouse and keyboard use, Escape, outside clicks, persistence and dock sync. |
+| Repository links | DONE | Header and dock links read "Star us" with the GitHub mark (PR #7). The `nord-forge` organization links to https://nickbevers.dev, and the repository website is https://fonn.nord-forge.dev. |
+| Publication | DONE | Vercel project `fonn` on the maintainer's personal account serves https://fonn.nord-forge.dev with a Let's Encrypt certificate, HTTP to HTTPS redirects and a sitemap (PR #4). A separate `nord-forge-redirect` project sends `nord-forge.dev` and `www.nord-forge.dev` to https://nickbevers.dev with permanent 308 redirects. |
+| Manual prebuilt deploys | DONE | `npm run docs:deploy` builds locally and uploads with `vercel deploy --prebuilt`, and `-- --preview` makes a preview (PR #8). `vercel.json` disables Vercel's Git builds; PR #8 showed no Vercel check and its merge started no Vercel build. A preview from the branch and the production deploy of `93aa711` both became ready, and the build ran on Node 24 to match CI. |
+
+Command accuracy was checked by running the documented routes from scratch. A fresh `git clone`, `npm ci --ignore-scripts` (no vulnerabilities), `npm run build` and `--help` all worked. The five-file standalone download from `main` fetched every file, and `hook.mjs --help` showed the `--level` option. Live production pages returned 200 for anonymous visitors. Delivery screenshots of the live site were taken at 1440px (landing page and visualiser) and 390px (install page). Homebrew installation remains unverified until the first release archive and matching cask are published. No paid model calls were made.
