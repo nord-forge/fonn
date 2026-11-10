@@ -51,4 +51,4 @@ Sample character counts describe those samples only. They are not token, cost or
 | Build command | `npm run docs:build` |
 | Output directory | `site/dist` |
 
-The site needs no environment variables and no provider credentials. Publishing is done by the maintainer; CI only builds the site. Once the production URL exists, set `site` in `astro.config.mjs` so Astro also generates a sitemap.
+The site is published at https://fonn.nord-forge.dev from the Vercel project `fonn`. Vercel's GitHub integration deploys `main` to production and builds preview deployments for pull requests. The repository's own CI only builds the site and never deploys. The site needs no environment variables and no provider credentials. `site` in `astro.config.mjs` holds the production address, which Astro also uses for the sitemap.
