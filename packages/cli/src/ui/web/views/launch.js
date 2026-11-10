@@ -1,7 +1,7 @@
 import { get, send, projectRoute } from '../api.js';
 import { badge, button, card, code, date, el, empty, fields, link, loadSection, number, pageHeader, totals, warning } from '../components.js';
 
-import { confirmAction } from '../forms.js';
+import { confirmAction, confirmDialog } from '../forms.js';
 
 function artifactReader(launchId, signal) {
   const panel = el('section', 'reader-panel artifact-reader');
@@ -161,10 +161,20 @@ export async function launchView(target, signal, launchId) {
     }
     decisions.append(reader.panel);
     const cleanup = card('Clean up records');
-    cleanup.append(confirmAction("Delete this launch's records", "This removes this launch's filter records and archived originals from this machine. This cannot be undone.", async () => {
-      const result = await send('DELETE', `launches/${encodeURIComponent(launch.launchId)}`);
+    const remove = async (query = '') => {
+      const result = await send('DELETE', `launches/${encodeURIComponent(launch.launchId)}${query}`);
       if (!signal.aborted && result.deleted === launch.launchId) window.location.hash = '#/global/activity';
-    }));
+    };
+    const trigger = confirmAction("Delete this launch's records", "This removes this launch's filter records and archived originals from this machine. This cannot be undone.", async () => {
+      try {
+        await remove();
+      } catch (error) {
+        if (error.status !== 409) throw error;
+        // No recorded finish: it may still be running, so ask once more.
+        confirmDialog({ title: 'This launch may still be running', message: `${error.message} Its hook will lose its records if it is.`, confirmLabel: 'Delete anyway', action: () => remove('?confirm=running'), returnFocus: trigger });
+      }
+    }, { title: "Delete this launch's records?" });
+    cleanup.append(trigger);
     content.append(cleanup);
   }, signal);
 }

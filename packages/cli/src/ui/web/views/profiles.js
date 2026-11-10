@@ -6,6 +6,14 @@ const AGENTS = [['claude', 'Claude'], ['codex', 'Codex']];
 const EFFORTS = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']];
 const CLAUDE_MODELS = ['opus', 'sonnet', 'haiku', 'fable', 'mythos'];
 
+// Where a Codex profile's model runs. 'provider' stands for provider:<name>.
+const SOURCES = [['', 'OpenAI'], ['ollama', 'Ollama'], ['lmstudio', 'LM Studio'], ['provider', 'Other provider']];
+const sourceLabel = (source) => {
+  if (!source) return '';
+  if (source.startsWith('provider:')) return source.slice('provider:'.length);
+  return SOURCES.find(([key]) => key === source)?.[1] ?? source;
+};
+
 const agentLabel = (provider) => AGENTS.find(([key]) => key === provider)?.[1] ?? provider;
 const effortLabel = (effort) => `${EFFORTS.find(([key]) => key === effort)?.[1] ?? effort} effort`;
 
@@ -13,12 +21,14 @@ const effortLabel = (effort) => `${EFFORTS.find(([key]) => key === effort)?.[1] 
 function summary(profile) {
   const line = el('p', 'profile-meta');
   line.append(`${agentLabel(profile.provider)} · `, el('code', '', profile.model), ` · ${effortLabel(profile.effort)}`);
+  if (profile.source) line.append(` · via ${sourceLabel(profile.source)}`);
   return line;
 }
 
 // A name built from the model and effort, such as "sonnet-high".
 function suggestName(model, effort) {
-  const base = model.trim().toLowerCase().replace(/^claude-/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  // Only the last part of a path such as hf.co/unsloth/Qwen3.8-27B-GGUF:UD-IQ3_XXS.
+  const base = model.trim().split('/').pop().toLowerCase().replace(/^claude-/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
   return base ? `${base}-${effort}` : '';
 }
 
@@ -47,6 +57,33 @@ function profileForm({ profile, start, models, onSave, cancel }) {
   });
   const agent = () => radios.find((input) => input.checked)?.value ?? 'claude';
 
+  // Codex only: where the model runs.
+  const sources = el('fieldset', 'choice-group');
+  sources.append(el('legend', '', 'Runs on'));
+  const initialSource = initial.source ?? '';
+  const sourceRadios = SOURCES.map(([key, label]) => {
+    const option = el('label', 'choice');
+    const input = el('input');
+    input.type = 'radio';
+    input.name = 'source';
+    input.value = key;
+    input.checked = (initialSource.startsWith('provider:') ? 'provider' : initialSource) === key;
+    option.append(input, label);
+    sources.append(option);
+    return input;
+  });
+  const providerName = field('Provider name', el('input'), 'The name of a model_providers entry in ~/.codex/config.toml. Its key stays in Codex.');
+  providerName.input.autocomplete = 'off';
+  providerName.input.spellcheck = false;
+  providerName.input.value = initialSource.startsWith('provider:') ? initialSource.slice('provider:'.length) : '';
+  const sourceChoice = () => (agent() === 'codex' ? sourceRadios.find((input) => input.checked)?.value ?? '' : '');
+  /** The source to save: undefined for OpenAI or Claude. */
+  const source = () => {
+    const choice = sourceChoice();
+    if (choice === 'provider') return `provider:${providerName.input.value.trim()}`;
+    return choice || undefined;
+  };
+
   const model = field('Model', el('input'), '');
   model.input.value = initial.model;
   model.input.autocomplete = 'off';
@@ -57,11 +94,17 @@ function profileForm({ profile, start, models, onSave, cancel }) {
   model.node.append(list);
   const hint = model.node.querySelector('.field-hint');
   function showModels() {
-    const choices = agent() === 'claude' ? CLAUDE_MODELS : models.codex;
+    const choice = sourceChoice();
+    sources.hidden = agent() !== 'codex';
+    providerName.node.hidden = choice !== 'provider';
+    const choices = agent() === 'claude' ? CLAUDE_MODELS : choice ? [] : models.codex;
     list.replaceChildren(...choices.map((value) => { const option = el('option'); option.value = value; return option; }));
     hint.textContent = agent() === 'claude'
       ? 'An alias such as opus, sonnet or haiku, or a full claude-* model ID.'
-      : `A Codex model ID${models.codex.length ? `, such as ${models.codex[0]}` : ''}.`;
+      : choice === 'ollama' ? 'The name ollama list shows, such as qwen3-coder:30b or hf.co/user/repo:quant.'
+        : choice === 'lmstudio' ? 'The model identifier LM Studio shows for the loaded model.'
+          : choice === 'provider' ? 'The model name your provider uses.'
+            : `A Codex model ID${models.codex.length ? `, such as ${models.codex[0]}` : ''}.`;
     hint.hidden = false;
   }
 
@@ -76,7 +119,7 @@ function profileForm({ profile, start, models, onSave, cancel }) {
 
   const grid = el('div', 'profile-form-grid');
   grid.append(model.node, effort.node);
-  form.append(agents, grid);
+  form.append(agents, sources, providerName.node, grid);
   if (!editing) form.append(name.node);
 
   const status = feedback();
@@ -89,26 +132,43 @@ function profileForm({ profile, start, models, onSave, cancel }) {
   showModels();
 
   for (const radio of radios) radio.addEventListener('change', () => { showModels(); if (!editing) { model.input.value = ''; fillName(); } });
+  for (const radio of sourceRadios) radio.addEventListener('change', () => { showModels(); providerName.error(); if (sourceChoice() === 'provider') providerName.input.focus(); });
   model.input.addEventListener('input', fillName);
   effort.input.addEventListener('change', fillName);
-  form.addEventListener('input', () => { status.show(); name.error(); model.error(); });
+  form.addEventListener('input', () => { status.show(); name.error(); model.error(); providerName.error(); });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const invalidName = !editing && !/^[a-z0-9-]{1,48}$/.test(name.input.value);
     const missingModel = !model.input.value.trim();
+    const invalidProvider = sourceChoice() === 'provider' && !/^[A-Za-z0-9_-]{1,64}$/.test(providerName.input.value.trim());
     name.error(invalidName ? 'Use 1 to 48 lowercase letters, digits or hyphens.' : '');
     model.error(missingModel ? 'Enter a model.' : '');
+    providerName.error(invalidProvider ? 'Use the provider name from your Codex config: letters, digits, hyphens or underscores.' : '');
+    if (invalidProvider) return providerName.input.focus();
     if (missingModel) return model.input.focus();
     if (invalidName) return name.input.focus();
     if (save.disabled) return;
     saving(form, status, async () => {
       const body = { provider: agent(), model: model.input.value.trim(), effort: effort.input.value };
+      const chosen = source();
+      if (chosen) body.source = chosen;
+      // Editing back to OpenAI, or to Claude, removes a saved source.
+      else if (editing && profile.source) body.source = null;
       if (!editing) body.name = name.input.value;
       const resource = await send(editing ? 'PUT' : 'POST', editing ? `profiles/${encodeURIComponent(profile.name)}` : 'profiles', body);
       onSave(resource, editing ? profile.name : body.name);
     });
   });
   return form;
+}
+
+// Per-browser convenience only; the page works the same without storage.
+const OPEN_KEY = 'fonn-ui:built-in-profiles-open';
+function readOpen() {
+  try { return localStorage.getItem(OPEN_KEY) === 'true'; } catch { return false; }
+}
+function writeOpen(open) {
+  try { localStorage.setItem(OPEN_KEY, String(open)); } catch { /* storage unavailable */ }
 }
 
 export async function profilesView(target, signal) {
@@ -161,9 +221,9 @@ export async function profilesView(target, signal) {
             form.querySelector('input:checked')?.focus();
           }));
           if (!profile.isDefault) {
-            actions.append(confirmAction('Delete', `Delete ${profile.name}? Launches that already used it keep their saved copy.`, async () => {
+            actions.append(confirmAction('Delete', 'Launches that already used it keep their saved copy.', async () => {
               render(await send('DELETE', `profiles/${encodeURIComponent(profile.name)}`), `Deleted ${profile.name}.`);
-            }));
+            }, { title: `Delete ${profile.name}?` }));
           }
         }
         actions.append(rowStatus.node);
@@ -197,19 +257,29 @@ export async function profilesView(target, signal) {
         form.querySelector(start ? '.form-field input' : 'input[name="agent"]:checked')?.focus();
       }
 
-      // Built-ins, grouped by agent.
-      const builtIn = card('Built-in profiles', 'Ready to use and always available. They cannot be changed, so copy one to make your own version.');
+      // Built-ins, grouped by agent, in a section that starts collapsed and
+      // remembers being opened.
+      const builtIn = el('section', 'card');
+      const details = el('details', 'collapsible');
+      details.open = readOpen();
+      const builtInHeading = el('summary');
+      const count = resource.profiles.filter((profile) => profile.builtIn).length;
+      builtInHeading.append(el('h2', '', 'Built-in profiles'), el('span', 'collapsible-count', `${count}`));
+      details.append(builtInHeading, el('p', 'section-description', 'Ready to use and always available. They cannot be changed, so copy one to make your own version.'));
       for (const [key, label] of AGENTS) {
         const group = resource.profiles.filter((profile) => profile.builtIn && profile.provider === key);
         if (!group.length) continue;
         const groupList = el('ul', 'profile-list');
         groupList.append(...group.map(row));
-        builtIn.append(el('h3', 'profile-group', label), groupList);
+        details.append(el('h3', 'profile-group', label), groupList);
       }
+      details.addEventListener('toggle', () => writeOpen(details.open));
+      builtIn.append(details);
 
       content.replaceChildren(defaults, own, builtIn);
       if (message) status.show(message);
       const focus = focusName && content.querySelector(`[data-profile="${CSS.escape(focusName)}"] .profile-name`);
+      if (focus) focus.closest('details')?.setAttribute('open', '');
       if (focus) { focus.tabIndex = -1; focus.focus(); }
     }
 

@@ -71,13 +71,13 @@ export function rulesEditor(initial = [], { root, status, changed = () => {} } =
       for (const key of ['name', 'command', 'remove']) entry[key].error(errors[key]);
       if (Object.values(errors).some(Boolean)) card.querySelector('[aria-invalid="true"]')?.focus();
       else openTest(root, value);
-    }), confirmAction('Delete rule', 'Remove this rule from the draft? Save the list to apply the change.', async () => {
+    }), confirmAction('Delete rule', 'It leaves the list now. Nothing changes until you save the list.', async () => {
       entries.splice(entries.indexOf(entry), 1);
       card.remove();
       updateLimit();
       add.focus();
       changed();
-    }));
+    }, { title: 'Remove this rule?', confirmLabel: 'Remove' }));
     card.append(heading, name.node, command.node, remove.node, actions);
     if (status) describeControls(card, status);
     card.addEventListener('input', () => {

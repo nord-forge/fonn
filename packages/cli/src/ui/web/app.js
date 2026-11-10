@@ -6,7 +6,7 @@ import { projectView } from './views/project.js';
 import { launchView } from './views/launch.js';
 
 import { testView } from './views/test.js';
-import { describeControls, feedback, field } from './forms.js';
+import { openProjectView } from './views/open-project.js';
 
 const main = document.querySelector('#main');
 const sidebar = document.querySelector('#sidebar');
@@ -81,6 +81,7 @@ function parseRoute(hash) {
   if (hash === '#/test' || hash.startsWith('#/test?')) return { title: 'Test bench', view: testView, id: new URLSearchParams(hash.split('?')[1]).get('root') || undefined };
   if (hash === '#/global/profiles') return { title: 'Profiles', view: profilesView };
   if (hash === '#/global/activity') return { title: 'Activity', view: activityView };
+  if (hash === '#/projects/open') return { title: 'Open a project', view: openProjectView };
   const match = /^#\/(project|launch)\/([^/]+)$/.exec(hash);
   if (!match) return null;
   try {
@@ -122,42 +123,6 @@ async function render(focus = true) {
     if (error.name !== 'AbortError' && !signal.aborted) page.append(warning(error.message));
   }
 }
-
-const pathForm = el('form', 'open-project-form');
-const pathField = field('Open by path', el('input'), 'Absolute project folder');
-pathField.input.placeholder = '/path/to/project';
-pathField.input.autocomplete = 'off';
-pathField.input.spellcheck = false;
-const pathStatus = feedback();
-const openProject = button('Open project', () => {});
-openProject.type = 'submit';
-pathForm.append(pathField.node, openProject, pathStatus.node);
-describeControls(pathForm, pathStatus.node);
-document.querySelector('#project-navigation').after(pathForm);
-pathForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  if (openProject.disabled || sessionExpired) return;
-  const root = pathField.input.value;
-  if (!root.startsWith('/') && !root.startsWith('\\\\') && !/^[a-z]:[\\/]/i.test(root)) {
-    pathField.error('Enter an absolute project path.');
-    pathField.input.focus();
-    return;
-  }
-  openProject.disabled = true;
-  pathField.error();
-  pathStatus.show('Opening…');
-  try {
-    const project = await get('project', { query: { root } });
-    if (sessionExpired) return;
-    pathStatus.show();
-    window.location.hash = projectRoute(project.root);
-    closeMenu();
-  } catch (error) {
-    pathStatus.show(error.message, true);
-  } finally {
-    openProject.disabled = false;
-  }
-});
 
 window.addEventListener('fonn:session-expired', () => {
   if (sessionExpired) return;

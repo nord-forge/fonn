@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { ArtifactStore, FilterRule, RunRecord } from '@nord-forge/fonn-core/contracts';
 import { createOutputFilter } from '@nord-forge/fonn-core/filtering';
-import { createProfileStore, effortSchema, modelSchema, profiles as builtInProfiles, providerSchema } from '@nord-forge/fonn-core/profiles';
+import { createProfileStore, effortSchema, modelSourceSchema, modelTextSchema, profiles as builtInProfiles, providerSchema } from '@nord-forge/fonn-core/profiles';
 import { filterRulesSchema, findProjectRoot, LOCAL_SETTINGS_FILE, projectSettingsSchema, resolveSettings, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, projectRulesFingerprint } from '@nord-forge/fonn-core/settings';
 import { readRun } from '@nord-forge/fonn-core/state';
 import { delegationGuidance } from '../native/delegation.js';
@@ -287,6 +287,7 @@ export async function getProfiles(directories: UiDirectories): Promise<ProfilesR
       provider: profile.provider ?? 'claude',
       model: profile.model,
       effort: profile.effort,
+      source: profile.source ?? null,
       builtIn: Object.hasOwn(builtInProfiles, profile.name),
       isDefault: profile.name === listing.defaultProfile,
     })),
@@ -630,9 +631,9 @@ export async function putRulesApproval(directories: UiDirectories, body: unknown
   return projectDetail(directories, cache, root);
 }
 
-const profileCreateSchema = z.object({ name: z.string(), provider: providerSchema, model: z.string(), effort: effortSchema }).strict();
-const profileEditSchema = z.object({ provider: providerSchema.optional(), model: modelSchema.optional(), effort: effortSchema.optional() }).strict()
-  .refine((edit) => Object.keys(edit).length > 0, 'Change at least one of provider, model or effort');
+const profileCreateSchema = z.object({ name: z.string(), provider: providerSchema, model: z.string(), effort: effortSchema, source: modelSourceSchema.optional() }).strict();
+const profileEditSchema = z.object({ provider: providerSchema.optional(), model: modelTextSchema.optional(), effort: effortSchema.optional(), source: modelSourceSchema.nullable().optional() }).strict()
+  .refine((edit) => Object.keys(edit).length > 0, 'Change at least one of provider, model, effort or source');
 
 export async function postProfile(directories: UiDirectories, body: unknown): Promise<ProfilesResponse> {
   const profile = parseBody(profileCreateSchema, body);

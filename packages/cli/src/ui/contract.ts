@@ -70,6 +70,8 @@ export interface ProfileSummary {
   provider: Provider;
   model: string;
   effort: string;
+  /** Codex only: 'ollama', 'lmstudio' or 'provider:<name>'; null means the agent's own service. */
+  source: string | null;
   builtIn: boolean;
   isDefault: boolean;
 }
@@ -310,6 +312,8 @@ export interface ProfileCreate {
   provider: Provider;
   model: string;
   effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** Codex only. With a source, the model is any name that source uses. */
+  source?: string;
 }
 
 /** PUT /api/profiles/<name>, body: ProfileEdit (at least one field). Built-in profiles cannot be edited: 400. Returns ProfilesResponse. */
@@ -317,6 +321,8 @@ export interface ProfileEdit {
   provider?: Provider;
   model?: string;
   effort?: ProfileCreate['effort'];
+  /** null goes back to the agent's own service. */
+  source?: string | null;
 }
 // DELETE /api/profiles/<name>: built-ins and the current default cannot be deleted (400). Returns ProfilesResponse.
 

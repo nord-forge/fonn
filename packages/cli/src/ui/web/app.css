@@ -290,7 +290,6 @@ label { display: block; font-size: 0.8125rem; font-weight: 600; overflow-wrap: a
 .rule-card h4 { margin: 0; font-size: 0.8125rem; }
 .rules-editor { margin-bottom: 20px; }
 .danger { color: var(--stop); border-color: var(--stop); }
-.confirm-panel { max-width: 38rem; padding: 14px; border: 1px solid var(--warn); border-radius: 7px; font-size: 0.8125rem; }
 .form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .test-rules { margin: 16px 0 24px; }
 .test-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
@@ -299,9 +298,7 @@ label { display: block; font-size: 0.8125rem; font-weight: 600; overflow-wrap: a
 .test-result .code-block { margin-top: 7px; max-height: 40rem; }
 .test-output-input { min-height: 28rem; }
 .test-decision { margin-top: 24px; }
-.open-project-form { margin: 16px 12px 0; }
-.open-project-form input { font-size: 0.8125rem; }
-.open-project-form .form-field { margin-bottom: 10px; }
+.open-project-form { margin-top: 14px; max-width: 40rem; }
 @media (max-width: 1000px) {
   .form-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .test-comparison { grid-template-columns: minmax(0, 1fr); }
@@ -350,4 +347,30 @@ label { display: block; font-size: 0.8125rem; font-weight: 600; overflow-wrap: a
 /* Row buttons stay quiet until hovered or focused, so long lists read as lists. */
 .row-actions button:not(.danger):not(:hover):not(:focus-visible) { border-color: transparent; background: transparent; color: var(--accent); }
 .row-actions button.danger:not(:hover):not(:focus-visible) { border-color: transparent; background: transparent; }
-.row-actions .confirm-panel { flex-basis: 100%; }
+
+/* Confirmation dialog */
+.confirm-dialog { width: min(28rem, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.confirm-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.confirm-title { margin: 0 0 8px; font-size: 1.05rem; }
+.confirm-message { margin: 0; color: var(--muted); font-size: 0.875rem; overflow-wrap: anywhere; }
+.confirm-actions { justify-content: flex-end; margin-top: 18px; }
+.confirm-dialog .form-feedback:empty { display: none; }
+
+/* Collapsible card sections */
+.collapsible > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; border-radius: 6px; }
+.collapsible > summary::-webkit-details-marker { display: none; }
+.collapsible > summary::before { content: '▸'; color: var(--muted); font-size: 0.9rem; transition: transform 120ms ease; }
+.collapsible[open] > summary::before { transform: rotate(90deg); }
+.collapsible > summary h2 { margin: 0; color: var(--text); }
+.collapsible > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.collapsible-count { padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font: 500 0.75rem var(--mono); }
+.collapsible[open] > .section-description { margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .collapsible > summary::before { transition: none; } }
+
+/* Open a project */
+.nav-actions { margin-top: 6px; }
+.known-projects { margin: 12px 0 0; padding: 0; list-style: none; }
+.known-projects li { padding: 12px 0; border-top: 1px solid var(--border); }
+.known-projects li:first-child { border-top: 0; }
+.known-project-name { font-weight: 600; }
+.known-project-meta { margin: 4px 0 0; color: var(--muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
