@@ -194,7 +194,10 @@ function start() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-  const u = (p, name) => gl.getUniformLocation(p, name);
+  // Look up uniform locations once; per-frame lookups cost CPU time.
+  const uniforms = (p, names) => Object.fromEntries(names.map((name) => [name, gl.getUniformLocation(p, name)]));
+  const bu = uniforms(background, ['uTime', 'uGate', 'uTop', 'uBottom', 'uHeat']);
+  const pu = uniforms(particles, ['uAtlas', 'uTime', 'uGate', 'uPointer', 'uScale', 'uNoise', 'uSignal', 'uHeat']);
   const pa = { seed: gl.getAttribLocation(particles, 'aSeed'), glyph: gl.getAttribLocation(particles, 'aGlyph'), signal: gl.getAttribLocation(particles, 'aSignal') };
   const ba = gl.getAttribLocation(background, 'aPos');
 
@@ -205,45 +208,59 @@ function start() {
   readColors();
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
 
+  // Render resolution: capped at 1.5x, and lowered a step at a time when
+  // frames stay slow. Fill rate dominates the cost of this effect.
+  const qualitySteps = [1, 0.8, 0.65];
+  let quality = 0;
   let scale = 1;
+  let rect = canvas.getBoundingClientRect();
+  const label = figure.querySelector('.hero-gate');
   const resize = () => {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const rect = canvas.getBoundingClientRect();
+    rect = canvas.getBoundingClientRect();
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 1.5) * qualitySteps[quality]);
     canvas.width = Math.max(1, Math.round(rect.width * dpr));
     canvas.height = Math.max(1, Math.round(rect.height * dpr));
     scale = dpr * Math.min(1.25, Math.max(0.7, rect.width / 640));
     gl.viewport(0, 0, canvas.width, canvas.height);
+    labelX = NaN;
   };
   new ResizeObserver(resize).observe(canvas);
-  resize();
+  // Cache the canvas position so pointer events never force a layout.
+  window.addEventListener('scroll', () => { rect = canvas.getBoundingClientRect(); }, { passive: true });
 
   const pointer = { x: -2, y: -2, tx: -2, ty: -2 };
   let gate = 0.02;
   let gateTarget = 0.02;
+  let labelX = NaN;
+  resize();
   figure.addEventListener('pointermove', (event) => {
-    const rect = canvas.getBoundingClientRect();
     pointer.tx = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     pointer.ty = 1 - ((event.clientY - rect.top) / rect.height) * 2;
     gateTarget = 0.02 + pointer.tx * 0.14;
-  });
+  }, { passive: true });
   figure.addEventListener('pointerleave', () => { pointer.tx = pointer.ty = -2; gateTarget = 0.02; });
 
   function draw(time) {
     pointer.x += (pointer.tx - pointer.x) * 0.08;
     pointer.y += (pointer.ty - pointer.y) * 0.08;
     gate += (gateTarget - gate) * 0.05;
-    figure.style.setProperty('--gate', `${((gate + 1) / 2) * 100}%`);
+    // Move the label with a compositor-only transform, and only when it moves.
+    const x = ((gate + 1) / 2) * rect.width;
+    if (!(Math.abs(x - labelX) < 0.5)) {
+      labelX = x;
+      label.style.transform = `translate3d(${x.toFixed(1)}px, 0, 0) translateX(-50%)`;
+    }
 
     gl.disable(gl.BLEND);
     gl.useProgram(background);
     gl.bindBuffer(gl.ARRAY_BUFFER, quad);
     gl.enableVertexAttribArray(ba);
     gl.vertexAttribPointer(ba, 2, gl.FLOAT, false, 0, 0);
-    gl.uniform1f(u(background, 'uTime'), time);
-    gl.uniform1f(u(background, 'uGate'), gate);
-    gl.uniform3fv(u(background, 'uTop'), colors.top);
-    gl.uniform3fv(u(background, 'uBottom'), colors.bottom);
-    gl.uniform3fv(u(background, 'uHeat'), colors.heat);
+    gl.uniform1f(bu.uTime, time);
+    gl.uniform1f(bu.uGate, gate);
+    gl.uniform3fv(bu.uTop, colors.top);
+    gl.uniform3fv(bu.uBottom, colors.bottom);
+    gl.uniform3fv(bu.uHeat, colors.heat);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.disableVertexAttribArray(ba);
 
@@ -259,14 +276,14 @@ function start() {
     gl.vertexAttribPointer(pa.signal, 1, gl.FLOAT, false, 24, 20);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.uniform1i(u(particles, 'uAtlas'), 0);
-    gl.uniform1f(u(particles, 'uTime'), time);
-    gl.uniform1f(u(particles, 'uGate'), gate);
-    gl.uniform2f(u(particles, 'uPointer'), pointer.x, pointer.y);
-    gl.uniform1f(u(particles, 'uScale'), scale);
-    gl.uniform3fv(u(particles, 'uNoise'), colors.noise);
-    gl.uniform3fv(u(particles, 'uSignal'), colors.signal);
-    gl.uniform3fv(u(particles, 'uHeat'), colors.heat);
+    gl.uniform1i(pu.uAtlas, 0);
+    gl.uniform1f(pu.uTime, time);
+    gl.uniform1f(pu.uGate, gate);
+    gl.uniform2f(pu.uPointer, pointer.x, pointer.y);
+    gl.uniform1f(pu.uScale, scale);
+    gl.uniform3fv(pu.uNoise, colors.noise);
+    gl.uniform3fv(pu.uSignal, colors.signal);
+    gl.uniform3fv(pu.uHeat, colors.heat);
     gl.drawArrays(gl.POINTS, 0, count);
   }
 
@@ -274,9 +291,17 @@ function start() {
   let onScreen = true;
   let lost = false;
   const startTime = performance.now();
+  let last = 0;
+  let slow = 0;
   const loop = (now) => {
     frame = 0;
     if (lost) return;
+    // About two seconds of frames over ~22ms lowers the resolution one step.
+    if (last && now - last < 250) {
+      slow = now - last > 22 ? slow + 1 : Math.max(0, slow - 2);
+      if (slow > 120 && quality < qualitySteps.length - 1) { quality++; slow = 0; resize(); }
+    }
+    last = now;
     draw((now - startTime) / 1000);
     if (!motion.matches && onScreen && !document.hidden) frame = requestAnimationFrame(loop);
   };
