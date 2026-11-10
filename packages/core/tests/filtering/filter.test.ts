@@ -226,3 +226,37 @@ test('pytest, Jest and Vitest drop only certain passes once the runner summary i
     assert.equal(result.response, truncated, `${name} without summary`);
   }
 });
+
+test('user rules remove matching lines for matching commands, never problem lines', async () => {
+  const { filterRulesSchema } = await import('../../src/settings.js');
+  const rules = [{ name: 'db wait', command: 'npm run dev', remove: ['Waiting for database'] }];
+  const lines = ['> app dev', ...Array.from({ length: 40 }, (_, i) => `Waiting for database (attempt ${i})`), 'Waiting for database failed: connection refused', 'Waiting for database: 2 high severity vulnerabilities', 'Server ready', ''];
+  const text = lines.join('\n');
+  const run = (command: string, level?: 'strict' | 'standard') => createOutputFilter({ store: { save: async () => ({ id: '3f6c1d2e-8a4b-4c1d-9e2f-5a6b7c8d9e0f' }), read: async () => { throw new Error('unused'); } } as unknown as ArtifactStore, mode: 'filter', level, rules, minimumCharacters: 0, minimumSavingsCharacters: 0 }).apply(observation(command, text));
+
+  const result = await run('npm run dev -- --port 3000', 'strict');
+  const output = result.response as string;
+  assert.equal(result.decision.status, 'filtered');
+  assert.equal(result.decision.removedLines, 40);
+  assert.match(output, /\[fonn: lines removed by rule "db wait": 40; originals archived\]/);
+  // The failure line contains the rule text but mentions a problem, so it stays.
+  assert.match(output, /Waiting for database failed: connection refused/);
+  // Rules can come from other people's files, so security lines stay too.
+  assert.match(output, /2 high severity vulnerabilities/);
+
+  // Problem lines the generic pattern misses are protected from rules as well.
+  const tool = ['npm ERR! code ELIFECYCLE', 'not ok 1 - adds numbers', 'Error: listen EADDRINUSE :::3000', '✖ adds numbers', 'Process exited with code 1', 'ok 2 - subtracts'];
+  const npmRule = createOutputFilter({ store: { save: async () => ({ id: '3f6c1d2e-8a4b-4c1d-9e2f-5a6b7c8d9e0f' }), read: async () => { throw new Error('unused'); } } as unknown as ArtifactStore, mode: 'filter', level: 'strict', rules: [{ name: 'all', command: 'npm', remove: ['npm', 'ok ', 'adds', 'EADDRINUSE', 'exited', 'subtracts'] }], minimumCharacters: 0, minimumSavingsCharacters: 0 });
+  const kept = (await npmRule.apply(observation('npm test', [...tool, ...Array.from({ length: 30 }, (_, i) => `ok ${i + 3} - subtracts`), ''].join('\n')))).response as string;
+  for (const line of tool.slice(0, 5)) assert.ok(kept.includes(line), line);
+  assert.match(output, /Server ready/);
+
+  // A command that only shares a prefix with the rule is untouched by it.
+  assert.notEqual((await run('npm run devtools')).decision.adapter?.startsWith('rule:'), true);
+
+  // Rules are plain text with limits; anything else is rejected.
+  assert.equal(filterRulesSchema.safeParse([{ name: 'x', command: 'npm', remove: ['ab'] }]).success, false);
+  assert.equal(filterRulesSchema.safeParse([{ name: 'x', command: 'npm\nrm', remove: ['abc'] }]).success, false);
+  assert.equal(filterRulesSchema.safeParse([{ name: 'x', command: 'npm', remove: ['abc'] }, { name: 'x', command: 'yarn', remove: ['abc'] }]).success, false);
+  assert.equal(filterRulesSchema.safeParse([{ name: 'x', command: 'npm', remove: ['abc'], regex: '.*' }]).success, false);
+});

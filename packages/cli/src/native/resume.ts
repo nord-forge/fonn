@@ -16,6 +16,7 @@ export async function resumeNativeLaunch(launchId: string, options: { stateDirec
     filterMode: record.filterMode,
     // Launches saved before filter levels ran adapters only.
     filterLevel: record.filterLevel ?? 'strict',
+    ...(record.filterRules ? { filterRules: record.filterRules } : {}),
     // Legacy launches keep their original behavior rather than opting in on replay.
     subagents: record.subagents ?? 'off',
     stateDirectory: root,

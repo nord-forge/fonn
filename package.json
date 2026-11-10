@@ -28,6 +28,7 @@
     "typecheck": "npm run build --workspace @nord-forge/fonn-core && npm run typecheck --workspaces --if-present && tsc --noEmit",
     "test": "npm run test --workspaces --if-present && node --test tests/packaging/*.test.mjs",
     "check": "npm run build && npm run typecheck && npm test",
+    "check:mac": "node scripts/check-local.mjs",
     "release:prepare": "npm run build && node scripts/release/prepare.mjs",
     "release:check": "node --test tests/packaging/*.test.mjs"
   },

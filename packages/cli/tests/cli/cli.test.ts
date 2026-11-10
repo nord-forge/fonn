@@ -42,7 +42,7 @@ test('help, profiles and version run offline and do not import/execute the SDK',
   assert.match(resumeHelp.out(), /never guesses with --last/);
   const p = harness();
   assert.equal(await p.run(['profiles', '--json']), 0);
-  assert.equal(JSON.parse(p.out()).length, 6);
+  assert.equal(JSON.parse(p.out()).length, 13);
   const v = harness();
   assert.equal(await v.run(['--version']), 0);
   assert.match(v.out(), /^0\.1\.0\n$/);
@@ -70,7 +70,7 @@ test('profile commands persist custom choices, manage the default and reject inv
     assert.equal(JSON.parse(await invoke(['default', 'quick', '--json'])).name, 'quick');
     assert.equal(JSON.parse(await invoke(['default', '--json'])).name, 'quick');
     assert.match(await invoke(['list']), /quick \[claude\]: haiku, effort max \(default\)/);
-    assert.equal(JSON.parse(await invoke(['list', '--json'])).length, 7);
+    assert.equal(JSON.parse(await invoke(['list', '--json'])).length, 14);
     const fresh = harness({ env });
     assert.equal(await fresh.run(['run', 'Use configured default']), 0);
     assert.equal(fresh.options[0]?.profile, 'quick');
@@ -117,7 +117,7 @@ test('profile commands persist custom choices, manage the default and reject inv
     await invoke(['default', 'opus-medium']);
     assert.deepEqual(JSON.parse(await invoke(['delete', 'quick', '--json'])), { deleted: 'quick' });
     await invoke(['delete', 'my-sol']);
-    assert.equal(JSON.parse(await invoke(['--json'])).length, 6);
+    assert.equal(JSON.parse(await invoke(['--json'])).length, 13);
   } finally { await rm(configDirectory, { recursive: true, force: true }); }
 });
 

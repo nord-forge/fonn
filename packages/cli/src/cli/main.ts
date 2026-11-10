@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import type { ArtifactSlice, FilterLevel, FilterMode, PermissionRequest, ProfileName, ProfileProvider, RunRecord, RunTaskOptions, TaskProfile } from '@nord-forge/fonn-core/contracts';
 import { createProfileStore, modelSourceSchema, effortSchema, filterLevelSchema, getDefaultConfigDirectory, modelSchema, profiles as builtInProfiles, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
-import { findProjectRoot, LOCAL_SETTINGS_FILE, projectSettingsSchema, projectSourcedValues, readProjectSettings, resolveSettings, SETTING_KEYS, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, type ResolvedSettings, type SettingKey, type SettingScope } from '@nord-forge/fonn-core/settings';
+import { findProjectRoot, LOCAL_SETTINGS_FILE, projectRulesFingerprint, projectSettingsSchema, projectSourcedValues, readProjectSettings, resolveSettings, SETTING_KEYS, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, type ResolvedSettings, type SettingKey, type SettingScope } from '@nord-forge/fonn-core/settings';
 import { renderRun, runExitCode, terminalText, validateResult } from './render.js';
 
 export interface CliDependencies {
@@ -14,7 +14,7 @@ export interface CliDependencies {
   listRuns: (stateDirectory?: string) => Promise<RunRecord[]>;
   readRun: (taskId: string, stateDirectory?: string) => Promise<RunRecord>;
   readArtifact: (taskId: string, artifactId: string, options: { offset: number; limit: number }, stateDirectory?: string) => Promise<ArtifactSlice>;
-  launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; filterLevel?: FilterLevel; subagents?: 'auto' | 'off'; stateDirectory?: string; configDirectory?: string; args?: string[] }) => Promise<number>;
+  launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; filterLevel?: FilterLevel; filterRules?: Array<{ name: string; command: string; remove: string[] }>; subagents?: 'auto' | 'off'; stateDirectory?: string; configDirectory?: string; args?: string[] }) => Promise<number>;
   launchCodex: CliDependencies['launchClaude'];
   runNativeHook: (event: unknown, stateDirectory: string, launchId: string) => Promise<unknown>;
   runCodexHook: CliDependencies['runNativeHook'];
@@ -48,6 +48,7 @@ Usage:
   fonn output <task-id> <artifact-id> [--offset <n>] [--limit <n>] [--state-dir <path>]
   fonn native-output <launch-id> <artifact-id> [--offset <n>] [--limit <n>] [--state-dir <path>]
   fonn doctor [--json]
+  fonn ui [--port <n>] [--no-open] [--state-dir <path>]   Local web interface for settings, rules and history; see fonn help ui
   fonn help | --help | --version
 
 Run options:
@@ -144,6 +145,9 @@ Usage:
   fonn config get <key> [--cwd <dir>] [--json]
   fonn config set <key> <value> [--local|--shared|--global] [--cwd <dir>]
   fonn config unset <key> [--local|--shared|--global] [--cwd <dir>]
+  fonn config rules [--cwd <dir>] [--json]
+  fonn config approve-rules [--cwd <dir>]
+  fonn config revoke-rules [--cwd <dir>]
 
 Keys: profile, filterLevel (strict|standard|similar), filterMode (filter|observe|off), subagents (auto|off).
 --local (default) writes .fonn/settings.local.json, which is personal and should stay out of Git.
@@ -151,6 +155,8 @@ Keys: profile, filterLevel (strict|standard|similar), filterMode (filter|observe
 --global saves the value for all projects in ~/.config/fonn/profiles.json.
 Precedence: command-line flag, personal file, shared file, global default, built-in default.
 The project is the nearest folder with one of these files, otherwise the Git root.
+Filter rules in project files only apply after fonn config approve-rules, because
+anyone who can commit to a repository can write them. Changed rules need approving again.
 Launches print which values came from project files. fonn --default,
 fonn --default-filter-level and fonn profiles default remain shortcuts for global values.
 `;
@@ -169,6 +175,22 @@ Changed defaults or deleted custom profiles do not replace a saved profile snaps
 This is separate from fonn run --resume, which resumes a Claude SDK task.
 `;
 
+const uiHelp = `Fonn ui: a local web interface for settings, rules and history
+
+Usage:
+  fonn ui [--port <n>] [--no-open] [--state-dir <path>]
+
+Change global and project settings, write filter rules and try them on a
+test bench, approve project rules, and manage profiles. Also shows native
+launches, SDK runs and filter decisions, and can delete a launch's records.
+The server listens on 127.0.0.1 only, on a random free port unless --port is given.
+Each start creates a new private link. Anyone with that link can use the
+interface while it runs, so do not share it.
+--no-open prints the link without opening a browser.
+--state-dir reads launches and runs from another state folder.
+Press Ctrl+C to stop the server.
+`;
+
 interface Parsed { positionals: string[]; flags: Map<string, string | true> }
 function parse(args: string[], allowed: string[]): Parsed {
   const flags = new Map<string, string | true>();
@@ -180,7 +202,7 @@ function parse(args: string[], allowed: string[]): Parsed {
     const flag = value.slice(2);
     if (!allowed.includes(flag)) throw new Error(`Unknown option ${value}. Use --help for usage.`);
     if (flags.has(flag)) throw new Error(`Option ${value} was supplied more than once.`);
-    if (flag === 'json' || flag === 'shared' || flag === 'local' || flag === 'global') { flags.set(flag, true); continue; }
+    if (flag === 'json' || flag === 'shared' || flag === 'local' || flag === 'global' || flag === 'no-open') { flags.set(flag, true); continue; }
     const argument = args[++index];
     if (!argument || argument.startsWith('--')) throw new Error(`Option ${value} requires a value.`);
     flags.set(flag, argument);
@@ -225,6 +247,7 @@ function choice<T extends string>(value: string | undefined, allowed: readonly T
 }
 
 interface Choices {
+  rules: Array<{ name: string; command: string; remove: string[] }>;
   profile: TaskProfile;
   filterMode: FilterMode;
   filterLevel: FilterLevel;
@@ -253,9 +276,11 @@ async function choicesFor(parsed: Parsed, cwd: string, configDirectory: string, 
   const profileFlag = stringFlag(parsed, 'profile');
   if (profileFlag !== undefined) flags.profile = profileFlag;
 
-  const files = await readProjectSettings(await findProjectRoot(cwd));
+  const projectRoot = await findProjectRoot(cwd);
+  const files = await readProjectSettings(projectRoot);
   const store = createProfileStore(configDirectory);
-  const resolved = resolveSettings({ flags, files, global: await store.getGlobalSettings() });
+  const projectRulesApproved = await store.projectRulesApproved(projectRoot, projectRulesFingerprint(projectRoot, files));
+  const resolved = resolveSettings({ flags, files, global: await store.getGlobalSettings(), projectRulesApproved });
   const notices: string[] = [];
   const fileFor = (source: string) => source === 'shared' ? SHARED_SETTINGS_FILE : LOCAL_SETTINGS_FILE;
 
@@ -282,8 +307,14 @@ async function choicesFor(parsed: Parsed, cwd: string, configDirectory: string, 
     .filter((item) => !(item.key === 'profile' && ignoredProfile))
     .filter((item) => native || item.key !== 'subagents');
   if (used.length) notices.push(`Project settings: ${used.map((item) => `${item.key} ${item.value} (${item.file})`).join(', ')}.`);
+  if (resolved.unapprovedRules.length) {
+    const sources = [...new Set(resolved.unapprovedRules.map((rule) => fileFor(rule.source)))].join(' and ');
+    notices.push(`Skipped ${resolved.unapprovedRules.length} filter ${resolved.unapprovedRules.length === 1 ? 'rule' : 'rules'} from ${sources}: not approved for this project. Review them with fonn config rules, then approve with fonn config approve-rules.`);
+  }
+  if (resolved.rules.length) notices.push(`Filter rules: ${resolved.rules.map((rule) => `${rule.name} (${rule.source === 'global' ? 'global' : fileFor(rule.source)})`).join(', ')}.`);
+  const rules = resolved.rules.map(({ name, command, remove }) => ({ name, command, remove }));
 
-  return { profile, filterMode: resolved.filterMode.value, filterLevel: resolved.filterLevel.value, subagents: resolved.subagents.value, notices };
+  return { rules, profile, filterMode: resolved.filterMode.value, filterLevel: resolved.filterLevel.value, subagents: resolved.subagents.value, notices };
 }
 
 const KEY_ALIASES: Record<string, SettingKey> = {
@@ -328,11 +359,13 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       if (args.length === 2 && args[1] === 'codex') { stdout(codexHelp); return 0; }
       if (args.length === 2 && args[1] === 'resume') { stdout(resumeHelp); return 0; }
       if (args.length === 2 && args[1] === 'config') { stdout(configHelp); return 0; }
-      throw new Error('Expected help [profiles|codex|resume|config]. Use --help for usage.');
+      if (args.length === 2 && args[1] === 'ui') { stdout(uiHelp); return 0; }
+      throw new Error('Expected help [profiles|codex|resume|config|ui]. Use --help for usage.');
     }
     if (command === 'profiles' && args.length === 2 && args[1] === '--help') { stdout(profilesHelp); return 0; }
     if (command === 'codex' && args.length === 2 && args[1] === '--help') { stdout(codexHelp); return 0; }
     if (command === 'resume' && args.length === 2 && args[1] === '--help') { stdout(resumeHelp); return 0; }
+    if (command === 'ui' && args.length === 2 && args[1] === '--help') { stdout(uiHelp); return 0; }
     if (command === '--help' || command === '-h' || (args.length === 2 && args[1] === '--help')) { stdout(help); return 0; }
     if (command === '--version') { if (args.length !== 1) throw new Error('--version takes no arguments.'); stdout(await version() + '\n'); return 0; }
     if (command === 'resume') {
@@ -353,7 +386,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
     }
     if (command === 'config') {
       if (args.length === 2 && args[1] === '--help') { stdout(configHelp); return 0; }
-      const action = ['show', 'get', 'set', 'unset'].includes(args[1] ?? '') ? args[1]! : 'show';
+      const action = ['show', 'get', 'set', 'unset', 'rules', 'approve-rules', 'revoke-rules'].includes(args[1] ?? '') ? args[1]! : 'show';
       const parsed = parse(args.slice(action === args[1] ? 2 : 1), ['cwd', 'json', 'local', 'shared', 'global']);
       if (['local', 'shared', 'global'].filter((flag) => parsed.flags.has(flag)).length > 1) throw new Error('Choose one of --local, --shared or --global.');
       const configDirectory = getDefaultConfigDirectory(env);
@@ -361,10 +394,38 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       const files = await readProjectSettings(root);
       const store = createProfileStore(configDirectory);
       const global = await store.getGlobalSettings();
+      const fingerprint = projectRulesFingerprint(root, files);
+
+      if (action === 'rules' || action === 'approve-rules' || action === 'revoke-rules') {
+        argumentCount(parsed, 0, `config ${action}`);
+        if (action === 'revoke-rules') {
+          await store.approveProjectRules(root, null);
+          stdout(`Project filter rules are no longer approved for ${terminalText(root)}.\n`);
+          return 0;
+        }
+        const approved = await store.projectRulesApproved(root, fingerprint);
+        const project = resolveSettings({ files, global: { profile: global.profile }, projectRulesApproved: true }).rules;
+        if (parsed.flags.has('json') && action === 'rules') { json({ root, approved: Boolean(fingerprint) && approved, rules: project, global: global.rules ?? [] }); return 0; }
+        const describe = (rule: { name: string; command: string; remove: string[]; source?: string }) =>
+          `  ${terminalText(rule.name)} (${rule.source === 'shared' ? SHARED_SETTINGS_FILE : rule.source === 'local' ? LOCAL_SETTINGS_FILE : 'global'}): for ${terminalText(rule.command)}, remove lines containing ${rule.remove.map((text) => JSON.stringify(text)).join(', ')}`;
+        const lines = [`Project: ${terminalText(root)}`];
+        if (global.rules?.length) lines.push('Global rules:', ...global.rules.map(describe));
+        if (!fingerprint) lines.push('This project has no filter rules.');
+        else lines.push(`Project rules (${approved ? 'approved' : 'not approved, so they are not applied'}):`, ...project.map(describe));
+        if (action === 'approve-rules') {
+          if (!fingerprint) { stdout(lines.join('\n') + '\n'); return 0; }
+          await store.approveProjectRules(root, fingerprint);
+          lines.push('Approved these project rules. If the files change, they need approving again.');
+        } else if (fingerprint && !approved) {
+          lines.push('Approve them with fonn config approve-rules.');
+        }
+        stdout(lines.join('\n') + '\n');
+        return 0;
+      }
 
       if (action === 'show' || action === 'get') {
         argumentCount(parsed, action === 'get' ? 1 : 0, action === 'get' ? 'config get <key>' : 'config [show]');
-        const effective = resolveSettings({ files, global });
+        const effective = resolveSettings({ files, global, projectRulesApproved: await store.projectRulesApproved(root, fingerprint) });
         if (action === 'get') {
           const key = settingKey(parsed.positionals[0]);
           if (parsed.flags.has('json')) json({ key, ...effective[key] });
@@ -442,7 +503,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       const launch = chosen.profile.provider === 'codex'
         ? injected.launchCodex ?? (await import('../native/codex.js')).launchCodex
         : injected.launchClaude ?? (await import('../native/index.js')).launchClaude;
-      return await launch({ cwd, profile: chosen.profile.name, filterMode: chosen.filterMode, filterLevel: chosen.filterLevel, subagents: chosen.subagents, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
+      return await launch({ cwd, profile: chosen.profile.name, filterMode: chosen.filterMode, filterLevel: chosen.filterLevel, ...(chosen.rules.length ? { filterRules: chosen.rules } : {}), subagents: chosen.subagents, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
     }
     if (command === 'codex-hook') {
       const parsed = parse(args.slice(1), []);
@@ -529,6 +590,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       let profile = stringFlag(parsed, 'profile');
       let filterMode: string;
       let filterLevel: FilterLevel | undefined;
+      let filterRules: Array<{ name: string; command: string; remove: string[] }> = [];
       if (parsed.flags.has('resume')) {
         // SDK resume keeps the task's saved profile and level and reads no settings files.
         filterMode = stringFlag(parsed, 'filter') ?? 'filter';
@@ -541,6 +603,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
         profile = chosen.profile.name;
         filterMode = chosen.filterMode;
         filterLevel = chosen.filterLevel;
+        filterRules = chosen.rules;
       }
       const budgetUsd = numeric(parsed.flags.get('budget'), '--budget', 5);
       const maxTurns = numeric(parsed.flags.get('max-turns'), '--max-turns', 20, true);
@@ -575,7 +638,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
           return answers;
         };
         const runTask = injected.runTask ?? (await import('@nord-forge/fonn-core/runtime')).runTask;
-        const record = await runTask({ prompt: parsed.positionals[0]!, cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile, budgetUsd, maxTurns, filterMode: filterMode as RunTaskOptions['filterMode'], ...(filterLevel === undefined ? {} : { filterLevel }), stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, resumeTaskId: stringFlag(parsed, 'resume'), signal: abort.signal, approveTool, answerQuestions, onEvent: event => stderr(`${event.type}: ${event.message}`) });
+        const record = await runTask({ prompt: parsed.positionals[0]!, cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile, budgetUsd, maxTurns, filterMode: filterMode as RunTaskOptions['filterMode'], ...(filterLevel === undefined ? {} : { filterLevel }), ...(filterRules.length ? { filterRules } : {}), stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, resumeTaskId: stringFlag(parsed, 'resume'), signal: abort.signal, approveTool, answerQuestions, onEvent: event => stderr(`${event.type}: ${event.message}`) });
         validateResult(record);
         if (parsed.flags.has('json')) json(record); else stdout(renderRun(record) + '\n');
         return runExitCode(record);
@@ -607,6 +670,26 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       const slice = await readArtifact(parsed.positionals[0]!, parsed.positionals[1]!, { offset, limit }, stateDirectory);
       stdout(terminalText(slice.text) + '\n');
       stderr(`Artifact ${slice.id}: characters ${slice.offset}–${slice.offset + slice.text.length} of ${slice.totalCharacters}${slice.nextOffset !== null ? `; next --offset ${slice.nextOffset}` : ''}`);
+      return 0;
+    }
+    if (command === 'ui') {
+      const parsed = parse(args.slice(1), ['port', 'no-open', 'state-dir']);
+      argumentCount(parsed, 0, 'ui [--port <n>] [--no-open] [--state-dir <path>]');
+      const port = numeric(parsed.flags.get('port'), '--port', 0, true, true);
+      if (port > 65535) throw new Error('--port must be between 0 and 65535.');
+      const { getDefaultStateDirectory } = await import('@nord-forge/fonn-core/state');
+      const { startUiServer } = await import('../ui/server.js');
+      const server = await startUiServer({ port, configDirectory: getDefaultConfigDirectory(env), stateDirectory: resolve(stringFlag(parsed, 'state-dir') ?? getDefaultStateDirectory()) });
+      stdout(`Fonn ui is running at ${server.url}\nPress Ctrl+C to stop.\n`);
+      const opener = process.platform === 'darwin' ? 'open' : process.platform === 'linux' ? 'xdg-open' : undefined;
+      if (opener && !parsed.flags.has('no-open')) {
+        const { spawn } = await import('node:child_process');
+        // A missing browser opener is not fatal; the printed link still works.
+        spawn(opener, [server.url], { stdio: 'ignore', detached: true }).on('error', () => undefined).unref();
+      }
+      const onInterrupt = injected.onInterrupt ?? (handler => { process.on('SIGINT', handler); return () => { process.off('SIGINT', handler); }; });
+      await new Promise<void>(done => { const detach = onInterrupt(() => { detach(); done(); }); });
+      await server.close();
       return 0;
     }
     throw new Error(`Unknown command ${command}. Use --help for usage.`);

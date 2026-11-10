@@ -1,8 +1,17 @@
 name: CI
 
+# Pull requests get one run, and pushes only run for main. Running both for
+# every push to a PR branch doubled the macOS jobs, which then queued until
+# GitHub cancelled them.
 on:
   push:
+    branches: [main]
   pull_request:
+
+# A newer push replaces an older run of the same branch or PR.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -14,14 +23,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Node 24 is the main target and its two jobs are required for main.
+        # Node 24 is the main target and its job is required for main.
         # Node 26 is what Homebrew installs today; Node 22 is the oldest
         # version Fonn supports (engines: >=22).
-        os: [ubuntu-latest, macos-latest]
-        node: [24, 26]
-        include:
-          - os: ubuntu-latest
-            node: 22
+        # macOS runs on the maintainer's Mac with `npm run check:mac -- --report`
+        # instead: hosted macOS runners queued until GitHub cancelled them.
+        os: [ubuntu-latest]
+        node: [22, 24, 26]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

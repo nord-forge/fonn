@@ -1,0 +1,176 @@
+import { get, projectRoute, SESSION_EXPIRED } from './api.js';
+import { button, el, link, number, pageHeader, warning } from './components.js';
+import { overviewView, profilesView, globalRulesView } from './views/global.js';
+import { activityView } from './views/activity.js';
+import { projectView } from './views/project.js';
+import { launchView } from './views/launch.js';
+
+import { testView } from './views/test.js';
+import { describeControls, feedback, field } from './forms.js';
+
+const main = document.querySelector('#main');
+const sidebar = document.querySelector('#sidebar');
+const menuToggle = document.querySelector('#menu-toggle');
+let controller;
+let sessionExpired = false;
+
+function closeMenu(returnFocus = false) {
+  sidebar.classList.remove('is-open');
+  menuToggle.setAttribute('aria-expanded', 'false');
+  if (returnFocus) menuToggle.focus();
+}
+
+menuToggle.addEventListener('click', () => {
+  const open = sidebar.classList.toggle('is-open');
+  menuToggle.setAttribute('aria-expanded', String(open));
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && sidebar.classList.contains('is-open')) closeMenu(true);
+});
+sidebar.addEventListener('click', (event) => {
+  const anchor = event.target.closest('a');
+  if (anchor) {
+    closeMenu();
+    if (anchor.getAttribute('href') === window.location.hash) main.focus();
+  }
+});
+document.querySelector('.skip-link').addEventListener('click', (event) => {
+  event.preventDefault();
+  closeMenu();
+  main.focus();
+});
+
+function updateNavigation() {
+  for (const item of sidebar.querySelectorAll('nav a')) {
+    if (item.getAttribute('href') === window.location.hash.split('?')[0]) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  }
+}
+
+async function loadProjects() {
+  const target = document.querySelector('#project-navigation');
+  try {
+    const data = await get('projects');
+    if (sessionExpired) return;
+    document.querySelector('#project-count').textContent = number(data.projects.length);
+    if (!data.projects.length) {
+      target.replaceChildren(el('p', 'nav-note', 'Launch fonn in a project and it appears here'));
+      return;
+    }
+    const list = el('ul', 'nav-list project-nav');
+    for (const project of data.projects) {
+      const item = el('li');
+      const anchor = link('', projectRoute(project.root));
+      anchor.title = project.root;
+      // The bidi marks keep a right-to-left ellipsis from moving the leading slash.
+      anchor.append(el('span', 'project-name', project.name), el('span', 'project-path', `\u200e${project.root}\u200e`));
+      item.append(anchor);
+      list.append(item);
+    }
+    target.replaceChildren(list);
+    updateNavigation();
+  } catch (error) {
+    if (sessionExpired) return;
+    target.replaceChildren(el('p', 'nav-note', error.message), button('Try again', loadProjects, 'nav-retry'));
+  }
+}
+
+function parseRoute(hash) {
+  if (hash === '#/global') return { title: 'Overview', view: overviewView };
+  if (hash === '#/global/rules') return { title: 'Rules', view: globalRulesView };
+  if (hash === '#/test' || hash.startsWith('#/test?')) return { title: 'Test bench', view: testView, id: new URLSearchParams(hash.split('?')[1]).get('root') || undefined };
+  if (hash === '#/global/profiles') return { title: 'Profiles', view: profilesView };
+  if (hash === '#/global/activity') return { title: 'Activity', view: activityView };
+  const match = /^#\/(project|launch)\/([^/]+)$/.exec(hash);
+  if (!match) return null;
+  try {
+    const id = decodeURIComponent(match[2]);
+    if (!id) return null;
+    return { title: match[1] === 'project' ? 'Project' : 'Launch details', view: match[1] === 'project' ? projectView : launchView, id };
+  } catch {
+    return null;
+  }
+}
+
+async function render(focus = true) {
+  controller?.abort();
+  controller = new AbortController();
+  const { signal } = controller;
+  closeMenu();
+  updateNavigation();
+  const page = el('div', 'page');
+  main.replaceChildren(page);
+  if (focus) {
+    main.focus();
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+  if (sessionExpired) {
+    document.title = 'Fonn · Session expired';
+    page.append(pageHeader('Local session', 'Session expired', 'Restart fonn ui and open the new URL printed in your terminal.'));
+    return;
+  }
+  const route = parseRoute(window.location.hash);
+  if (!route) {
+    document.title = 'Fonn · Page not found';
+    page.append(pageHeader('Fonn', 'Page not found', 'This address does not match a Fonn page.'), link('Back to overview', '#/global'));
+    return;
+  }
+  document.title = `Fonn · ${route.title}`;
+  try {
+    await route.view(page, signal, route.id);
+  } catch (error) {
+    if (error.name !== 'AbortError' && !signal.aborted) page.append(warning(error.message));
+  }
+}
+
+const pathForm = el('form', 'open-project-form');
+const pathField = field('Open by path', el('input'), 'Absolute project folder');
+pathField.input.placeholder = '/path/to/project';
+pathField.input.autocomplete = 'off';
+pathField.input.spellcheck = false;
+const pathStatus = feedback();
+const openProject = button('Open project', () => {});
+openProject.type = 'submit';
+pathForm.append(pathField.node, openProject, pathStatus.node);
+describeControls(pathForm, pathStatus.node);
+document.querySelector('#project-navigation').after(pathForm);
+pathForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (openProject.disabled || sessionExpired) return;
+  const root = pathField.input.value;
+  if (!root.startsWith('/') && !root.startsWith('\\\\') && !/^[a-z]:[\\/]/i.test(root)) {
+    pathField.error('Enter an absolute project path.');
+    pathField.input.focus();
+    return;
+  }
+  openProject.disabled = true;
+  pathField.error();
+  pathStatus.show('Opening…');
+  try {
+    const project = await get('project', { query: { root } });
+    if (sessionExpired) return;
+    pathStatus.show();
+    window.location.hash = projectRoute(project.root);
+    closeMenu();
+  } catch (error) {
+    pathStatus.show(error.message, true);
+  } finally {
+    openProject.disabled = false;
+  }
+});
+
+window.addEventListener('fonn:session-expired', () => {
+  if (sessionExpired) return;
+  sessionExpired = true;
+  const banner = document.querySelector('#session-message');
+  banner.textContent = SESSION_EXPIRED;
+  banner.hidden = false;
+  document.querySelector('#project-navigation').replaceChildren(el('p', 'nav-note', SESSION_EXPIRED));
+  render();
+});
+window.addEventListener('hashchange', () => render());
+if (!window.location.hash) {
+  history.replaceState(null, '', `${window.location.pathname}${window.location.search}#/global`);
+}
+render(false);
+loadProjects();

@@ -17,6 +17,38 @@ The adapters recognize direct Pest/PHPUnit, TypeScript `tsc`, PHPStan, pytest, J
 
 Docker, wrapper commands and other unknown tools skip the adapters, as do ANSI cursor-control output and unknown formats. An adapter must recognize the output format and establish a useful reduction before changing an observation. Warnings, failures, stderr, and ambiguous output are preserved rather than summarized away. The exact supported command/output patterns are defined by the filter adapters and their fixtures; a familiar command name alone is not permission to discard arbitrary text.
 
+## Your own rules
+
+A rule removes lines that contain some text, for commands that start with a given command:
+
+```json
+{
+  "rules": [
+    { "name": "db wait", "command": "npm run dev", "remove": ["Waiting for database"] }
+  ]
+}
+```
+
+`command` matches the command itself or the command followed by a space, so `npm run dev` covers `npm run dev -- --port 3000` but not `npm run devtools`. `remove` lists one to twenty texts of at least three characters; a line containing any of them is removed. Matching is plain text, never a pattern, so a rule cannot hang the filter or match more than it says.
+
+- Lines that mention errors, failures, warnings, exceptions, panics or denials are always kept, even when they contain a rule's text. So are lines about security: vulnerabilities, deprecations, severity, CVEs, and anything critical, high, unsafe or insecure.
+- Each run of removed lines leaves a note such as `[fonn: lines removed by rule "db wait": 40; originals archived]`.
+- Rules apply at every filter level, before the built-in reductions, in `filter` and `observe` mode. With `--filter off` nothing is removed.
+- The usual thresholds still apply: output under 2,000 characters, or a saving under 256 characters, is left alone.
+- Originals stay archived and recoverable.
+
+Rules can be global (`~/.config/fonn/profiles.json`), shared with the project (`.fonn.json`) or personal (`.fonn/settings.local.json`). All of them apply together; a rule with the same name in a more specific file replaces the broader one.
+
+### Approving project rules
+
+Anyone who can commit to a repository can write its `.fonn.json`, and a repository can even commit `.fonn/settings.local.json`. So rules from project files only apply once you approve them for that project. Until then a launch says it skipped them:
+
+```text
+Skipped 1 filter rule from .fonn.json: not approved for this project. Review them with fonn config rules, then approve with fonn config approve-rules.
+```
+
+`fonn config rules` lists the global and project rules and whether the project's are approved. `fonn config approve-rules` approves the rules exactly as they are now. The approval is saved in your global config with a fingerprint of the rules, so when someone changes them, new launches skip them until you approve again. `fonn config revoke-rules` withdraws it. Running launches, and launches you resume, keep the rules they started with. `fonn ui` shows the same state on the project page, with an approve button. Rules you save there yourself keep an existing approval, but saving never approves rules someone else committed. Global rules are yours and need no approval. A launch keeps the rules it started with, and `fonn resume` reuses them. The easiest way to write and try rules is `fonn ui`, which has a rule editor and a test bench. The standalone filter does not support rules.
+
 ## Filter levels
 
 `--filter` decides whether Fonn acts (`filter`), only records (`observe`) or does nothing (`off`). `--filter-level` decides how far it goes.

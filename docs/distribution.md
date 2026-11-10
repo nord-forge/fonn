@@ -4,7 +4,7 @@
 
 ## Local development
 
-Use Node 22 or later. CI checks Node 24 on Ubuntu and macOS. From the repository root:
+Use Node 22 or later. CI checks Node 22, 24 and 26 on Linux. The maintainer checks macOS locally with `npm run check:mac`. From the repository root:
 
 ```sh
 npm ci
@@ -105,7 +105,7 @@ The explicit tap URL matters: the repository is named `fonn`, without Homebrew's
 
 ## Workflow boundary
 
-`ci.yml` checks pull requests and pushes with read-only repository permission, Node 24, mocked tests, and packaging validation on Ubuntu and macOS. Dependency installation can use the network; code checks do not invoke models. The manually dispatched `prepare-release.yml` checks and builds review artifacts, then uploads the archive, checksum, and generated cask as a workflow artifact. It does not publish a GitHub release or npm package, create/push a tag, change the repository cask, create a remote, or deploy. Workflow artifacts are review output, not release assets.
+`ci.yml` checks pull requests and pushes to `main` with read-only repository permission, Node 22, 24 and 26, mocked tests, and packaging validation on Linux. macOS runs the same steps on the maintainer's Mac: `npm run check:mac` clones the current commit into a temporary folder and runs them on Node 24 and 26, and `-- --report` posts the results as `local/macos (Node <major>)` commit statuses. A self-hosted runner is not used, because the repository is public and fork pull requests could run code on that machine. Dependency installation can use the network; code checks do not invoke models. The manually dispatched `prepare-release.yml` checks and builds review artifacts, then uploads the archive, checksum, and generated cask as a workflow artifact. It does not publish a GitHub release or npm package, create/push a tag, change the repository cask, create a remote, or deploy. Workflow artifacts are review output, not release assets.
 
 Publishing remains a distinct action requiring explicit authorization and a check of repository policies and automation side effects. Neither workflow has release-writing permissions or publication triggers.
 

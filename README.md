@@ -80,7 +80,7 @@ Filtering only reduces recognized noisy shell output and runs of identical lines
 
 ## Local setup
 
-Use Node 22 or later. CI tests Node 22, 24 and 26 (Node 24 on both macOS and Linux is required for merging). From the repository root:
+Use Node 22 or later. CI tests Node 22, 24 and 26 on Linux. macOS is checked locally with `npm run check:mac`, and Node 24 on both is required for merging. From the repository root:
 
 ```sh
 npm ci
@@ -193,6 +193,10 @@ fonn profiles default claude:fable-medium  # Optional: select it for future laun
 Fonn also accepts `--model fable` or `--model mythos` when creating/editing a custom profile; these Fonn short names are saved as `claude-fable-5-2` and `claude-mythos-5-2` so launch and resume use the same version. For example: `fonn profiles create fable-high --model fable --effort high`. Existing custom names such as `fable-medium` keep their meaning; new built-ins use the `claude:` namespace.
 
 The profiles also work with Claude SDK tasks, which require an explicit API key and separate API billing. Existing defaults stay unchanged. Anthropic controls account access and billing; Mythos requires an eligible verified account. Model choice does not disable filtering or native subagent hooks. SDK explorer/reviewer workers keep their fixed read-only Sonnet/Opus configuration. See [model profiles and access](docs/profiles.md#fable-and-mythos) and Anthropic's [Fable](https://platform.claude.com/docs/en/models/fable-5-2/overview), [Mythos](https://platform.claude.com/docs/en/models/mythos-5-2/overview) and [Claude Code model configuration](https://code.claude.com/docs/en/model-config) documentation.
+
+## Fonn UI
+
+`fonn ui` opens a local web interface to change your global and project settings, write and test filter rules, manage profiles, and look through launches, runs and filter decisions. It listens on `127.0.0.1` only, behind a new private link each time. See [the Fonn UI guide](docs/ui.md).
 
 ## Project settings
 
