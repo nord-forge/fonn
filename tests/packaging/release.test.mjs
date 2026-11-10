@@ -78,7 +78,7 @@ test('generated CLI cask has the local checksum, Homebrew node, Sonoma floor, th
   assert(cask.includes(`sha256 "${result.sha256}"`));
   assert(cask.includes('https://github.com/nord-forge/fonn/releases/download/v#{version}/fonn-#{version}.tar.gz'));
   assert(cask.includes('depends_on formula: "node"'));
-  assert(cask.includes('depends_on macos: ">= :sonoma"'));
+  assert(cask.includes('depends_on macos: :sonoma'));
   assert(cask.includes('command_wrapper "fonn"'));
   assert(cask.includes('#{Formula["node"].opt_bin}/node'));
   assert(cask.includes('installer script:'));
