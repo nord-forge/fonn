@@ -151,10 +151,10 @@ Run open models such as Qwen, Gemma or Kimi with [Ollama](https://ollama.com) an
 
 <Steps>
 
-1. Start Ollama with a large context. Agents send long first requests, so the default is too small.
+1. Start Ollama with a bigger context. On most laptops its default is 4,096 tokens, too small for an agent's instructions and tools. Ollama recommends at least 64k for coding agents.
 
    ```sh
-   OLLAMA_CONTEXT_LENGTH=131072 ollama serve
+   OLLAMA_CONTEXT_LENGTH=65536 ollama serve
    ollama pull qwen3.8:27b
    ```
 

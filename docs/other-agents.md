@@ -122,11 +122,13 @@ Small models often struggle with tool calls and long sessions. How a model uses 
 
 ## Context length
 
-Give the model a large context. Agents send big first requests, because they carry their instructions and every tool they know. Codex's first request came to about 72,000 tokens in testing. Ollama's default window is much smaller, and the request then fails or loses its start. Start Ollama with a larger window, as far as your memory allows, and check the CONTEXT column of `ollama ps`:
+Raise Ollama's context before you start an agent. Its default depends on your graphics memory and is 4,096 tokens below 24 GB, which is too small for an agent's instructions and tools. Ollama recommends at least 64k for coding agents:
 
 ```sh
-OLLAMA_CONTEXT_LENGTH=131072 ollama serve
+OLLAMA_CONTEXT_LENGTH=65536 ollama serve
 ```
+
+Check the CONTEXT column of `ollama ps` while a model is loaded. A bigger context uses more memory: a 27B model at 3 bits took about 13 GB at 32k and 19 GB at 128k in testing. Go higher only when requests fail with "exceeds the available context size". Codex needs more than most, because its first request carries every tool and integration you have set up; it came to about 72,000 tokens in testing. See [open models](open-models.md).
 
 ## Agents that cannot use the filter yet
 
