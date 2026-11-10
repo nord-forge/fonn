@@ -49,6 +49,10 @@
     "./state": {
       "types": "./dist/runtime/storage.d.ts",
       "import": "./dist/runtime/storage.js"
+    },
+    "./agent": {
+      "types": "./dist/agent/index.d.ts",
+      "import": "./dist/agent/index.js"
     }
   },
   "repository": {

@@ -8,6 +8,7 @@ import type { ArtifactSlice, FilterLevel, FilterMode, PermissionRequest, Profile
 import { createProfileStore, modelSourceSchema, effortSchema, filterLevelSchema, getDefaultConfigDirectory, modelSchema, profiles as builtInProfiles, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
 import { findProjectRoot, LOCAL_SETTINGS_FILE, projectRulesFingerprint, projectSettingsSchema, projectSourcedValues, readProjectSettings, resolveSettings, SETTING_KEYS, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, type ResolvedSettings, type SettingKey, type SettingScope } from '@nord-forge/fonn-core/settings';
 import { renderRun, runExitCode, terminalText, validateResult } from './render.js';
+import type { ChatOptions } from '../agent/chat.js';
 
 export interface CliDependencies {
   runTask: (options: RunTaskOptions) => Promise<RunRecord>;
@@ -16,6 +17,7 @@ export interface CliDependencies {
   readArtifact: (taskId: string, artifactId: string, options: { offset: number; limit: number }, stateDirectory?: string) => Promise<ArtifactSlice>;
   launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; filterLevel?: FilterLevel; filterRules?: Array<{ name: string; command: string; remove: string[] }>; subagents?: 'auto' | 'off'; stateDirectory?: string; configDirectory?: string; args?: string[] }) => Promise<number>;
   launchCodex: CliDependencies['launchClaude'];
+  runChat: (options: ChatOptions) => Promise<number>;
   runNativeHook: (event: unknown, stateDirectory: string, launchId: string) => Promise<unknown>;
   runCodexHook: CliDependencies['runNativeHook'];
   resumeNativeLaunch: (launchId: string, options: { stateDirectory?: string }) => Promise<number>;
@@ -36,12 +38,13 @@ Usage:
   fonn [--cwd <dir>] [--profile <name>] [--filter <mode>] [--filter-level <level>] [--subagents auto|off] [--state-dir <path>] [-- <native args>]
   fonn claude [launcher options] [-- <claude args>]
   fonn codex [launcher options] [-- <codex args>]
+  fonn chat [options]                  Small coding agent for open models; see fonn help chat
   fonn --default [claude|codex] [--json]
   fonn --default-filter-level [strict|standard|similar] [--json]
   fonn config [show|get|set|unset] ...   Project settings; see fonn help config
   fonn resume <launch-id> [--state-dir <path>]
   fonn profiles [--json]
-  fonn help profiles | codex | resume
+  fonn help profiles | codex | chat | resume
   fonn run <prompt> [options]
   fonn runs [--state-dir <path>] [--json]
   fonn show <task-id> [--state-dir <path>] [--json]
@@ -189,6 +192,23 @@ interface while it runs, so do not share it.
 --no-open prints the link without opening a browser.
 --state-dir reads launches and runs from another state folder.
 Press Ctrl+C to stop the server.
+`;
+
+const chatHelp = `Fonn chat: a small coding agent for open models
+
+Usage:
+  fonn chat [--profile <name>] [--model <model>] [--source ollama|lmstudio] [--base-url <url>] [--api-key-env <NAME>] [--context <tokens>] [--cwd <dir>] [--filter filter|observe|off] [--filter-level strict|standard|similar] [--state-dir <path>]
+
+Choose --profile or --model. A profile uses its model and local source.
+Without --base-url, profiles must belong to Codex with an ollama or lmstudio source.
+With --base-url, any profile can supply the model. --source applies to --model only.
+--model defaults to the Ollama server. --source lmstudio selects LM Studio.
+--base-url overrides the server address. --api-key-env reads only the named variable.
+The key is never stored or shown. Context defaults to 32768 estimated tokens.
+Project filter settings and approved rules apply. Each session stores originals in <state>/agent/<sessionId>.
+Every command and file change asks first. Allow once, remember the exact command or file, or deny.
+Commands: /help, /exit, /clear, /context. End a line with a backslash to continue it.
+Ctrl+D exits. Ctrl+C cancels a turn. Press Ctrl+C twice at an empty prompt to exit.
 `;
 
 interface Parsed { positionals: string[]; flags: Map<string, string | true> }
@@ -341,7 +361,11 @@ async function version(): Promise<string> {
 /** Dispatch is importable and accepts all I/O/runtime seams for offline tests. */
 export async function dispatch(args: string[], injected: Partial<CliDependencies> = {}): Promise<number> {
   const env = injected.env ?? process.env;
-  const redact = (value: string) => env.ANTHROPIC_API_KEY ? value.split(env.ANTHROPIC_API_KEY).join('[REDACTED]') : value;
+  let chatApiKey: string | undefined;
+  const redact = (value: string) => {
+    for (const key of [env.ANTHROPIC_API_KEY, chatApiKey]) if (key) value = value.split(key).join('[REDACTED]');
+    return value;
+  };
   const writeStdout = injected.stdout ?? ((text: string) => process.stdout.write(text));
   const stdout = (value: string) => writeStdout(redact(value));
   const stderr = (value: string) => (injected.stderr ?? (text => process.stderr.write(text)))(terminalText(redact(value)) + (value.endsWith('\n') ? '' : '\n'));
@@ -357,13 +381,15 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       if (args.length === 1) { stdout(help); return 0; }
       if (args.length === 2 && args[1] === 'profiles') { stdout(profilesHelp); return 0; }
       if (args.length === 2 && args[1] === 'codex') { stdout(codexHelp); return 0; }
+      if (args.length === 2 && args[1] === 'chat') { stdout(chatHelp); return 0; }
       if (args.length === 2 && args[1] === 'resume') { stdout(resumeHelp); return 0; }
       if (args.length === 2 && args[1] === 'config') { stdout(configHelp); return 0; }
       if (args.length === 2 && args[1] === 'ui') { stdout(uiHelp); return 0; }
-      throw new Error('Expected help [profiles|codex|resume|config|ui]. Use --help for usage.');
+      throw new Error('Expected help [profiles|codex|chat|resume|config|ui]. Use --help for usage.');
     }
     if (command === 'profiles' && args.length === 2 && args[1] === '--help') { stdout(profilesHelp); return 0; }
     if (command === 'codex' && args.length === 2 && args[1] === '--help') { stdout(codexHelp); return 0; }
+    if (command === 'chat' && args.includes('--help')) { stdout(chatHelp); return 0; }
     if (command === 'resume' && args.length === 2 && args[1] === '--help') { stdout(resumeHelp); return 0; }
     if (command === 'ui' && args.length === 2 && args[1] === '--help') { stdout(uiHelp); return 0; }
     if (command === '--help' || command === '-h' || (args.length === 2 && args[1] === '--help')) { stdout(help); return 0; }
@@ -491,6 +517,45 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       if (parsed.flags.has('json')) json(result);
       else stdout(`Default agent: ${result.provider} (profile: ${terminalText(result.profile)}).\n`);
       return 0;
+    }
+    if (command === 'chat') {
+      const parsed = parse(args.slice(1), ['profile', 'model', 'source', 'base-url', 'api-key-env', 'context', 'cwd', 'filter', 'filter-level', 'state-dir']);
+      argumentCount(parsed, 0, 'chat [options]');
+      const keyName = stringFlag(parsed, 'api-key-env');
+      if (keyName !== undefined) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(keyName)) throw new Error('--api-key-env must name an environment variable.');
+        chatApiKey = env[keyName];
+        if (!chatApiKey?.trim()) throw new Error(`Environment variable ${keyName} is empty or unset.`);
+      }
+      const modelFlag = stringFlag(parsed, 'model');
+      if (modelFlag !== undefined && !modelFlag.trim()) throw new Error('--model must not be empty.');
+      if (modelFlag !== undefined && parsed.flags.has('profile')) throw new Error('Choose --profile or --model, not both.');
+      const source = choice(stringFlag(parsed, 'source'), ['ollama', 'lmstudio'] as const, '--source must be ollama or lmstudio.');
+      if (source && modelFlag === undefined) throw new Error('--source requires --model. A profile uses its own source.');
+      const { LOCAL_BASE_URLS, DEFAULT_CONTEXT_TOKENS } = await import('@nord-forge/fonn-core/agent');
+      const contextTokens = numeric(parsed.flags.get('context'), '--context', DEFAULT_CONTEXT_TOKENS, true);
+      if (!Number.isSafeInteger(contextTokens) || contextTokens < 1024) throw new Error('--context must be a whole number of at least 1024 tokens.');
+      const cwd = resolve(stringFlag(parsed, 'cwd') ?? process.cwd());
+      const chosen = await choicesFor(parsed, cwd, getDefaultConfigDirectory(env), undefined, true);
+      const baseUrlFlag = stringFlag(parsed, 'base-url');
+      const profile = chosen.profile;
+      if (modelFlag === undefined && baseUrlFlag === undefined && (profile.provider !== 'codex' || (profile.source !== 'ollama' && profile.source !== 'lmstudio'))) {
+        throw new Error('Chat needs --model, a Codex profile with an ollama or lmstudio source, or --base-url with a profile.');
+      }
+      const localSource = modelFlag !== undefined ? source ?? 'ollama' : profile.source;
+      const baseUrl = baseUrlFlag ?? LOCAL_BASE_URLS[localSource as keyof typeof LOCAL_BASE_URLS];
+      let server: URL;
+      try { server = new URL(baseUrl); } catch { throw new Error('--base-url must be an HTTP or HTTPS URL.'); }
+      if (!['http:', 'https:'].includes(server.protocol)) throw new Error('--base-url must be an HTTP or HTTPS URL.');
+      if (server.username || server.password) throw new Error('Use --api-key-env for server credentials.');
+      for (const notice of chosen.notices) stderr(notice);
+      const chat = injected.runChat ?? (await import('../agent/chat.js')).runChat;
+      return await chat({
+        model: modelFlag ?? profile.model, baseUrl, ...(chatApiKey === undefined ? {} : { apiKey: chatApiKey }),
+        root: await findProjectRoot(cwd), contextTokens,
+        filterMode: chosen.filterMode, filterLevel: chosen.filterLevel, ...(chosen.rules.length ? { filterRules: chosen.rules } : {}),
+        ...(stringFlag(parsed, 'state-dir') === undefined ? {} : { stateDirectory: resolve(stringFlag(parsed, 'state-dir')!) }),
+      });
     }
     if (command === 'claude' || command === 'codex') {
       const separator = args.indexOf('--');

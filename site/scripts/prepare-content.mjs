@@ -17,7 +17,7 @@ const output = path.join(site, 'src/content/docs/reference');
 const GITHUB = 'https://github.com/nord-forge/fonn';
 
 // Guides published under /reference/, in sidebar order.
-const GUIDES = ['ui', 'filtering', 'local-filtering', 'profiles', 'project-settings', 'subagents', 'codex', 'open-models', 'other-agents', 'billing', 'mcp-output', 'architecture', 'distribution'];
+const GUIDES = ['ui', 'filtering', 'local-filtering', 'profiles', 'project-settings', 'subagents', 'codex', 'open-models', 'other-agents', 'agent', 'billing', 'mcp-output', 'architecture', 'distribution'];
 
 function rewriteLink(target) {
   if (/^(?:[a-z]+:|#)/i.test(target)) return target;
