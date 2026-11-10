@@ -116,7 +116,7 @@
 }
 
 .star-link svg {
-  color: #f2c94c;
+  flex: none;
 }
 
 /* Shared pieces used by the visualiser and the generated demos. */
