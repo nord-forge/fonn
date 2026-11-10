@@ -31,6 +31,8 @@ For an `ollama` or `lmstudio` source, Fonn passes `--oss --local-provider <sourc
 
 Small models often struggle with tool calls and long sessions. That is the model, not Fonn, but it does affect how well an agent works.
 
+To use the filter with Ollama in Crush, OpenCode or Claude Code instead of Codex, see [Use the filter with Ollama and other agents](other-agents.md).
+
 ## Hosted providers
 
 Mistral, DeepSeek, Kimi, OpenRouter and other services with an OpenAI-compatible API can be added to Codex as model providers. See the Codex [CLI reference](https://learn.chatgpt.com/docs/cli/reference) for provider entries and keep the API key where Codex reads it, usually an environment variable named in the provider entry. Then point a profile at the provider by name:
