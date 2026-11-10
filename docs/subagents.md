@@ -25,7 +25,7 @@ Claude documents that settings-level tool hooks run inside subagents. Codex docu
 | `observe` | Archive proposed reductions; deliver the original unchanged. |
 | `off` | No Fonn output reduction or worker filtering notice. |
 
-Unknown formats, warnings, failures, stderr and arbitrary MCP payloads pass through. Fonn cannot filter unsupported tool paths, tools that opt out of hooks, hooks disabled by policy, or a separate CLI process started outside the native agent mechanism. Codex's new/changed hook definitions require normal manual `/hooks` review and trust; Fonn never writes trust decisions. Model choice does not affect filtering coverage. Filtering and delegation do not guarantee lower total token use.
+Warnings, failures, stderr and arbitrary MCP payloads pass through. Unknown formats pass through apart from collapsed runs of identical lines, plus similar lines at `--filter-level similar`. `strict` turns both off. Fonn cannot filter unsupported tool paths, tools that opt out of hooks, hooks disabled by policy, or a separate CLI process started outside the native agent mechanism. Codex's new/changed hook definitions require normal manual `/hooks` review and trust; Fonn never writes trust decisions. Model choice does not affect filtering coverage. Filtering and delegation do not guarantee lower total token use.
 
 ## Permission boundaries and blocked workers
 

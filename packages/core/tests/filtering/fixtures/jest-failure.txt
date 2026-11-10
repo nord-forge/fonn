@@ -1,0 +1,61 @@
+PASS src/api/client.test.ts
+PASS src/utils/format.test.ts (5.12 s)
+PASS src/module00/feature.test.ts
+PASS src/module01/feature.test.ts
+PASS src/module02/feature.test.ts
+PASS src/module03/feature.test.ts
+PASS src/module04/feature.test.ts
+PASS src/module05/feature.test.ts
+PASS src/module06/feature.test.ts
+PASS src/module07/feature.test.ts
+PASS src/module08/feature.test.ts
+PASS src/module09/feature.test.ts
+PASS src/module10/feature.test.ts
+PASS src/module11/feature.test.ts
+PASS src/module12/feature.test.ts
+PASS src/module13/feature.test.ts
+PASS src/module14/feature.test.ts
+PASS src/module15/feature.test.ts
+PASS src/module16/feature.test.ts
+PASS src/module17/feature.test.ts
+PASS src/module18/feature.test.ts
+PASS src/module19/feature.test.ts
+PASS src/module20/feature.test.ts
+PASS src/module21/feature.test.ts
+PASS src/module22/feature.test.ts
+PASS src/module23/feature.test.ts
+PASS src/module24/feature.test.ts
+PASS src/module25/feature.test.ts
+PASS src/module26/feature.test.ts
+PASS src/module27/feature.test.ts
+PASS src/module28/feature.test.ts
+PASS src/module29/feature.test.ts
+FAIL src/billing/limit.test.ts
+  resolveLimit
+    ✓ uses the default when missing (3 ms)
+    ✕ keeps zero (4 ms)
+    ○ skipped handles negative values
+
+  ● resolveLimit › keeps zero
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 0
+    Received: 20
+
+      40 |   it('keeps zero', () => {
+    > 41 |     expect(resolveLimit({ limit: 0 })).toBe(0);
+         |                                        ^
+
+      at Object.toBe (src/billing/limit.test.ts:41:40)
+
+  console.warn
+    Deprecated option used
+
+      at warn (src/legacy.ts:3:11)
+
+Test Suites: 1 failed, 32 passed, 33 total
+Tests:       1 failed, 1 skipped, 286 passed, 288 total
+Snapshots:   0 total
+Time:        8.204 s
+Ran all test suites.

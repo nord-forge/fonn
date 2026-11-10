@@ -1,4 +1,10 @@
 export type FilterMode = 'filter' | 'observe' | 'off';
+/**
+ * How far filter and observe modes reduce output.
+ * strict: format adapters only. standard: adds identical-line collapsing for
+ * any command. similar: also collapses lines that differ only in numbers or IDs.
+ */
+export type FilterLevel = 'strict' | 'standard' | 'similar';
 export type ProfileName = string;
 export type ProfileProvider = 'claude' | 'codex';
 export type ProfileEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -60,6 +66,8 @@ export interface OutputFilter {
 export interface OutputFilterOptions {
   store: ArtifactStore;
   mode: FilterMode;
+  /** Defaults to standard. */
+  level?: FilterLevel;
   minimumCharacters?: number;
   minimumSavingsCharacters?: number;
   onDecision?: (decision: FilterDecision) => void;
@@ -100,6 +108,8 @@ export interface RunRecord {
   budgetUsd: number;
   maxTurns: number;
   filterMode: FilterMode;
+  /** Absent on records saved before filter levels existed. */
+  filterLevel?: FilterLevel;
   result?: TaskResult;
   usage: TaskUsage;
   filters: FilterDecision[];
@@ -127,6 +137,7 @@ export interface RunTaskOptions {
   budgetUsd?: number;
   maxTurns?: number;
   filterMode?: FilterMode;
+  filterLevel?: FilterLevel;
   stateDirectory?: string;
   resumeTaskId?: string;
   signal?: AbortSignal;

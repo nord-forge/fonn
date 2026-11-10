@@ -131,9 +131,14 @@ test('standalone downloads work without dependencies and preserve recovery, prov
     const offState = join(temporary, `${provider}-off`);
     assert.deepEqual(success(invoke(hookArgs(provider, 'off', offState), event)), {});
     await assert.rejects(lstat(offState), { code: 'ENOENT' });
+    const heartbeat = Array.from({ length: 300 }, (_, i) => `PROGRESS worker=${i % 4} heartbeat=ok`).join('\n') + '\n';
+    const similarState = join(temporary, `${provider}-similar`);
+    const similar = success(invoke([...hookArgs(provider, 'filter', similarState), '--level', 'similar'], { ...event, tool_response: heartbeat }));
+    assert.match(JSON.stringify(similar), /similar lines omitted; 298 lines between these differ only in numbers or IDs/);
+    assert.notEqual(invoke([...hookArgs(provider, 'filter', similarState), '--level', 'loose'], event).status, 0);
     const untouched = join(temporary, `${provider}-untouched`);
     for (const other of [
-      { ...event, tool_response: 'PROGRESS heartbeat=ok\n'.repeat(300) },
+      { ...event, tool_response: heartbeat },
       { ...event, tool_name: 'mcp__unknown__run' },
       { ...event, hook_event_name: 'PreToolUse' },
       { ...event, session_id: undefined }, { ...event, session_id: '' }, { ...event, session_id: 'invalid\n' },

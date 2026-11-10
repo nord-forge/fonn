@@ -210,7 +210,7 @@ test('Codex off/observe/filter preserve originals, diagnostics, unknown response
       assert.equal(bounded.text.length, 20);
       assert.equal(bounded.nextOffset, 20);
       assert.deepEqual(await runCodexHook({ ...event, tool_response: { content: [{ type: 'text', text: stdout }] } }, f.state, id), {});
-      assert.deepEqual(await runCodexHook({ ...event, tool_response: 'Unknown output\n'.repeat(300) }, f.state, id), {});
+      assert.deepEqual(await runCodexHook({ ...event, tool_response: Array.from({ length: 300 }, (_, i) => `Unknown output ${i}`).join('\n') }, f.state, id), {});
       assert.deepEqual(await runCodexHook({ ...event, tool_response: { ...response, is_error: true } }, f.state, id), {});
       const stringOutput = await runCodexHook({ ...event, tool_response: stdout }, f.state, id) as { continue: boolean; stopReason: string };
       assert.equal(stringOutput.continue, false);

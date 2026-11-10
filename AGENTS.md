@@ -24,7 +24,7 @@ Tests must use fixtures and mocked SDK messages. Normal checks must never make p
 - SDK authentication initially requires an explicitly supplied `ANTHROPIC_API_KEY`. Do not extract subscription OAuth credentials or imply subscription quotas apply to API use. Native launchers inherit their corresponding CLI authentication and policy layers. Never extract either provider’s subscription credentials or bypass Codex hook trust.
 - SDK dollar figures and stop budgets are estimates. A request may overshoot a threshold. Never call estimates invoices or guarantee savings.
 - A filter rewrites only a new tool observation. It must not rewrite history, source files, user instructions, or reasoning blocks.
-- Reduce only recognized output formats. Preserve warnings, failures, stderr, and unknown content. Keep originals recoverable and reads bounded within the current task store and validated same-session/project ancestry.
+- Reduce only recognized output formats, plus the generic collapse of byte-identical adjacent lines. `--filter-level strict` turns the generic collapse off. Similar-line collapsing stays opt-in at `--filter-level similar` and never merges problem lines. Preserve warnings, failures, stderr content (both agents merge it into the command output), and other unknown content. Keep originals recoverable and reads bounded within the current task store and validated same-session/project ancestry.
 - Validate structured results and handoffs before rendering. Never present errors as successful checks.
 - Never log credentials or store secrets in configuration. Fonn records and raw artifacts are sensitive; retention is manual.
 - Preserve resume locking, profile/project invariants, and explicit indeterminate-accounting failures on usage regressions.

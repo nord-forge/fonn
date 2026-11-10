@@ -22,6 +22,8 @@
   "scripts": {
     "dev": "tsx packages/cli/src/cli/main.ts",
     "build": "node scripts/build.mjs",
+    "docs:build": "npm run build --workspace @nord-forge/fonn-core && node scripts/docs/build.mjs",
+    "docs:dev": "npm run build --workspace @nord-forge/fonn-core && node scripts/docs/dev.mjs",
     "typecheck": "npm run build --workspace @nord-forge/fonn-core && npm run typecheck --workspaces --if-present && tsc --noEmit",
     "test": "npm run test --workspaces --if-present && node --test tests/packaging/*.test.mjs",
     "check": "npm run build && npm run typecheck && npm test",

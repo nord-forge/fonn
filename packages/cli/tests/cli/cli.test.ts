@@ -207,7 +207,7 @@ test('native provider routing preserves passthrough and follows explicit or defa
   let called = false;
   const h = harness({ launchClaude: async options => {
     called = true;
-    assert.deepEqual(options, { cwd: '/tmp/project', profile: 'opus-high', filterMode: 'observe', subagents: 'auto', stateDirectory: '/tmp/state', configDirectory: emptyConfigDirectory, args: ['--resume', 'session-id'] });
+    assert.deepEqual(options, { cwd: '/tmp/project', profile: 'opus-high', filterMode: 'observe', filterLevel: 'standard', subagents: 'auto', stateDirectory: '/tmp/state', configDirectory: emptyConfigDirectory, args: ['--resume', 'session-id'] });
     return 7;
   } });
   assert.equal(await h.run(['claude', '--cwd', '/tmp/project', '--profile', 'opus-high', '--filter', 'observe', '--state-dir', '/tmp/state', '--', '--resume', 'session-id']), 7);
@@ -241,7 +241,7 @@ test('native provider routing preserves passthrough and follows explicit or defa
     assert.equal(await defaultLaunch.run(['--profile', 'quick']), 0);
     let codexArgs = ['--search'];
     const codexLaunch = harness({ env, launchCodex: async options => {
-      assert.deepEqual(options, { cwd: process.cwd(), profile: 'codex:sol-medium', filterMode: 'filter', subagents: 'auto', stateDirectory: undefined, configDirectory, args: codexArgs });
+      assert.deepEqual(options, { cwd: process.cwd(), profile: 'codex:sol-medium', filterMode: 'filter', filterLevel: 'standard', subagents: 'auto', stateDirectory: undefined, configDirectory, args: codexArgs });
       return 3;
     } });
     // An explicit provider falls back to its built-in when the global default differs.
@@ -270,6 +270,24 @@ test('native provider routing preserves passthrough and follows explicit or defa
   }
   const implicitOff = harness({ launchClaude: async options => { assert.equal(options.subagents, 'off'); return 0; } });
   assert.equal(await implicitOff.run(['--subagents', 'off']), 0);
+  const levelOff = harness({ launchClaude: async () => { throw new Error('must not launch'); } });
+  assert.equal(await levelOff.run(['claude', '--filter-level', 'similar', '--filter', 'off']), 1);
+  assert.match(levelOff.err(), /--filter-level has no effect with --filter off/);
+  assert.equal(await harness().run(['--filter-level', 'loose']), 1);
+  const levelConfig = await mkdtemp(join(await realpath(tmpdir()), 'fonn-level-'));
+  try {
+    const levelEnv = { FONN_CONFIG_DIR: levelConfig };
+    const saved = harness({ env: levelEnv });
+    assert.equal(await saved.run(['--default-filter-level', 'similar']), 0);
+    assert.match(saved.out(), /Default filter level: similar/);
+    const usesSaved = harness({ env: levelEnv, launchCodex: async options => { assert.equal(options.filterLevel, 'similar'); return 0; } });
+    assert.equal(await usesSaved.run(['codex']), 0);
+    const overrides = harness({ env: levelEnv, launchClaude: async options => { assert.equal(options.filterLevel, 'strict'); return 0; } });
+    assert.equal(await overrides.run(['--filter-level', 'strict']), 0);
+    const savedOff = harness({ env: levelEnv, launchClaude: async options => { assert.equal(options.filterMode, 'off'); return 0; } });
+    assert.equal(await savedOff.run(['--filter', 'off']), 0);
+    assert.equal(await harness({ env: levelEnv }).run(['--default-filter-level', 'loose']), 1);
+  } finally { await rm(levelConfig, { recursive: true, force: true }); }
   const invalid = harness({ launchClaude: async () => { throw new Error('must not launch'); } });
   assert.equal(await invalid.run(['--subagents', 'always']), 1);
   assert.match(invalid.err(), /--subagents must be auto or off/);

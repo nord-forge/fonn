@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
-import type { ArtifactSlice, FilterMode, PermissionRequest, ProfileName, RunRecord, RunTaskOptions, TaskProfile } from '@nord-forge/fonn-core/contracts';
-import { createProfileStore, effortSchema, getDefaultConfigDirectory, modelSchema, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
+import type { ArtifactSlice, FilterLevel, FilterMode, PermissionRequest, ProfileName, RunRecord, RunTaskOptions, TaskProfile } from '@nord-forge/fonn-core/contracts';
+import { createProfileStore, effortSchema, filterLevelSchema, getDefaultConfigDirectory, modelSchema, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
 import { renderRun, runExitCode, terminalText, validateResult } from './render.js';
 
 export interface CliDependencies {
@@ -12,7 +12,7 @@ export interface CliDependencies {
   listRuns: (stateDirectory?: string) => Promise<RunRecord[]>;
   readRun: (taskId: string, stateDirectory?: string) => Promise<RunRecord>;
   readArtifact: (taskId: string, artifactId: string, options: { offset: number; limit: number }, stateDirectory?: string) => Promise<ArtifactSlice>;
-  launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; subagents?: 'auto' | 'off'; stateDirectory?: string; configDirectory?: string; args?: string[] }) => Promise<number>;
+  launchClaude: (options: { cwd: string; profile?: ProfileName; filterMode?: FilterMode; filterLevel?: FilterLevel; subagents?: 'auto' | 'off'; stateDirectory?: string; configDirectory?: string; args?: string[] }) => Promise<number>;
   launchCodex: CliDependencies['launchClaude'];
   runNativeHook: (event: unknown, stateDirectory: string, launchId: string) => Promise<unknown>;
   runCodexHook: CliDependencies['runNativeHook'];
@@ -31,10 +31,11 @@ export interface CliDependencies {
 const help = `Fonn — native Claude and Codex launchers, Claude Agent SDK tasks
 
 Usage:
-  fonn [--cwd <dir>] [--profile <name>] [--filter <mode>] [--subagents auto|off] [--state-dir <path>] [-- <native args>]
+  fonn [--cwd <dir>] [--profile <name>] [--filter <mode>] [--filter-level <level>] [--subagents auto|off] [--state-dir <path>] [-- <native args>]
   fonn claude [launcher options] [-- <claude args>]
   fonn codex [launcher options] [-- <codex args>]
   fonn --default [claude|codex] [--json]
+  fonn --default-filter-level [strict|standard|similar] [--json]
   fonn resume <launch-id> [--state-dir <path>]
   fonn profiles [--json]
   fonn help profiles | codex | resume
@@ -52,6 +53,7 @@ Run options:
   --budget <dollars>     Positive estimated API stop budget (default: 5; can overshoot)
   --max-turns <n>        Positive integer turn limit (default: 20)
   --filter <mode>        filter | observe | off (default: filter)
+  --filter-level <level> strict | standard | similar (default: saved level, initially standard)
   --subagents <mode>     Native only: auto | off (default: auto; delegation guidance)
   --state-dir <path>     Separate local run and raw-output storage
   --resume <task-id>     Resume an existing task with its saved profile
@@ -65,6 +67,11 @@ The claude and codex commands use their existing authentication and native contr
 Codex filtering and delegation guidance require /hooks review/trust; Fonn does not bypass it.
 Native auto delegation uses built-in agents with normal permissions; off removes Fonn guidance.
 Session-wide filtering also applies to subagent Bash observations, including Haiku.
+Filter levels: strict uses format adapters only (PHPUnit, Pest, PHPStan, tsc, pytest, Jest, Vitest).
+standard also keeps one copy and a count of 3+ identical adjacent lines from any command.
+similar also keeps the first and last of 4+ lines differing only in numbers or IDs.
+Lines mentioning errors, failures or warnings are never merged by similarity.
+Save a level with --default-filter-level; --filter-level overrides it for one launch or run.
 SDK budget, structured JSON, and turn-limit flags belong to run, which supports Claude only.
 SDK permission requests require an explicit interactive yes; noninteractive requests are denied.
 Artifact reads default to 4000 characters and are limited to 20000 per request.
@@ -100,7 +107,7 @@ SDK resume retains the saved profile snapshot, even after the profile is edited 
 const codexHelp = `Fonn Codex — ordinary interactive Codex with a saved profile
 
 Usage:
-  fonn codex [--cwd <dir>] [--profile <name>] [--filter filter|observe|off] [--subagents auto|off] [--state-dir <path>] [-- <codex args>]
+  fonn codex [--cwd <dir>] [--profile <name>] [--filter filter|observe|off] [--filter-level <level>] [--subagents auto|off] [--state-dir <path>] [-- <codex args>]
   fonn codex --profile codex:sol-medium
   fonn --profile codex:sol-medium
   fonn codex -- --search
@@ -112,7 +119,7 @@ The default Codex profile is codex:sol-medium when the global default belongs to
 Explicit --profile must name a Codex profile. With no command, the profile selects the provider.
 Filtering and automatic delegation guidance require Codex hook support and manual review/trust in /hooks.
 New or changed hooks remain inactive until trusted; Fonn does not bypass hook trust.
-Filter mode reduces recognized output; observe archives proposals without changing output;
+Filter mode reduces output at the chosen --filter-level; observe archives proposals without changing output;
 off disables output filtering; --filter off --subagents off registers no Fonn hooks.
 Subagents default to auto guidance using native agents; off removes that guidance.
 Subagent Bash output uses the same filter, subject to hook trust and supported formats.
@@ -164,6 +171,22 @@ function numeric(value: string | true | undefined, name: string, fallback: numbe
 function argumentCount(parsed: Parsed, count: number, usage: string): void {
   if (parsed.positionals.length !== count) throw new Error(`Expected ${usage}. Use --help for usage.`);
 }
+function parseLevel(value: string): FilterLevel {
+  const result = filterLevelSchema.safeParse(value);
+  if (!result.success) throw new Error('--filter-level must be strict, standard, or similar.');
+  return result.data;
+}
+/** An explicit --filter-level wins; otherwise the saved default applies. */
+async function filterLevelFor(parsed: Parsed, filterMode: string, configDirectory: string): Promise<FilterLevel | undefined> {
+  const explicit = stringFlag(parsed, 'filter-level');
+  if (explicit !== undefined) {
+    if (filterMode === 'off') throw new Error('--filter-level has no effect with --filter off. Choose filter or observe.');
+    return parseLevel(explicit);
+  }
+  // SDK resume keeps the task's saved level and must not depend on configuration.
+  if (parsed.flags.has('resume')) return undefined;
+  return createProfileStore(configDirectory).getDefaultFilterLevel();
+}
 function stringFlag(parsed: Parsed, name: string): string | undefined {
   return parsed.flags.get(name) as string | undefined;
 }
@@ -182,7 +205,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
   const json = (value: unknown) => writeStdout(JSON.stringify(value, (_key, item: unknown) => typeof item === 'string' ? redact(item) : item) + '\n');
   try {
     // Implicit native launches follow the profile provider; explicit commands pin it.
-    const autoLaunch = args.length === 0 || ['--cwd', '--profile', '--filter', '--subagents', '--state-dir', '--'].includes(args[0]!);
+    const autoLaunch = args.length === 0 || ['--cwd', '--profile', '--filter', '--filter-level', '--subagents', '--state-dir', '--'].includes(args[0]!);
     if (autoLaunch) {
       args = ['claude', ...args];
     }
@@ -205,6 +228,16 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       const resume = injected.resumeNativeLaunch ?? (await import('../native/resume.js')).resumeNativeLaunch;
       return await resume(parsed.positionals[0]!, { stateDirectory: stringFlag(parsed, 'state-dir') });
     }
+    if (command === '--default-filter-level') {
+      const parsed = parse(args.slice(1), ['json']);
+      if (parsed.positionals.length > 1) throw new Error('Expected --default-filter-level [strict|standard|similar] [--json].');
+      const name = parsed.positionals[0];
+      const store = createProfileStore(getDefaultConfigDirectory(env));
+      const level = name === undefined ? await store.getDefaultFilterLevel() : await store.setDefaultFilterLevel(parseLevel(name));
+      if (parsed.flags.has('json')) json({ filterLevel: level });
+      else stdout(`Default filter level: ${level}.\n`);
+      return 0;
+    }
     if (command === '--default') {
       const parsed = parse(args.slice(1), ['json']);
       if (parsed.positionals.length > 1) throw new Error('Expected --default [claude|codex] [--json].');
@@ -219,20 +252,21 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
     }
     if (command === 'claude' || command === 'codex') {
       const separator = args.indexOf('--');
-      const parsed = parse(args.slice(1, separator < 0 ? undefined : separator), ['cwd', 'profile', 'filter', 'subagents', 'state-dir']);
+      const parsed = parse(args.slice(1, separator < 0 ? undefined : separator), ['cwd', 'profile', 'filter', 'filter-level', 'subagents', 'state-dir']);
       argumentCount(parsed, 0, `${command} [options] [-- <native args>]`);
       const filterMode = stringFlag(parsed, 'filter') ?? 'filter';
       if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
       const subagents = stringFlag(parsed, 'subagents') ?? 'auto';
       if (subagents !== 'auto' && subagents !== 'off') throw new Error('--subagents must be auto or off.');
       const configDirectory = getDefaultConfigDirectory(env);
+      const filterLevel = await filterLevelFor(parsed, filterMode, configDirectory);
       const profile = autoLaunch
         ? await resolveProfile(stringFlag(parsed, 'profile'), configDirectory)
         : await resolveProfileForProvider(command, stringFlag(parsed, 'profile'), configDirectory);
       const launch = profile.provider === 'codex'
         ? injected.launchCodex ?? (await import('../native/codex.js')).launchCodex
         : injected.launchClaude ?? (await import('../native/index.js')).launchClaude;
-      return await launch({ cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile: profile.name, filterMode: filterMode as FilterMode, subagents, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
+      return await launch({ cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile: profile.name, filterMode: filterMode as FilterMode, filterLevel, subagents, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
     }
     if (command === 'codex-hook') {
       const parsed = parse(args.slice(1), []);
@@ -310,7 +344,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       return nodeSupported && report.apiKeyPresent ? 0 : 1;
     }
     if (command === 'run') {
-      const parsed = parse(args.slice(1), ['cwd', 'profile', 'budget', 'max-turns', 'filter', 'state-dir', 'resume', 'json']);
+      const parsed = parse(args.slice(1), ['cwd', 'profile', 'budget', 'max-turns', 'filter', 'filter-level', 'state-dir', 'resume', 'json']);
       argumentCount(parsed, 1, 'run <prompt>');
       if (!parsed.positionals[0]!.trim()) throw new Error('The prompt must not be empty.');
       const configDirectory = getDefaultConfigDirectory(env);
@@ -322,6 +356,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       }
       const filterMode = stringFlag(parsed, 'filter') ?? 'filter';
       if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
+      const filterLevel = await filterLevelFor(parsed, filterMode, configDirectory);
       const budgetUsd = numeric(parsed.flags.get('budget'), '--budget', 5);
       const maxTurns = numeric(parsed.flags.get('max-turns'), '--max-turns', 20, true);
       const abort = new AbortController();
@@ -355,7 +390,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
           return answers;
         };
         const runTask = injected.runTask ?? (await import('@nord-forge/fonn-core/runtime')).runTask;
-        const record = await runTask({ prompt: parsed.positionals[0]!, cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile, budgetUsd, maxTurns, filterMode: filterMode as RunTaskOptions['filterMode'], stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, resumeTaskId: stringFlag(parsed, 'resume'), signal: abort.signal, approveTool, answerQuestions, onEvent: event => stderr(`${event.type}: ${event.message}`) });
+        const record = await runTask({ prompt: parsed.positionals[0]!, cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile, budgetUsd, maxTurns, filterMode: filterMode as RunTaskOptions['filterMode'], ...(filterLevel === undefined ? {} : { filterLevel }), stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, resumeTaskId: stringFlag(parsed, 'resume'), signal: abort.signal, approveTool, answerQuestions, onEvent: event => stderr(`${event.type}: ${event.message}`) });
         validateResult(record);
         if (parsed.flags.has('json')) json(record); else stdout(renderRun(record) + '\n');
         return runExitCode(record);

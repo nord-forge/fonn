@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.4, pytest-8.3.3, pluggy-1.5.0
+rootdir: /app
+configfile: pyproject.toml
+collected 412 items
+
+tests/test_api.py ............................................................ [ 14%]
+............................................................             [ 29%]
+tests/test_billing.py ....................F....................................... [ 43%]
+....................................                                     [ 52%]
+tests/test_models.py ............................................................ [ 66%]
+............................................................             [ 81%]
+....................                                                     [ 86%]
+tests/test_utils.py ..........s............................................. [100%]
+
+=================================== FAILURES ===================================
+_____________________________ test_zero_limit _______________________________
+
+    def test_zero_limit():
+>       assert resolve_limit({'limit': 0}) == 0
+E       assert 20 == 0
+E        +  where 20 = resolve_limit({'limit': 0})
+
+tests/test_billing.py:42: AssertionError
+=============================== warnings summary ===============================
+tests/test_api.py::test_legacy_client
+  /app/app/client.py:12: DeprecationWarning: legacy client is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_billing.py::test_zero_limit - assert 20 == 0
+============= 1 failed, 410 passed, 1 skipped, 1 warning in 6.21s =============

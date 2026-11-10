@@ -56,6 +56,7 @@ async function verifyCodex(executable: string): Promise<void> {
 export async function launchCodex(options: NativeLaunchOptions): Promise<number> {
   const mode = z.enum(['filter', 'observe', 'off']).parse(options.filterMode ?? 'filter');
   const subagents = z.enum(['auto', 'off']).parse(options.subagents ?? 'auto');
+  const level = z.enum(['strict', 'standard', 'similar']).parse(options.filterLevel ?? 'standard');
   const args = validateArguments(options.args ?? []);
   const resumeArgs = nativeResumeArguments('codex', options.resume);
   const profile = await resolveNativeProfile(options, 'codex');
@@ -75,7 +76,7 @@ export async function launchCodex(options: NativeLaunchOptions): Promise<number>
   entrypoint = path.resolve(entrypoint);
   const launchId = randomUUID();
   const location = await launchDirectory(options.stateDirectory, launchId, true);
-  const record: LaunchRecord = { schemaVersion: 1, launchId, provider: 'codex', cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, subagents, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
+  const record: LaunchRecord = { schemaVersion: 1, launchId, provider: 'codex', cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, filterLevel: level, subagents, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
   const metadata = path.join(location.directory, 'launch.json');
   await atomicJson(metadata, record);
   const launchArgs = ['--model', profile.model, '-c', `model_reasoning_effort=${JSON.stringify(profile.effort)}`];
@@ -145,7 +146,7 @@ export async function runCodexHook(event: unknown, stateDirectory: string, launc
     cwd: typeof input.cwd === 'string' ? input.cwd : location.record.cwd,
   };
   const filter = createOutputFilter({
-    store: createArtifactStore(path.join(location.directory, 'artifacts')), mode: location.record.filterMode,
+    store: createArtifactStore(path.join(location.directory, 'artifacts')), mode: location.record.filterMode, level: location.record.filterLevel ?? 'strict',
     recoveryHint: artifactId => 'Recover the original tool response with: ' + [process.execPath, location.record.hookEntrypoint, 'native-output', launchId, artifactId, '--state-dir', location.root].map(shellQuote).join(' '),
   });
   // Unknown/structured responses and unrecognized command output pass through.

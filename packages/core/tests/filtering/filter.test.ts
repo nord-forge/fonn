@@ -90,7 +90,7 @@ test('unknown commands, wrappers, formats, source/diff and cursor output remain 
     assert.equal(result.response, text);
     assert.equal(result.decision.status, 'unchanged');
   }
-  for (const value of ['diff --git a/a.ts b/a.ts\n+some source\n', 'unrecognized output\n'.repeat(100), '\u001b[31m' + text, text.replace(/\n/g, '\r')]) {
+  for (const value of ['diff --git a/a.ts b/a.ts\n+some source\n', Array.from({ length: 100 }, (_, i) => `unrecognized output ${i}\n`).join(''), '\u001b[31m' + text, text.replace(/\n/g, '\r')]) {
     assert.equal((await (await filter()).apply(observation('vendor/bin/phpunit', value))).response, value);
   }
 });
@@ -174,4 +174,55 @@ test('custom recovery hints use the archived ID and throwing hints fail open', a
   const failed = await createOutputFilter({ ...filterOptions, recoveryHint() { throw new Error('failed'); } }).apply(observation('vendor/bin/phpunit', response));
   assert.equal(failed.response, response);
   assert.equal(failed.decision.status, 'unchanged');
+});
+
+test('levels: strict keeps adapters only, standard collapses identical lines, similar keeps problem lines', async () => {
+  const heartbeat = Array.from({ length: 40 }, (_, i) => `PROGRESS worker=${i % 4} status=healthy heartbeat=ok`);
+  const text = ['start', ...Array(30).fill('waiting for lock'), 'ok', 'ok', ...heartbeat, 'ERROR worker=2 lost', 'ERROR worker=3 lost', 'done', ''].join('\n');
+  const command = 'node scripts/worker.js | tee log.txt';
+
+  const generic = await (await filter()).apply(observation(command, text));
+  assert.equal(generic.decision.adapter, 'repeated-lines');
+  assert.equal(generic.decision.removedLines, 29);
+  assert.match(generic.response as string, /^start\nwaiting for lock\n\[fonn: identical line occurred 30 times; 29 duplicate copies archived\]\nok\nok\nPROGRESS worker=0/);
+  assert.match(generic.response as string, /PROGRESS worker=3 status=healthy heartbeat=ok\nERROR worker=2 lost\nERROR worker=3 lost\ndone\n/);
+
+  const strict = await createOutputFilter({ store: await store(), mode: 'filter', level: 'strict', minimumCharacters: 0, minimumSavingsCharacters: 0 }).apply(observation(command, text));
+  assert.equal(strict.response, text);
+  assert.equal(strict.decision.reason, 'unrecognized_format');
+
+  const similar = await createOutputFilter({ store: await store(), mode: 'filter', level: 'similar', minimumCharacters: 0, minimumSavingsCharacters: 0 }).apply(observation(command, text));
+  assert.equal(similar.decision.adapter, 'similar-lines');
+  assert.equal(similar.decision.removedLines, 29 + 38);
+  const lines = (similar.response as string).split('\n');
+  assert.deepEqual(lines.slice(0, 7), ['start', 'waiting for lock', '[fonn: identical line occurred 30 times; 29 duplicate copies archived]', 'ok', 'ok', heartbeat[0], '[fonn: similar lines omitted; 38 lines between these differ only in numbers or IDs; originals archived]']);
+  assert.deepEqual(lines.slice(7, 11), [heartbeat[39], 'ERROR worker=2 lost', 'ERROR worker=3 lost', 'done']);
+
+  // Already reduced output is never reduced again.
+  const again = await createOutputFilter({ store: await store(), mode: 'filter', level: 'similar', minimumCharacters: 0, minimumSavingsCharacters: 0 }).apply(observation(command, similar.response));
+  assert.equal(again.decision.reason, 'already_filtered');
+});
+
+test('pytest, Jest and Vitest drop only certain passes once the runner summary is present', async () => {
+  const cases = [
+    { fixture: 'pytest-failure', commands: ['pytest', 'python -m pytest', '.venv/bin/pytest'], adapter: 'pytest', removed: 6,
+      kept: ['tests/test_billing.py ....................F', 'tests/test_utils.py ..........s', 'E       assert 20 == 0', 'DeprecationWarning', 'FAILED tests/test_billing.py::test_zero_limit', '1 failed, 410 passed, 1 skipped, 1 warning'] },
+    { fixture: 'jest-failure', commands: ['npx jest', 'npm test', 'pnpm run test'], adapter: 'jest', removed: 33,
+      kept: ['FAIL src/billing/limit.test.ts', '✕ keeps zero', '○ skipped handles negative values', 'Received: 20', 'console.warn', 'Tests:       1 failed, 1 skipped, 286 passed, 288 total'] },
+    { fixture: 'vitest-failure', commands: ['npx vitest run', 'yarn test'], adapter: 'vitest', removed: 31,
+      kept: ['❯ src/billing/limit.test.ts (3 tests | 1 failed)', '× resolveLimit > keeps zero', '↓ resolveLimit > handles negative values', '+ 20', 'Tests  1 failed | 1 skipped | 286 passed (288)'] },
+  ];
+  for (const { fixture: name, commands, adapter, removed, kept } of cases) {
+    const text = await fixture(name);
+    for (const command of commands) {
+      const result = await (await filter()).apply(observation(command, text));
+      assert.equal(result.decision.adapter, adapter, `${name} via ${command}`);
+      assert.equal(result.decision.removedLines, removed, `${name} via ${command}`);
+      for (const line of kept) assert.ok((result.response as string).includes(line), `${name} kept ${line}`);
+    }
+    // Without the runner's own summary nothing is removed by the adapter.
+    const truncated = text.split('\n').filter((line) => !/^(?:Test Suites:|\s*Test Files|=+ test session starts)/.test(line)).join('\n');
+    const result = await createOutputFilter({ store: await store(), mode: 'filter', level: 'strict', minimumCharacters: 0, minimumSavingsCharacters: 0 }).apply(observation(commands[0]!, truncated));
+    assert.equal(result.response, truncated, `${name} without summary`);
+  }
 });
