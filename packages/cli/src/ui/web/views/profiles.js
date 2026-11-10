@@ -163,12 +163,16 @@ function profileForm({ profile, start, models, onSave, cancel }) {
 }
 
 // Per-browser convenience only; the page works the same without storage.
-const OPEN_KEY = 'fonn-ui:built-in-profiles-open';
-function readOpen() {
-  try { return localStorage.getItem(OPEN_KEY) === 'true'; } catch { return false; }
+// The built-in section is closed by default; its agent groups are open.
+const openKey = (part) => `fonn-ui:built-in-profiles-open${part ? `:${part}` : ''}`;
+function readOpen(part, fallback = false) {
+  try {
+    const value = localStorage.getItem(openKey(part));
+    return value === null ? fallback : value === 'true';
+  } catch { return fallback; }
 }
-function writeOpen(open) {
-  try { localStorage.setItem(OPEN_KEY, String(open)); } catch { /* storage unavailable */ }
+function writeOpen(part, open) {
+  try { localStorage.setItem(openKey(part), String(open)); } catch { /* storage unavailable */ }
 }
 
 export async function profilesView(target, signal) {
@@ -261,7 +265,7 @@ export async function profilesView(target, signal) {
       // remembers being opened.
       const builtIn = el('section', 'card');
       const details = el('details', 'collapsible');
-      details.open = readOpen();
+      details.open = readOpen('');
       const builtInHeading = el('summary');
       const count = resource.profiles.filter((profile) => profile.builtIn).length;
       builtInHeading.append(el('h2', '', 'Built-in profiles'), el('span', 'collapsible-count', `${count}`));
@@ -271,15 +275,22 @@ export async function profilesView(target, signal) {
         if (!group.length) continue;
         const groupList = el('ul', 'profile-list');
         groupList.append(...group.map(row));
-        details.append(el('h3', 'profile-group', label), groupList);
+        const groupDetails = el('details', 'collapsible collapsible-group');
+        groupDetails.open = readOpen(key, true);
+        const groupHeading = el('summary');
+        groupHeading.append(el('h3', 'profile-group', label), el('span', 'collapsible-count', `${group.length}`));
+        groupDetails.append(groupHeading, groupList);
+        groupDetails.addEventListener('toggle', () => writeOpen(key, groupDetails.open));
+        details.append(groupDetails);
       }
-      details.addEventListener('toggle', () => writeOpen(details.open));
+      details.addEventListener('toggle', (event) => { if (event.target === details) writeOpen('', details.open); });
       builtIn.append(details);
 
       content.replaceChildren(defaults, own, builtIn);
       if (message) status.show(message);
-      const focus = focusName && content.querySelector(`[data-profile="${CSS.escape(focusName)}"] .profile-name`);
-      if (focus) focus.closest('details')?.setAttribute('open', '');
+      const focus = focusName ? content.querySelector(`[data-profile="${CSS.escape(focusName)}"] .profile-name`) : null;
+      // Open every section around a row that needs focus.
+      for (let section = focus?.closest('details'); section; section = section.parentElement?.closest('details')) section.open = true;
       if (focus) { focus.tabIndex = -1; focus.focus(); }
     }
 

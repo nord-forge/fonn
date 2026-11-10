@@ -252,7 +252,7 @@ summary { width: fit-content; max-width: 100%; padding: 6px 0; color: var(--acce
 .reader-readable + .button, .reader-readable ~ button { justify-self: start; }
 
 /* Editors share the existing palette and stay inside the card at phone widths. */
-input, select, textarea {
+input, select, textarea, .dropdown {
   display: block;
   width: 100%;
   min-width: 0;
@@ -267,11 +267,11 @@ input, select, textarea {
 }
 textarea { resize: vertical; font: 0.8125rem/1.7 var(--mono); }
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
-input:disabled, select:disabled, textarea:disabled { opacity: 0.7; }
+input:disabled, select:disabled, textarea:disabled, .dropdown:disabled { opacity: 0.7; }
 [aria-invalid="true"] { border-color: var(--stop); }
 label { display: block; font-size: 0.8125rem; font-weight: 600; overflow-wrap: anywhere; }
 .form-field { min-width: 0; margin: 18px 0; }
-.form-field input, .form-field select, .form-field textarea { margin-top: 7px; }
+.form-field input, .form-field select, .form-field textarea, .form-field .dropdown { margin-top: 7px; }
 .field-hint { margin-top: 4px; color: var(--muted); font-size: 0.75rem; overflow-wrap: anywhere; }
 .field-error { color: var(--stop); font-size: 0.8125rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .field-error:not(:empty), .form-feedback:not(:empty) { margin-top: 8px; }
@@ -375,6 +375,30 @@ label { display: block; font-size: 0.8125rem; font-weight: 600; overflow-wrap: a
 .known-project-name { font-weight: 600; }
 .known-project-meta { margin: 4px 0 0; color: var(--muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
 
+/* Agent groups inside the built-in profiles */
+.collapsible-group { margin-top: 18px; }
+.collapsible-group > summary { padding: 4px 0; }
+.collapsible-group > summary .profile-group { margin: 0; }
+.collapsible-group > .profile-list { margin-top: 4px; }
+
+/* Dropdown (dropdown.js), after the docs site's theme menu */
+.dropdown { display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; cursor: pointer; }
+.dropdown:hover:not(:disabled), .dropdown[aria-expanded="true"] { border-color: var(--accent); background: var(--bg); color: var(--text); }
+.dropdown:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dropdown-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.dropdown-label.is-placeholder { color: var(--muted); }
+.dropdown-chevron { flex: none; color: var(--muted); transition: transform 0.15s ease; }
+.dropdown[aria-expanded="true"] .dropdown-chevron { transform: rotate(180deg); }
+.dropdown-menu { position: fixed; inset: auto; margin: 0; padding: 6px; overflow-y: auto; list-style: none; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); box-shadow: 0 16px 40px rgb(0 0 0 / 30%); }
+.dropdown-menu:focus { outline: none; }
+.dropdown-menu:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dropdown-menu [role="option"] { display: grid; grid-template-columns: 1fr 16px; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; border-radius: 7px; font-size: 0.875rem; cursor: pointer; }
+.dropdown-menu [role="option"].is-active { background: var(--accent-soft); color: var(--accent-strong); }
+.dropdown-option-text { min-width: 0; overflow-wrap: anywhere; }
+.dropdown-check { visibility: hidden; color: var(--accent); }
+.dropdown-menu [aria-selected="true"] .dropdown-check { visibility: visible; }
+.dropdown-menu [aria-selected="true"] { font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .dropdown-chevron { transition: none; } }
 /* Project page: tabs and a short summary */
 .project-alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 18px; }
 .project-alert p { margin: 0; }
