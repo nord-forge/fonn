@@ -102,7 +102,7 @@ The repository root is a private workspace coordinator; that flag does not make 
 
 ## Homebrew CLI cask
 
-The repository includes CLI release preparation and a cask for macOS. **Installation is not available until the first GitHub release archive and matching checked-in cask have been published.** The following commands are for that future published state:
+Fonn [0.1.0](https://github.com/nord-forge/fonn/releases/tag/v0.1.0) is released, with a cask for macOS in this repository. Install it with:
 
 ```sh
 brew tap nord-forge/fonn https://github.com/nord-forge/fonn
