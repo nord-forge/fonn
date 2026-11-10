@@ -1,3 +1,4 @@
+import type { TaskProfile } from '@nord-forge/fonn-core';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
 import { access, lstat, realpath } from 'node:fs/promises';
@@ -52,6 +53,17 @@ async function verifyCodex(executable: string): Promise<void> {
   }
 }
 
+/**
+ * Codex arguments for where the model runs. Local models use Codex's own
+ * --oss support; a named provider must exist in the user's Codex config,
+ * which keeps its credentials. Fonn never adds or reads provider keys.
+ */
+export function sourceArguments(source: TaskProfile['source']): string[] {
+  if (source === undefined) return [];
+  if (source === 'ollama' || source === 'lmstudio') return ['--oss', '--local-provider', source];
+  return ['-c', `model_provider=${JSON.stringify(source.slice('provider:'.length))}`];
+}
+
 /** Starts the user's actual Codex with its existing auth, settings, and permission flow. */
 export async function launchCodex(options: NativeLaunchOptions): Promise<number> {
   const mode = z.enum(['filter', 'observe', 'off']).parse(options.filterMode ?? 'filter');
@@ -79,7 +91,7 @@ export async function launchCodex(options: NativeLaunchOptions): Promise<number>
   const record: LaunchRecord = { schemaVersion: 1, launchId, provider: 'codex', cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, filterLevel: level, subagents, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
   const metadata = path.join(location.directory, 'launch.json');
   await atomicJson(metadata, record);
-  const launchArgs = ['--model', profile.model, '-c', `model_reasoning_effort=${JSON.stringify(profile.effort)}`];
+  const launchArgs = [...sourceArguments(profile.source), '--model', profile.model, '-c', `model_reasoning_effort=${JSON.stringify(profile.effort)}`];
   if (mode !== 'off' || subagents === 'auto') {
     // Keep the exact definitions stable so normal /hooks trust can be reused.
     // Codex merges hooks from active layers; do not rewrite user/project files.

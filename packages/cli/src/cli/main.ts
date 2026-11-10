@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import type { ArtifactSlice, FilterLevel, FilterMode, PermissionRequest, ProfileName, ProfileProvider, RunRecord, RunTaskOptions, TaskProfile } from '@nord-forge/fonn-core/contracts';
-import { createProfileStore, effortSchema, filterLevelSchema, getDefaultConfigDirectory, modelSchema, profiles as builtInProfiles, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
+import { createProfileStore, modelSourceSchema, effortSchema, filterLevelSchema, getDefaultConfigDirectory, modelSchema, profiles as builtInProfiles, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
 import { findProjectRoot, LOCAL_SETTINGS_FILE, projectSettingsSchema, projectSourcedValues, readProjectSettings, resolveSettings, SETTING_KEYS, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, type ResolvedSettings, type SettingKey, type SettingScope } from '@nord-forge/fonn-core/settings';
 import { renderRun, runExitCode, terminalText, validateResult } from './render.js';
 
@@ -85,8 +85,8 @@ const profilesHelp = `Fonn profiles — saved provider, model and effort choices
 Usage:
   fonn profiles [list] [--json]
   fonn profiles show <name> [--json]
-  fonn profiles create <name> [--provider claude|codex] --model <model> --effort <level> [--json]
-  fonn profiles edit <name> [--provider claude|codex] [--model <model>] [--effort <level>] [--json]
+  fonn profiles create <name> [--provider claude|codex] --model <model> --effort <level> [--source <source>] [--json]
+  fonn profiles edit <name> [--provider claude|codex] [--model <model>] [--effort <level>] [--source <source>] [--json]
   fonn profiles delete <name> [--json]
   fonn profiles default [<name>] [--json]
   fonn help profiles | profiles --help
@@ -98,6 +98,11 @@ Built-ins: claude:fable-medium and claude:mythos-medium (medium effort).
 Fable/Mythos 5.2 needs Claude Code 2.1.321+ and upstream model access.
 Mythos requires an eligible verified account; Fonn does not grant access.
 Codex models: gpt-* or o-series model IDs, for example gpt-6.1-sol.
+--source runs a Codex profile's model somewhere other than OpenAI:
+  ollama or lmstudio   a local model through codex --oss, such as qwen3-coder:30b
+  provider:<name>      a model provider you configured in ~/.codex/config.toml
+  openai               (edit only) go back to OpenAI
+With a source, the model is the name that source uses. Credentials stay in Codex.
 Provider/model pairs are validated for syntax; model availability is not verified.
 Effort: low | medium | high | xhigh | max. Model support is not verified.
 Edit requires at least one change. Built-in profiles cannot be edited or deleted.
@@ -115,6 +120,7 @@ Usage:
   fonn --profile codex:sol-medium
   fonn codex -- --search
   fonn profiles create my-sol --provider codex --model gpt-6.1-sol --effort high
+  fonn profiles create qwen-local --provider codex --model qwen3-coder:30b --effort medium --source ollama
 
 Install and authenticate Codex separately. Existing Codex authentication, permissions,
 project settings and terminal controls remain active. No SDK budgets or usage accounting apply.
@@ -467,12 +473,12 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
     if (command === 'profiles') {
       const action = args[1] && !args[1].startsWith('--') ? args[1] : 'list';
       if (!['list', 'show', 'create', 'edit', 'delete', 'default'].includes(action)) throw new Error(`Unknown profiles command ${action}. Use fonn help profiles for usage.`);
-      const parsed = parse(args.slice(args[1] === action ? 2 : 1), action === 'create' || action === 'edit' ? ['provider', 'model', 'effort', 'json'] : ['json']);
+      const parsed = parse(args.slice(args[1] === action ? 2 : 1), action === 'create' || action === 'edit' ? ['provider', 'model', 'effort', 'source', 'json'] : ['json']);
       if (action === 'default') {
         if (parsed.positionals.length > 1) throw new Error('Expected profiles default [<name>]. Use fonn help profiles for usage.');
       } else argumentCount(parsed, action === 'list' ? 0 : 1, action === 'list' ? 'profiles list' : `profiles ${action} <name>`);
       const store = createProfileStore(getDefaultConfigDirectory(env));
-      const renderProfile = (profile: TaskProfile) => `${terminalText(profile.name)} [${terminalText(profile.provider ?? 'claude')}]: ${terminalText(profile.model)}, effort ${terminalText(profile.effort)}`;
+      const renderProfile = (profile: TaskProfile) => `${terminalText(profile.name)} [${terminalText(profile.provider ?? 'claude')}]: ${terminalText(profile.model)}, effort ${terminalText(profile.effort)}${profile.source ? `, via ${terminalText(profile.source)}` : ''}`;
       if (action === 'list') {
         const listing = await store.list();
         if (parsed.flags.has('json')) json(listing.profiles);
@@ -489,12 +495,14 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       let profile: TaskProfile;
       if (action === 'create') {
         if (!parsed.flags.has('model') || !parsed.flags.has('effort')) throw new Error('profiles create requires --model and --effort.');
-        profile = await store.create(taskProfileSchema.parse({ name, ...(parsed.flags.has('provider') ? { provider: providerSchema.parse(stringFlag(parsed, 'provider')) } : {}), model: stringFlag(parsed, 'model'), effort: stringFlag(parsed, 'effort') }));
+        profile = await store.create(taskProfileSchema.parse({ name, ...(parsed.flags.has('provider') ? { provider: providerSchema.parse(stringFlag(parsed, 'provider')) } : {}), model: stringFlag(parsed, 'model'), effort: stringFlag(parsed, 'effort'), ...(parsed.flags.has('source') ? { source: stringFlag(parsed, 'source') } : {}) }));
       } else if (action === 'edit') {
-        if (!parsed.flags.has('provider') && !parsed.flags.has('model') && !parsed.flags.has('effort')) throw new Error('profiles edit requires --provider, --model or --effort.');
+        if (!['provider', 'model', 'effort', 'source'].some((flag) => parsed.flags.has(flag))) throw new Error('profiles edit requires --provider, --model, --effort or --source.');
         profile = await store.edit(name!, {
           ...(parsed.flags.has('provider') ? { provider: providerSchema.parse(stringFlag(parsed, 'provider')) } : {}),
-          ...(parsed.flags.has('model') ? { model: modelSchema.parse(stringFlag(parsed, 'model')) } : {}),
+          ...(parsed.flags.has('model') ? { model: stringFlag(parsed, 'model') } : {}),
+          // --source openai goes back to the agent's own service.
+          ...(parsed.flags.has('source') ? { source: stringFlag(parsed, 'source') === 'openai' ? null : modelSourceSchema.parse(stringFlag(parsed, 'source')) } : {}),
           ...(parsed.flags.has('effort') ? { effort: effortSchema.parse(stringFlag(parsed, 'effort')) } : {}),
         });
       } else if (action === 'default' && name !== undefined) profile = await store.setDefault(name);

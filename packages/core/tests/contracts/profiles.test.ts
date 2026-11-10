@@ -202,3 +202,18 @@ test('symlink paths and nonregular files are rejected; concurrent mutations cann
     assert.equal(await readFile(lock, 'utf8'), 'owner from an interrupted writer');
   } finally { await rm(temporary, { recursive: true, force: true }); }
 });
+
+test('model sources are Codex only, take open model names and only name a Codex provider', () => {
+  const base = { name: 'open', provider: 'codex' as const, effort: 'medium' as const };
+  for (const [source, model] of [['ollama', 'qwen3-coder:30b'], ['lmstudio', 'openai/gpt-oss-20b'], ['provider:mistral', 'devstral-small-2'], ['provider:open_router', 'deepseek/deepseek-chat']]) {
+    assert.ok(taskProfileSchema.safeParse({ ...base, source, model }).success, `${source} ${model}`);
+  }
+  assert.equal(taskProfileSchema.safeParse({ ...base, model: 'qwen3-coder:30b' }).success, false, 'an open model needs a source');
+  assert.equal(taskProfileSchema.safeParse({ ...base, provider: 'claude', source: 'ollama', model: 'qwen3' }).success, false, 'Claude profiles have no source');
+  for (const source of ['provider:', 'provider:bad name', 'provider:a"b', 'vllm', 'https://example.test']) {
+    assert.equal(taskProfileSchema.safeParse({ ...base, source, model: 'qwen3' }).success, false, source);
+  }
+  for (const model of ['-flag', 'qwen 3', 'a'.repeat(129), '']) {
+    assert.equal(taskProfileSchema.safeParse({ ...base, source: 'ollama', model }).success, false, model);
+  }
+});
