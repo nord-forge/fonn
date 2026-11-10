@@ -159,7 +159,10 @@ test('native hook reduces known output and offers a working native recovery comm
   assert.match(guidance, /meaningful, independent scoped work/);
   assert.match(guidance, /at most two workers and one level/);
   assert.match(guidance, /retain this session's Fonn filter mode and bounded recovery, regardless of model/);
-  assert.match(guidance, /Never spawn headless fonn, claude, or codex subprocess workers, or widen permissions\/allowlists/);
+  assert.match(guidance, /do not start fonn, claude, or codex CLI processes on your own initiative/);
+  assert.match(guidance, /When the user explicitly asks you to work with another agent CLI/);
+  assert.match(guidance, /normal approval prompt/);
+  assert.match(guidance, /Never widen permissions\/allowlists to retry rejected delegation/);
   assert.deepEqual(await runNativeHook({ ...lifecycle, hook_event_name: 'SessionEnd' }, f.state, id), {});
   assert.deepEqual(await nativeDelegationContext(parentEvent, f.state, id, 'codex'), {});
   assert.deepEqual(await nativeDelegationContext(null, f.state, id, 'claude'), {});
@@ -176,7 +179,7 @@ test('native hook reduces known output and offers a working native recovery comm
   assert.match(worker.hookSpecificOutput.additionalContext, /Fonn filtering mode: filter/);
   assert.match(worker.hookSpecificOutput.additionalContext, /every native worker and model/);
   assert.match(worker.hookSpecificOutput.additionalContext, /bounded native-output recovery/);
-  assert.match(worker.hookSpecificOutput.additionalContext, /Do not disable filtering, start external\/headless workers, or delegate further/);
+  assert.match(worker.hookSpecificOutput.additionalContext, /Do not disable filtering or delegate further, and do not start other agent CLIs unless the user's request explicitly calls for one/);
   delete record.subagents;
   await writeFile(metadata, JSON.stringify(record));
   assert.deepEqual(await runNativeHook(parentEvent, f.state, id), {});

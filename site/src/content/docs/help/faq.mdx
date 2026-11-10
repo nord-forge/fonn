@@ -25,6 +25,10 @@ Under `~/.local/state/fonn` by default, or a `--state-dir` you choose. They can 
 
 Yes. Native workers inherit the session hooks, so their supported Bash observations go through the same filter for every model. `--filter off` turns it off for parent and workers.
 
+## Can Claude call Codex, or the other way round?
+
+Yes, when you ask for it. Fonn's guidance asks agents to prefer their built-in subagents and not to start other agent CLIs on their own initiative. When you explicitly ask, for example "hand this review to Codex", the agent may run `codex exec "<task>"` as an ordinary command through the normal approval prompt. That CLI keeps its own login and billing. `fonn codex` and `fonn claude` open interactive terminals, so start those yourself when you want Fonn's profiles and filtering for the second agent. See [working with another agent CLI](/reference/subagents/#working-with-another-agent-cli-on-request).
+
 ## Is there a GUI or npm package?
 
 A desktop app is planned but not built. The workspace packages are not published to npm as a supported install route.
