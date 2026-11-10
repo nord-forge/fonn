@@ -19,6 +19,11 @@ export interface TaskProfile {
   name: ProfileName;
   model: string;
   effort: ProfileEffort;
+  /**
+   * Codex only. Absent: OpenAI. 'ollama' or 'lmstudio': a local model through
+   * `codex --oss`. 'provider:<name>': a model provider from the user's Codex config.
+   */
+  source?: string;
 }
 
 export interface ToolObservation {

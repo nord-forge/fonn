@@ -11,7 +11,7 @@ fonn codex --filter observe
 fonn codex --filter off -- --search
 ```
 
-`fonn codex` uses the configured default if it is a Codex profile, otherwise the built-in `codex:sol-medium`. An explicit `--profile` must name a Codex profile. With no command, Fonn follows the selected or default profile's provider. Fonn profiles are separate from Codex's own configuration profiles; see [profiles](profiles.md).
+`fonn codex` uses the configured default if it is a Codex profile, otherwise the built-in `codex:sol-medium`. An explicit `--profile` must name a Codex profile. With no command, Fonn follows the selected or default profile's provider. Fonn profiles are separate from Codex's own configuration profiles; see [profiles](profiles.md). To run a local or hosted open model through Codex, give the profile a source; see [open models](open-models.md).
 
 Pass supported interactive Codex arguments after `--`: one quoted prompt, help/version, `--no-alt-screen`, `--no-daemon`, `--strict-config`, `--search`, and `--image`/`-i` with a path. Resume/fork and management commands currently require plain Codex. Fonn rejects arguments that override its chosen model, effort, hook configuration or permission policy. Use plain `codex` for management, cloud or noninteractive commands. Fonn does not add approval bypasses, automatically approve tools, or change your global Codex settings.
 

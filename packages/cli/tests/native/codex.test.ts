@@ -238,3 +238,23 @@ test('Codex off/observe/filter preserve originals, diagnostics, unknown response
   // Claude also rejects a Codex-only profile before starting a process.
   await assert.rejects(launchClaude({ ...options, profile: 'codex:sol-medium' }), /provider|claude|codex/i);
 });
+
+test('Codex profiles with a model source run local models through --oss or a named Codex provider', async t => {
+  const f = await fixture(t);
+  const profiles = createProfileStore(f.config);
+  const options = { cwd: f.cwd, stateDirectory: f.state, configDirectory: f.config, executable: f.executable, hookEntrypoint: f.hookEntrypoint };
+  await profiles.create({ name: 'qwen-local', provider: 'codex', model: 'qwen3-coder:30b', effort: 'medium', source: 'ollama' });
+  await profiles.create({ name: 'devstral', provider: 'codex', model: 'mistralai/devstral-small', effort: 'low', source: 'provider:mistral' });
+
+  assert.equal(await launchCodex({ ...options, profile: 'qwen-local' }), 7);
+  let launched = JSON.parse(await readFile(f.capture, 'utf8'));
+  assert.deepEqual(launched.args.slice(0, 7), ['--oss', '--local-provider', 'ollama', '--model', 'qwen3-coder:30b', '-c', 'model_reasoning_effort="medium"']);
+
+  assert.equal(await launchCodex({ ...options, profile: 'devstral' }), 7);
+  launched = JSON.parse(await readFile(f.capture, 'utf8'));
+  assert.deepEqual(launched.args.slice(0, 6), ['-c', 'model_provider="mistral"', '--model', 'mistralai/devstral-small', '-c', 'model_reasoning_effort="low"']);
+
+  // Editing back to OpenAI drops the source, and then the model must be an OpenAI one again.
+  await assert.rejects(profiles.edit('devstral', { source: null }), /GPT or o-series/);
+  assert.equal((await profiles.edit('devstral', { source: null, model: 'gpt-6.1-sol' })).source, undefined);
+});

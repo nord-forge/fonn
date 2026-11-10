@@ -41,10 +41,34 @@ const pinnedClaudeAliases: Readonly<Record<string, string>> = Object.freeze({ fa
 /** Syntactic validation only; model availability and supported efforts are checked upstream. */
 export const modelSchema = z.string().max(128).refine((model) => claudeModelPattern.test(model) || codexModelPattern.test(model), 'Expected a Claude model ID or alias, GPT model ID, or o-series model ID')
   .transform(model => Object.hasOwn(pinnedClaudeAliases, model) ? pinnedClaudeAliases[model]! : model);
+/**
+ * Where a Codex profile's model runs. Absent: OpenAI, through the user's
+ * Codex sign-in. `ollama` or `lmstudio`: a local model through `codex --oss`.
+ * `provider:<name>`: a model provider the user configured in Codex's own
+ * config.toml (for example Mistral, DeepSeek, Kimi or OpenRouter). Fonn only
+ * stores the name; credentials stay in Codex.
+ */
+export const modelSourceSchema = z.union([
+  z.enum(['ollama', 'lmstudio']),
+  z.string().regex(/^provider:[A-Za-z0-9_-]{1,64}$/, 'Use provider:<name>, where name is a model_providers entry in your Codex config'),
+]);
+// Open-weight and hosted model names, such as qwen3-coder:30b or mistralai/devstral-small.
+const openModelPattern = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$/;
+/** Model text for edits; the full profile check decides which names are allowed. */
+export const modelTextSchema = z.string().min(1).max(128);
 export const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 export const filterLevelSchema = z.enum(['strict', 'standard', 'similar']);
-export const taskProfileSchema = z.object({ name: profileNameSchema, provider: providerSchema.optional(), model: modelSchema, effort: effortSchema }).strict().superRefine((profile, context) => {
+export const taskProfileSchema = z.object({
+  name: profileNameSchema, provider: providerSchema.optional(),
+  model: z.string().max(128).transform(model => Object.hasOwn(pinnedClaudeAliases, model) ? pinnedClaudeAliases[model]! : model),
+  effort: effortSchema, source: modelSourceSchema.optional(),
+}).strict().superRefine((profile, context) => {
   const provider = profile.provider ?? 'claude';
+  if (profile.source !== undefined) {
+    if (provider !== 'codex') context.addIssue({ code: 'custom', path: ['source'], message: 'A model source is only available for Codex profiles' });
+    else if (!openModelPattern.test(profile.model)) context.addIssue({ code: 'custom', path: ['model'], message: 'Use the model name your source knows, such as qwen3-coder:30b' });
+    return;
+  }
   const matches = provider === 'claude' ? claudeModelPattern.test(profile.model) : codexModelPattern.test(profile.model);
   if (!matches) context.addIssue({ code: 'custom', path: ['model'], message: provider === 'claude' ? 'Claude profiles require a Claude model ID or alias; OpenAI model IDs require provider codex' : 'Codex profiles require a GPT or o-series model ID; Claude models require provider claude' });
 });
@@ -227,12 +251,15 @@ export function createProfileStore(directory = getDefaultConfigDirectory()) {
         return Object.freeze({ ...validated });
       });
     },
-    async edit(name: string, changes: { provider?: ProfileProvider; model?: string; effort?: TaskProfile['effort'] }): Promise<TaskProfile> {
+    /** `source: null` removes the source, so the profile uses OpenAI again. */
+    async edit(name: string, changes: { provider?: ProfileProvider; model?: string; effort?: TaskProfile['effort']; source?: TaskProfile['source'] | null }): Promise<TaskProfile> {
       assertCustom(name);
-      const validated = z.object({ provider: providerSchema.optional(), model: modelSchema.optional(), effort: effortSchema.optional() }).strict().parse(changes);
+      const validated = z.object({ provider: providerSchema.optional(), model: modelTextSchema.optional(), effort: effortSchema.optional(), source: modelSourceSchema.nullable().optional() }).strict().parse(changes);
       return mutate((config) => {
         const profile = lookup(config, name);
-        const updated = taskProfileSchema.parse({ ...profile, ...(validated.provider === undefined ? {} : { provider: validated.provider }), model: validated.model ?? profile.model, effort: validated.effort ?? profile.effort });
+        const { source: previous, ...rest } = profile;
+        const source = validated.source === undefined ? previous : validated.source ?? undefined;
+        const updated = taskProfileSchema.parse({ ...rest, ...(validated.provider === undefined ? {} : { provider: validated.provider }), model: validated.model ?? profile.model, effort: validated.effort ?? profile.effort, ...(source === undefined ? {} : { source }) });
         config.profiles[config.profiles.findIndex((item) => item.name === name)] = updated;
         return Object.freeze({ ...updated });
       });
