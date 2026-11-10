@@ -45,6 +45,9 @@ const configSchema = z.object({
   defaultProfile: profileNameSchema,
   /** Saved output-filter level for launches and runs without --filter-level. */
   defaultFilterLevel: filterLevelSchema.optional(),
+  /** Saved filter mode and subagent preference; unset means the built-in default. */
+  defaultFilterMode: z.enum(['filter', 'observe', 'off']).optional(),
+  defaultSubagents: z.enum(['auto', 'off']).optional(),
   profiles: z.array(taskProfileSchema).max(100),
 }).strict().superRefine((config, context) => {
   const names = new Set<string>();
@@ -127,6 +130,14 @@ function lookup(config: ProfileConfig, name: string): TaskProfile {
   const profile = config.profiles.find((profile) => profile.name === name);
   if (!profile) throw new Error(`Unknown profile: ${name}. List profiles to choose an existing name.`);
   return Object.freeze({ ...profile });
+}
+
+export type GlobalSettingKey = 'profile' | 'filterLevel' | 'filterMode' | 'subagents';
+export interface GlobalSettings {
+  profile: string;
+  filterLevel?: FilterLevel;
+  filterMode?: 'filter' | 'observe' | 'off';
+  subagents?: 'auto' | 'off';
 }
 
 export function createProfileStore(directory = getDefaultConfigDirectory()) {
@@ -227,6 +238,40 @@ export function createProfileStore(directory = getDefaultConfigDirectory()) {
           : getProfile(provider === 'codex' ? 'codex:sol-medium' : 'opus-medium');
         config.defaultProfile = profile.name;
         return profile;
+      });
+    },
+    /** Global settings that are actually saved, plus the default profile. */
+    async getGlobalSettings(): Promise<GlobalSettings> {
+      const config = await readConfig(root);
+      return Object.freeze({
+        profile: config.defaultProfile,
+        ...(config.defaultFilterLevel === undefined ? {} : { filterLevel: config.defaultFilterLevel }),
+        ...(config.defaultFilterMode === undefined ? {} : { filterMode: config.defaultFilterMode }),
+        ...(config.defaultSubagents === undefined ? {} : { subagents: config.defaultSubagents }),
+      });
+    },
+    /** Saves one global setting. The profile must exist. */
+    async setGlobalSetting(key: GlobalSettingKey, value: string): Promise<void> {
+      if (key === 'profile') {
+        await this.setDefault(value);
+        return;
+      }
+      const parsed = key === 'filterLevel' ? filterLevelSchema.parse(value)
+        : key === 'filterMode' ? z.enum(['filter', 'observe', 'off']).parse(value)
+          : z.enum(['auto', 'off']).parse(value);
+      await mutate((config) => {
+        if (key === 'filterLevel') config.defaultFilterLevel = parsed as FilterLevel;
+        else if (key === 'filterMode') config.defaultFilterMode = parsed as 'filter' | 'observe' | 'off';
+        else config.defaultSubagents = parsed as 'auto' | 'off';
+      });
+    },
+    /** Removes one global setting. The profile goes back to the built-in default. */
+    async unsetGlobalSetting(key: GlobalSettingKey): Promise<void> {
+      await mutate((config) => {
+        if (key === 'profile') config.defaultProfile = 'opus-medium';
+        else if (key === 'filterLevel') delete config.defaultFilterLevel;
+        else if (key === 'filterMode') delete config.defaultFilterMode;
+        else delete config.defaultSubagents;
       });
     },
     async getDefaultFilterLevel(): Promise<FilterLevel> {

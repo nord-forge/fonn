@@ -42,7 +42,7 @@ export default defineConfig({
       sidebar: [
         { label: 'Start here', items: ['start/overview', 'start/install', 'start/everyday-use'] },
         { label: 'Filtering', items: ['filtering/formats', 'filtering/levels', { label: 'Interactive visualiser', link: '/how-it-works/' }] },
-        { label: 'Configuration', items: ['configuration/profiles', 'configuration/permissions-and-billing'] },
+        { label: 'Configuration', items: ['configuration/profiles', { label: 'Project settings', link: '/reference/project-settings/' }, 'configuration/permissions-and-billing'] },
         { label: 'Help', items: ['help/faq', 'help/links'] },
         { label: 'Reference', collapsed: true, items: [{ autogenerate: { directory: 'reference' } }] },
       ],
