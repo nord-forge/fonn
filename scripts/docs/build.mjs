@@ -2,7 +2,7 @@
 // The profile table, the filtering demo and the visualiser all use the compiled
 // core, so run `npm run build --workspace @nord-forge/fonn-core` first
 // (`npm run docs:build` does this).
-import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
@@ -21,7 +21,7 @@ async function importFrom(file) {
 
 const { profiles, getProfile } = await importFrom(path.join(root, 'packages/core/dist/profiles.js'));
 const { createOutputFilter } = await importFrom(path.join(coreFiltering, 'index.js'));
-const { samples } = await importFrom(path.join(source, 'samples.js'));
+const { samples } = await importFrom(path.join(source, 'js/visualiser/samples.js'));
 const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 
 const escape = (text) => String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -136,7 +136,8 @@ for (const page of pages) {
 // Small structural checks instead of a test suite: in-page and cross-page
 // anchors, plus every local asset the pages reference, must exist.
 const idsOf = (html) => new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
-const assets = new Set([...entries, 'styles.css', 'filter/index.js', 'filter/adapters.js', 'filter/artifact-store.js']);
+const scripts = (await readdir(path.join(source, 'js'), { recursive: true })).filter((file) => file.endsWith('.js')).map((file) => `js/${file.split(path.sep).join('/')}`);
+const assets = new Set([...entries, ...scripts, 'styles.css', 'filter/index.js', 'filter/adapters.js', 'filter/artifact-store.js']);
 const problems = [];
 for (const [page, html] of rendered) {
   for (const [, target] of html.matchAll(/(?:src|href)="(?!https?:|mailto:)([^"]*)"/g)) {
@@ -144,6 +145,14 @@ for (const [page, html] of rendered) {
     const resolved = file ? file.replace(/^\.\//, '') : page;
     if (file && !assets.has(resolved)) problems.push(`${page}: missing asset ${target}`);
     else if (anchor && rendered.has(resolved) && !idsOf(rendered.get(resolved)).has(anchor)) problems.push(`${page}: missing anchor ${target}`);
+  }
+}
+// Every relative import in the site's modules must point at a file that ships.
+for (const script of scripts) {
+  const code = await readFile(path.join(source, script), 'utf8');
+  for (const [, specifier] of code.matchAll(/^\s*import\s+(?:[^'"]*?\s+from\s+)?['"](\.{1,2}\/[^'"]+)['"]/gm)) {
+    const target = path.posix.normalize(path.posix.join(path.posix.dirname(script), specifier));
+    if (!assets.has(target)) problems.push(`${script}: import of missing file ${specifier}`);
   }
 }
 if (problems.length) throw new Error(`Docs site link check failed:\n${problems.join('\n')}`);
@@ -156,6 +165,8 @@ for (const file of entries) {
   await copyFile(path.join(source, file), path.join(output, file));
 }
 await writeFile(path.join(output, 'styles.css'), await bundleStyles());
+// Browsers load the ES modules in site/src/js as they are.
+await cp(path.join(source, 'js'), path.join(output, 'js'), { recursive: true });
 
 // The visualiser imports the real compiled filter. Archiving uses Node file
 // APIs, so the browser gets a stub store and the page supplies its own.

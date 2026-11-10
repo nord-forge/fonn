@@ -18,9 +18,9 @@ This compiles the core, builds `site/dist` and serves it at http://127.0.0.1:432
 `scripts/docs/build.mjs` reads `site/src` and writes `site/dist`:
 
 - The profile table is generated from `packages/core/dist/profiles.js`.
-- `site/src/samples.js` holds the illustrative observations. Every sample runs through the compiled filter and the build fails if a sample's expected decision no longer matches. The static before and after demo on the docs page comes from the same run.
+- `site/src/js/visualiser/samples.js` holds the illustrative observations. Every sample runs through the compiled filter and the build fails if a sample's expected decision no longer matches. The static before and after demo on the docs page comes from the same run.
 - `packages/core/dist/filtering/index.js` and `adapters.js` are copied to `site/dist/filter/` for the visualiser. A browser stub replaces the file-backed artifact store.
-- Every local link, asset and anchor across both pages is checked.
+- Every local link, asset and anchor across both pages is checked, and so is every relative import in the site's modules.
 
 Sample character counts describe those samples only. They are not token, cost or accuracy benchmarks.
 
@@ -31,10 +31,10 @@ Sample character counts describe those samples only. They are not token, cost or
 | `src/index.html` | Docs page with `{{placeholder}}` slots filled at build time |
 | `src/how-it-works.html` | Visualiser page |
 | `src/styles/` | Stylesheet parts, one topic per file. `main.css` lists them in order and the build joins them into one `styles.css` |
-| `src/app.js` | Tabs, copy buttons and the section highlight |
-| `src/hero.js` | WebGL hero effect on the docs page |
-| `src/visualiser.js` | Visualiser logic |
-| `src/samples.js` | Sample observations shared by the build and the visualiser |
+| `src/js/app.js` | Entry for both pages: tabs, copy buttons, the section highlight and the mobile dock, one module each |
+| `src/js/hero/` | WebGL hero on the docs page: shaders, WebGL helpers, glyph atlas, particle data and the frame loop |
+| `src/js/visualiser/` | Visualiser: checks, line alignment, the filter call, each card's rendering and the sticky controls |
+| `src/js/visualiser/samples.js` | Sample observations shared by the build and the visualiser |
 | `src/favicon.svg` | Mark and favicon |
 
 Both pages stay readable without JavaScript. The hero falls back to a CSS gradient when WebGL is unavailable and draws one still frame when reduced motion is requested.

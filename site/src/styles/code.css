@@ -37,6 +37,9 @@ pre {
   position: absolute;
   top: 8px;
   right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-height: 32px;
   padding: 0 10px;
   border-radius: 6px;
@@ -61,4 +64,31 @@ pre {
   border-color: #b3483b;
   background: #3d1a16;
   color: #ffd3cc;
+}
+
+.copy svg {
+  flex: none;
+}
+
+/* Phones: an icon-only button, with the label shown again after a copy. */
+@media (max-width: 719px) {
+  .cmd-wrap .cmd {
+    padding-right: 52px;
+  }
+
+  .copy {
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0 9px;
+    justify-content: center;
+  }
+
+  .copy:not([data-state]) .copy-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }
