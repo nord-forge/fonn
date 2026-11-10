@@ -22,6 +22,7 @@ export default defineConfig({
         './src/styles/theme.css',
         './src/styles/hero.css',
         './src/styles/dock.css',
+        './src/styles/theme-select.css',
         './src/styles/visualiser.css',
         './src/styles/visualiser-cards.css',
         './src/styles/visualiser-pipeline.css',
@@ -30,6 +31,7 @@ export default defineConfig({
       components: {
         Hero: './src/components/Hero.astro',
         SocialIcons: './src/components/StarLink.astro',
+        ThemeSelect: './src/components/ThemeSelect.astro',
         // The section dock (src/scripts/dock.js) replaces the mobile "On this
         // page" bar and the mobile menu button on every page. Head passes it
         // the page headings and the docs navigation.

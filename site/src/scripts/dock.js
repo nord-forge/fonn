@@ -5,6 +5,7 @@
 // own sidebar and table of contents are hidden.
 //
 // Data comes from the #dock-data JSON that components/Head.astro writes.
+import { currentTheme, onThemeChange, setTheme } from './theme.js';
 
 const THEMES = [
   { value: 'auto', label: 'Auto' },
@@ -84,29 +85,6 @@ function buildNavigation(groups) {
   return nav;
 }
 
-function currentTheme() {
-  try {
-    return localStorage.getItem('starlight-theme') || 'auto';
-  } catch {
-    return 'auto';
-  }
-}
-
-// Same storage and attribute as Starlight's own theme select, which it then
-// updates too, so both stay in step.
-function applyTheme(value) {
-  try {
-    if (value === 'auto') localStorage.removeItem('starlight-theme');
-    else localStorage.setItem('starlight-theme', value);
-  } catch {
-    // Storage can be unavailable; the choice still applies to this page.
-  }
-  const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
-  const resolved = value === 'auto' ? (prefersLight ? 'light' : 'dark') : value;
-  document.documentElement.dataset.theme = resolved;
-  window.StarlightThemeProvider?.updatePickers(value);
-}
-
 function buildFooter(github) {
   const footer = createElement('div', 'dock-footer');
 
@@ -120,13 +98,18 @@ function buildFooter(github) {
     input.name = 'dock-theme';
     input.value = theme.value;
     input.checked = theme.value === selected;
-    input.addEventListener('change', () => applyTheme(theme.value));
+    input.addEventListener('change', () => setTheme(theme.value));
     label.append(input, createElement('span', '', theme.label));
     themes.append(label);
   }
 
   // The GitHub mark with "Star" keeps this on one row with the theme switch,
   // even on a 360px screen. Screen readers hear the full label.
+  // Stay in step when the header switcher changes the theme.
+  onThemeChange((value) => {
+    for (const input of themes.querySelectorAll('input')) input.checked = input.value === value;
+  });
+
   const star = createElement('a', 'dock-star');
   star.href = github;
   star.setAttribute('aria-label', 'Star on GitHub');
