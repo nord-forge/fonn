@@ -248,7 +248,7 @@ test('Codex profiles with a model source run local models through --oss or a nam
 
   assert.equal(await launchCodex({ ...options, profile: 'qwen-local' }), 7);
   let launched = JSON.parse(await readFile(f.capture, 'utf8'));
-  assert.deepEqual(launched.args.slice(0, 7), ['--oss', '--local-provider', 'ollama', '--model', 'qwen3-coder:30b', '-c', 'model_reasoning_effort="medium"']);
+  assert.deepEqual(launched.args.slice(0, 9), ['--oss', '--local-provider', 'ollama', '-c', 'model_provider="ollama"', '--model', 'qwen3-coder:30b', '-c', 'model_reasoning_effort="medium"']);
 
   assert.equal(await launchCodex({ ...options, profile: 'devstral' }), 7);
   launched = JSON.parse(await readFile(f.capture, 'utf8'));
