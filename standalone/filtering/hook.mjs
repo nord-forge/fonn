@@ -9,7 +9,7 @@ const STORE_KEY = /^[0-9a-f]{64}$/;
 const ARTIFACT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAX_INPUT_BYTES = 10 * 1024 * 1024;
 const scriptPath = fileURLToPath(import.meta.url);
-const usage = 'Usage: node hook.mjs hook --provider claude|codex --mode filter|observe|off [--state-dir PATH]\n       node hook.mjs read STORE-KEY ARTIFACT-ID [--state-dir PATH] [--offset N] [--limit N]\nRequires Node 22+. Recovery defaults to 4000 characters, maximum 20000.\n';
+const usage = 'Usage: node hook.mjs hook --provider claude|codex --mode filter|observe|off [--level strict|standard|similar] [--state-dir PATH]\n       node hook.mjs read STORE-KEY ARTIFACT-ID [--state-dir PATH] [--offset N] [--limit N]\nRequires Node 22+. Recovery defaults to 4000 characters, maximum 20000.\n';
 const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -22,7 +22,7 @@ function argumentsFor(args) {
     result.artifactId = args.shift();
     if (!STORE_KEY.test(result.storeKey ?? '') || !ARTIFACT_ID.test(result.artifactId ?? '')) throw new Error('Invalid recovery identifiers');
   }
-  const allowed = command === 'hook' ? ['--provider', '--mode', '--state-dir'] : ['--state-dir', '--offset', '--limit'];
+  const allowed = command === 'hook' ? ['--provider', '--mode', '--level', '--state-dir'] : ['--state-dir', '--offset', '--limit'];
   const seen = new Set();
   while (args.length) {
     const flag = args.shift();
@@ -33,6 +33,10 @@ function argumentsFor(args) {
     result[flag.slice(2)] = value;
   }
   if (command === 'hook' && (!['claude', 'codex'].includes(result.provider) || !['filter', 'observe', 'off'].includes(result.mode))) throw new Error('Provider and mode are required');
+  if (command === 'hook') {
+    result.level ??= 'standard';
+    if (!['strict', 'standard', 'similar'].includes(result.level)) throw new Error('Level must be strict, standard or similar');
+  }
   for (const [key, fallback, minimum, maximum] of [['offset', 0, 0, Number.MAX_SAFE_INTEGER], ['limit', 4000, 1, 20000]]) {
     const value = result[key];
     if (value !== undefined && !/^(?:0|[1-9][0-9]*)$/.test(value)) throw new Error('Invalid read bounds');
@@ -97,7 +101,7 @@ async function hook(options) {
   const storeKey = createHash('sha256').update(JSON.stringify([options.provider, cwd, event.session_id])).digest('hex');
   const store = guardedStore(options.stateDirectory, storeKey);
   const recoveryHint = id => [process.execPath, scriptPath, 'read', storeKey, id, '--state-dir', options.stateDirectory].map(quote).join(' ');
-  const filter = createOutputFilter({ mode: options.mode, store, recoveryHint });
+  const filter = createOutputFilter({ mode: options.mode, level: options.level, store, recoveryHint });
   const outcome = await filter.apply({ toolName: 'Bash', toolInput: event.tool_input, response: event.tool_response,
     sessionId: event.session_id, toolUseId: typeof event.tool_use_id === 'string' ? event.tool_use_id : '', cwd });
   if (outcome.decision.status !== 'filtered') return {};

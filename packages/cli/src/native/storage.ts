@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import type { FilterMode, ProfileName } from '@nord-forge/fonn-core/contracts';
+import type { FilterLevel, FilterMode, ProfileName } from '@nord-forge/fonn-core/contracts';
 import { profileNameSchema, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
 import { getDefaultStateDirectory } from '@nord-forge/fonn-core/state';
 
@@ -16,6 +16,8 @@ const launchSchema = z.object({
   profile: profileNameSchema,
   profileSnapshot: taskProfileSchema.optional(),
   filterMode: z.enum(['filter', 'observe', 'off']),
+  // Absent on launches saved before filter levels; those replay as strict.
+  filterLevel: z.enum(['strict', 'standard', 'similar']).optional(),
   subagents: z.enum(['auto', 'off']).optional(),
   createdAt: z.string(),
   hookEntrypoint: z.string(),
@@ -29,6 +31,8 @@ export interface NativeLaunchOptions {
   profile?: ProfileName;
   configDirectory?: string;
   filterMode?: FilterMode;
+  /** Defaults to standard. */
+  filterLevel?: FilterLevel;
   subagents?: 'auto' | 'off';
   stateDirectory?: string;
   args?: string[];

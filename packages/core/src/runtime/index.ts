@@ -29,7 +29,7 @@ export interface RuntimeDependencies {
 
 const optionsSchema = z.object({
   prompt: z.string().trim().min(1), cwd: z.string().min(1), profile: profileNameSchema.optional(), configDirectory: z.string().min(1).optional(),
-  budgetUsd: z.number().finite().positive().default(5), maxTurns: z.number().int().positive().default(20), filterMode: z.enum(['filter', 'observe', 'off']).default('filter'),
+  budgetUsd: z.number().finite().positive().default(5), maxTurns: z.number().int().positive().default(20), filterMode: z.enum(['filter', 'observe', 'off']).default('filter'), filterLevel: z.enum(['strict', 'standard', 'similar']).optional(),
   stateDirectory: z.string().min(1).optional(), resumeTaskId: taskIdSchema.optional(), signal: z.instanceof(AbortSignal).optional(),
   approveTool: z.custom<NonNullable<RunTaskOptions['approveTool']>>((value) => typeof value === 'function').optional(),
   answerQuestions: z.custom<NonNullable<RunTaskOptions['answerQuestions']>>((value) => typeof value === 'function').optional(),
@@ -73,6 +73,8 @@ export function createRuntime(dependencies: RuntimeDependencies = {}) {
       const parent = options.resumeTaskId ? await readRun(options.resumeTaskId, stateDirectory) : undefined;
       if (parent && (parent.cwd !== cwd || !parent.sessionId)) throw new Error('Resume requires a saved session from the same project directory');
       if (parent && options.profile && options.profile !== parent.profile.name) throw new Error('A resumed task must retain its session profile');
+      // A resume keeps its saved level unless one is given; pre-level records ran adapters only.
+      const filterLevel = options.filterLevel ?? (parent ? parent.filterLevel ?? 'strict' : 'standard');
       // Resumes use the saved snapshot even if its named profile was edited or deleted.
       const profile = Object.freeze({ ...(parent?.profile ?? await resolveProfile(options.profile, options.configDirectory ?? getDefaultConfigDirectory(dependencies.environment ?? process.env))) });
       if (profile.provider === 'codex') throw new Error('SDK tasks currently support Claude profiles only. Use fonn codex for native Codex, or select a Claude profile.');
@@ -94,7 +96,7 @@ export function createRuntime(dependencies: RuntimeDependencies = {}) {
       const filters: FilterDecision[] = [];
       const store = createArtifactStore(artifacts);
       const recoveryStore = createTaskRecoveryStore(store, ancestorStores);
-      const filter = (dependencies.createOutputFilter ?? createOutputFilter)({ store, mode: options.filterMode, onDecision: (decision) => filters.push(structuredClone(decision)) });
+      const filter = (dependencies.createOutputFilter ?? createOutputFilter)({ store, mode: options.filterMode, level: filterLevel, onDecision: (decision) => filters.push(structuredClone(decision)) });
       const controller = new AbortController();
       const cancel = () => controller.abort();
       options.signal?.addEventListener('abort', cancel, { once: true });
@@ -102,7 +104,7 @@ export function createRuntime(dependencies: RuntimeDependencies = {}) {
       const record: RunRecord = {
         schemaVersion: 1, taskId, ...(parent ? { parentTaskId: parent.taskId, sessionId: parent.sessionId } : {}),
         startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), status: 'failed',
-        profile, cwd, budgetUsd: options.budgetUsd, maxTurns: options.maxTurns, filterMode: options.filterMode,
+        profile, cwd, budgetUsd: options.budgetUsd, maxTurns: options.maxTurns, filterMode: options.filterMode, filterLevel,
         usage: emptyUsage(), filters,
       };
       const cumulative = { ...baseline };

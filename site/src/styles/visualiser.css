@@ -1,0 +1,230 @@
+/*
+ * Visualiser page: width, intro, and the sample, mode and level controls.
+ *
+ * Breakpoints used across the visualiser files:
+ *   below 720px   one column, compact checks list
+ *   720 to 1199px stacked cards, checks shown as a grid of tiles
+ *   1200px and up wide main column with a sticky checks sidebar
+ */
+
+/* Starlight's content column is narrow. On the visualiser page, the title and
+   the content containers share a 1,520px width instead. */
+:root:has(.viz-page) .sl-container {
+  max-width: 1520px;
+  margin-inline: auto;
+}
+
+/* Starlight's container already supplies the side padding. */
+.viz-page .viz-intro,
+.viz-page .viz,
+.viz-page .viz-docs {
+  padding-inline: 0;
+}
+
+.viz-intro,
+.viz {
+  max-width: 1520px;
+  margin: 0 auto;
+  padding-inline: 16px;
+}
+
+.viz-intro {
+  padding-top: 48px;
+  padding-bottom: 8px;
+}
+
+.viz-intro h1 {
+  font-size: clamp(1.9rem, 4vw, 2.7rem);
+  margin: 0 0 12px;
+  max-width: 24ch;
+}
+
+.viz-intro .lede {
+  max-width: 72ch;
+}
+
+.viz-noscript {
+  max-width: 1488px;
+  margin: 0 auto 24px;
+}
+
+.viz {
+  padding-top: 8px;
+  padding-bottom: 24px;
+}
+
+/*
+ * The controls stick below the top bar while the visualiser is on screen.
+ * --topbar-height and --controls-height are measured by visualiser.js.
+ * Labels sit beside their buttons so the panel stays two short rows.
+ */
+.viz-controls {
+  position: sticky;
+  top: var(--topbar-height, 65px);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  transition: box-shadow 0.2s ease;
+}
+
+.viz-controls.is-stuck {
+  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
+}
+
+.viz-controls .chips {
+  flex: 1 1 100%;
+}
+
+.viz-options {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
+}
+
+#replay {
+  margin-left: auto;
+  min-height: 36px;
+}
+
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+/* Floating the legend puts the label on the same line as its buttons. */
+.viz-controls legend {
+  float: left;
+  margin: 0 12px 0 0;
+  line-height: 36px;
+}
+
+legend {
+  font: 600 0.75rem/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip-row label {
+  position: relative;
+  flex: none;
+}
+
+.chip-row input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.chip-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.chip-row input:checked + span {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+.chip-row input:focus-visible + span {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.segmented span {
+  font-family: var(--mono);
+}
+
+.viz-blurb {
+  margin: 14px 4px 18px;
+  color: var(--muted);
+  min-height: 1.65em;
+  max-width: 90ch;
+}
+
+/* Phones: labels are hidden visually but still announced, and each row scrolls sideways. */
+@media (max-width: 719px) {
+  .viz-controls {
+    padding: 8px 0;
+    gap: 6px 0;
+    border-radius: 12px;
+  }
+
+  .viz-controls legend {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .viz-controls .chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0 12px 4px;
+    scrollbar-width: none;
+  }
+
+  /* A soft fade on the right edge hints that the rows scroll. */
+  .viz-controls .chips .chip-row,
+  .viz-options {
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+
+  .viz-controls .chips {
+    flex: 1 1 100%;
+  }
+
+  /* Mode, level and Replay share the second row and scroll together. */
+  .viz-options {
+    flex-wrap: nowrap;
+    gap: 16px;
+    overflow-x: auto;
+    padding: 0 12px 4px;
+    scrollbar-width: none;
+  }
+
+  .viz-options .chip-row {
+    padding: 0;
+    overflow: visible;
+  }
+
+  .viz-options .segmented,
+  #replay {
+    flex: none;
+  }
+
+  #replay {
+    padding: 0 14px;
+  }
+}

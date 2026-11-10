@@ -1,0 +1,28 @@
+---
+title: Supported formats
+description: What Fonn's format adapters and generic reductions remove, and what always stays.
+sidebar:
+  order: 1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Format adapters handle a few tools precisely, and only from a single direct command. Pipelines, compound commands, quoted arguments and wrappers skip the adapters because their origin is ambiguous. Every command, including those, gets the generic repeated-line reduction unless you choose the [strict level](/filtering/levels/).
+
+| Command | What is reduced | What always stays |
+| --- | --- | --- |
+| `phpunit`, `pest`, `artisan test` | Progress rows made only of dots with a counter | Rows with F, E, S or other markers, failures, warnings, summary |
+| `phpstan analyse` | Progress bar rows, once an `[OK]` or `[ERROR]` verdict is present | Error tables, notes, the verdict |
+| `tsc` | Adjacent byte-identical diagnostics, collapsed with a count | Every distinct diagnostic and the total |
+| `pytest`, `python -m pytest` | Rows made only of dots with a `[ NN%]` counter, and `PASSED` lines in `-v` output | Rows with F, E, s or x, failures, warnings, the summary |
+| `jest`, `vitest`, `npm test` | `PASS` file lines and `✓` passing-test lines, once the runner's totals are present | Failing files, `✕`, `×`, skipped tests, console output, the totals |
+| Any command, standard level | Runs of 3 or more identical, non-blank adjacent lines, kept once with an exact count | Every distinct line, in order |
+| Any command, similar level | Runs of 4 or more adjacent lines that differ only in numbers, UUIDs or hex IDs. The first and last stay | Lines mentioning errors, failures, warnings, exceptions, panics or denials. Lines without words |
+
+Other unknown output and arbitrary MCP payloads pass through unchanged. Output with terminal colour codes or carriage returns is also left alone. Observations under 2,000 characters, or where the saving would be under 256 characters, are not touched.
+
+Claude Code and Codex merge a command's stderr into the output Fonn reads, so those lines follow the same rules. Jest writes its whole report to stderr and is filtered for that reason. Vitest 5 prints only failures and totals when piped, so its adapter mainly helps with `--reporter verbose`.
+
+<Aside type="caution" title="Collapsed is not the same as reduced">
+Claude Code starts tool details collapsed in the terminal (press Ctrl+O to expand). That changes what you see, not what the model reads. Fonn's filter is the part that changes model input, and it makes no promise of measured token or cost savings.
+</Aside>

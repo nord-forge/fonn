@@ -1,0 +1,17 @@
+---
+title: Permissions and billing
+description: How authentication, billing, permissions and budgets differ between native launches and SDK tasks.
+sidebar:
+  order: 2
+---
+
+|  | Native launch (`fonn`) | SDK task (`fonn run`) |
+| --- | --- | --- |
+| Authentication | Whatever Claude Code or Codex is signed in with | An `ANTHROPIC_API_KEY` you supply explicitly |
+| Billing | Follows the provider's active authentication | Separate API billing. Subscription quotas do not apply |
+| Permissions | The native CLI's own prompts and policies | SDK checks plus your project settings. Approval needs `yes` in a terminal |
+| Budgets | None | Estimated stop threshold and turn limit |
+
+Fonn never bypasses permissions or silently approves writes and shell commands. It never extracts subscription credentials. Codex asks you to review and trust new hooks in its `/hooks` browser before filtering or guidance runs, and Fonn leaves that step to you.
+
+SDK dollar figures are estimates. A request can overshoot a threshold. See [authentication, estimates and budgets](/reference/billing/).

@@ -1,0 +1,56 @@
+
+ RUN  v2.1.4 /app
+
+ ✓ src/module00/feature.test.ts (8 tests) 10ms
+ ✓ src/module01/feature.test.ts (9 tests) 11ms
+ ✓ src/module02/feature.test.ts (10 tests) 12ms
+ ✓ src/module03/feature.test.ts (11 tests) 13ms
+ ✓ src/module04/feature.test.ts (12 tests) 14ms
+ ✓ src/module05/feature.test.ts (13 tests) 15ms
+ ✓ src/module06/feature.test.ts (14 tests) 16ms
+ ✓ src/module07/feature.test.ts (15 tests) 17ms
+ ✓ src/module08/feature.test.ts (16 tests) 18ms
+ ✓ src/module09/feature.test.ts (17 tests) 19ms
+ ✓ src/module10/feature.test.ts (18 tests) 20ms
+ ✓ src/module11/feature.test.ts (19 tests) 21ms
+ ✓ src/module12/feature.test.ts (20 tests) 22ms
+ ✓ src/module13/feature.test.ts (21 tests) 23ms
+ ✓ src/module14/feature.test.ts (22 tests) 24ms
+ ✓ src/module15/feature.test.ts (23 tests) 25ms
+ ✓ src/module16/feature.test.ts (24 tests) 26ms
+ ✓ src/module17/feature.test.ts (25 tests) 27ms
+ ✓ src/module18/feature.test.ts (26 tests) 28ms
+ ✓ src/module19/feature.test.ts (27 tests) 29ms
+ ✓ src/module20/feature.test.ts (28 tests) 30ms
+ ✓ src/module21/feature.test.ts (29 tests) 31ms
+ ✓ src/module22/feature.test.ts (30 tests) 32ms
+ ✓ src/module23/feature.test.ts (31 tests) 33ms
+ ✓ src/module24/feature.test.ts (32 tests) 34ms
+ ✓ src/module25/feature.test.ts (33 tests) 35ms
+ ✓ src/module26/feature.test.ts (34 tests) 36ms
+ ✓ src/module27/feature.test.ts (35 tests) 37ms
+ ✓ src/module28/feature.test.ts (36 tests) 38ms
+ ✓ src/module29/feature.test.ts (37 tests) 39ms
+ ❯ src/billing/limit.test.ts (3 tests | 1 failed) 12ms
+   ✓ resolveLimit > uses the default when missing
+   × resolveLimit > keeps zero 3ms
+     → expected 20 to be +0 // Object.is equality
+   ↓ resolveLimit > handles negative values
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/billing/limit.test.ts > resolveLimit > keeps zero
+AssertionError: expected 20 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 20
+
+ ❯ src/billing/limit.test.ts:41:40
+
+ Test Files  1 failed | 30 passed (31)
+      Tests  1 failed | 1 skipped | 286 passed (288)
+   Start at  10:12:01
+   Duration  2.31s (transform 410ms, setup 0ms, collect 1.2s, tests 840ms)

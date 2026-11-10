@@ -4,7 +4,7 @@ import { chmod, lstat, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, parse, resolve } from 'node:path';
 import { z } from 'zod';
-import type { ProfileName, ProfileProvider, TaskProfile } from './contracts.js';
+import type { FilterLevel, ProfileName, ProfileProvider, TaskProfile } from './contracts.js';
 
 export const profiles: Readonly<Record<ProfileName, TaskProfile>> = Object.freeze({
   'opus-high': Object.freeze({ name: 'opus-high', model: 'claude-opus-5-5', effort: 'high' }),
@@ -32,6 +32,7 @@ const pinnedClaudeAliases: Readonly<Record<string, string>> = Object.freeze({ fa
 export const modelSchema = z.string().max(128).refine((model) => claudeModelPattern.test(model) || codexModelPattern.test(model), 'Expected a Claude model ID or alias, GPT model ID, or o-series model ID')
   .transform(model => Object.hasOwn(pinnedClaudeAliases, model) ? pinnedClaudeAliases[model]! : model);
 export const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+export const filterLevelSchema = z.enum(['strict', 'standard', 'similar']);
 export const taskProfileSchema = z.object({ name: profileNameSchema, provider: providerSchema.optional(), model: modelSchema, effort: effortSchema }).strict().superRefine((profile, context) => {
   const provider = profile.provider ?? 'claude';
   const matches = provider === 'claude' ? claudeModelPattern.test(profile.model) : codexModelPattern.test(profile.model);
@@ -42,6 +43,8 @@ const maximumConfigBytes = 128 * 1024;
 const configSchema = z.object({
   schemaVersion: z.literal(1),
   defaultProfile: profileNameSchema,
+  /** Saved output-filter level for launches and runs without --filter-level. */
+  defaultFilterLevel: filterLevelSchema.optional(),
   profiles: z.array(taskProfileSchema).max(100),
 }).strict().superRefine((config, context) => {
   const names = new Set<string>();
@@ -224,6 +227,16 @@ export function createProfileStore(directory = getDefaultConfigDirectory()) {
           : getProfile(provider === 'codex' ? 'codex:sol-medium' : 'opus-medium');
         config.defaultProfile = profile.name;
         return profile;
+      });
+    },
+    async getDefaultFilterLevel(): Promise<FilterLevel> {
+      return (await readConfig(root)).defaultFilterLevel ?? 'standard';
+    },
+    async setDefaultFilterLevel(level: FilterLevel): Promise<FilterLevel> {
+      const validated = filterLevelSchema.parse(level);
+      return mutate((config) => {
+        config.defaultFilterLevel = validated;
+        return validated;
       });
     },
     async setDefault(name: string): Promise<TaskProfile> {

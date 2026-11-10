@@ -1,0 +1,150 @@
+/*
+ * Visualiser grid, cards, step numbers, form fields and the verdict label.
+ */
+
+.viz-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-areas:
+    "input"
+    "checks"
+    "output"
+    "archive";
+}
+
+.card-input {
+  grid-area: input;
+}
+
+.card-pipeline {
+  grid-area: checks;
+}
+
+.card-output {
+  grid-area: output;
+}
+
+.card-archive {
+  grid-area: archive;
+}
+
+/* Wide screens: output gets the main column, checks stay in view beside it. */
+@media (min-width: 1200px) {
+  .viz-grid {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-areas:
+      "input checks"
+      "output checks"
+      "archive checks";
+    align-items: start;
+  }
+
+  /* Sits just below the sticky controls. */
+  .card-pipeline {
+    position: sticky;
+    top: calc(var(--topbar-height, 65px) + var(--controls-height, 110px) + 16px);
+  }
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+@media (min-width: 720px) {
+  .card {
+    padding: 20px;
+  }
+}
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.card-head h2 {
+  font-size: 1.05rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-no {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font: 700 0.78rem var(--mono);
+}
+
+.count {
+  font: 0.82rem var(--mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 12px 0 4px;
+}
+
+.field {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 0.88rem;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+/* Long lines wrap rather than scroll, so the input reads at any width. */
+textarea.field {
+  resize: vertical;
+  min-height: 200px;
+  height: 260px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+}
+
+.hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+
+#verdict {
+  font-weight: 700;
+}
+
+#verdict[data-outcome="filtered"] {
+  color: var(--ok);
+}
+
+#verdict[data-outcome="observed"] {
+  color: var(--warn);
+}
+
+#verdict[data-outcome="unchanged"] {
+  color: var(--muted);
+}

@@ -26,7 +26,7 @@ END_TASK_PAYLOAD
 Observation completed. Repetitive PROGRESS heartbeats removed; task payload retained verbatim.
 ```
 
-This example is illustrative: the shipped adapters currently recognize Pest/PHPUnit, PHPStan and TypeScript shell output. Generic `PROGRESS` heartbeat logs like those above pass through unchanged. Fonn filters new tool observations; it does not remove model reasoning or rewrite task payloads.
+This example is illustrative. The format adapters recognize Pest/PHPUnit, PHPStan, TypeScript, pytest, Jest and Vitest shell output. For any other command, runs of identical lines collapse to one copy and a count. Heartbeat logs like the one above, where only the numbers change, collapse only at `--filter-level similar`; the first and last line stay. `strict` keeps the format adapters only. See [filter levels](docs/filtering.md#filter-levels). Fonn filters new tool observations; it does not remove model reasoning or rewrite task payloads.
 
 ## Get the CLI or reuse a script
 
@@ -76,7 +76,7 @@ After downloading, give your agent this prompt:
 Read scripts/fonn-filter/*.mjs and its LICENSE. Configure this local filter for the agent I am using: merge a Bash PostToolUse hook into .claude/settings.local.json for Claude Code, or .codex/hooks.json for Codex. Use absolute, correctly quoted paths to Node, hook.mjs and this project's .fonn/filtering directory, with --provider claude or codex and --mode filter. Preserve all existing hooks, permissions and policies; change no global settings and install no CLI, npm packages or SDKs. Add .fonn/ to .gitignore if needed. Explain how to recover full originals using the footer's bounded read command. For Codex, leave the required /hooks review and trust to me; do not bypass it. Show the local changes and any manual step. Do not make model requests to test this.
 ```
 
-Filtering only reduces recognized noisy shell output; unknown formats, MCP results and model reasoning are unchanged. It preserves recoverable originals, which may contain private data. Raw artifacts need manual retention and must stay out of Git. The guide also explains how to pin all downloads to one reviewed commit.
+Filtering only reduces recognized noisy shell output and runs of identical lines (plus similar lines with `--level similar` on the hook command); other unknown output, MCP results and model reasoning are unchanged. It preserves recoverable originals, which may contain private data. Raw artifacts need manual retention and must stay out of Git. The guide also explains how to pin all downloads to one reviewed commit.
 
 ## Local setup
 
@@ -153,9 +153,9 @@ fonn --subagents off               # Omit automatic delegation guidance
 fonn --filter off --subagents off  # Register no Fonn hooks
 ```
 
-**Subagent shell output uses the same session-wide Fonn filter, including Opus, Sonnet and Haiku.** Native subagents inherit the session hooks; Fonn handles their supported Bash observations without a model exemption and adds a worker startup notice about filtering and bounded original-output recovery. `observe` retains full delivered output, and `--filter off` disables filtering for the parent and workers. Unknown output, failures, warnings and arbitrary MCP payloads still pass through. Filtering cannot cover a provider tool path that does not emit supported hooks.
+**Subagent shell output uses the same session-wide Fonn filter, including Opus, Sonnet and Haiku.** Native subagents inherit the session hooks; Fonn handles their supported Bash observations without a model exemption and adds a worker startup notice about filtering and bounded original-output recovery. `observe` retains full delivered output, and `--filter off` disables filtering for the parent and workers. Failures, warnings and arbitrary MCP payloads still pass through, and unknown output changes only by the repeated-line collapse. Filtering cannot cover a provider tool path that does not emit supported hooks.
 
-Codex requires the normal `/hooks` review/trust for startup guidance and filtering. Existing permission checks, agent definitions, models and provider limits remain active. Fonn does not grant unattended permissions or launch headless CLI workers; a rejected delegation must continue in the parent or report its blocker. `--subagents off` removes Fonn's automatic delegation preference; it does not disable native subagent tools or the session-wide output filter. Delegation can increase total token use. See [subagents and permission boundaries](docs/subagents.md).
+Codex requires the normal `/hooks` review/trust for startup guidance and filtering. Existing permission checks, agent definitions, models and provider limits remain active. Fonn does not grant unattended permissions or launch headless CLI workers; a rejected delegation must continue in the parent or report its blocker. When you explicitly ask an agent to work with another agent CLI, such as `codex exec`, it may run it as an ordinary command through the normal approval prompt; see [working with another agent CLI](docs/subagents.md#working-with-another-agent-cli-on-request). `--subagents off` removes Fonn's automatic delegation preference; it does not disable native subagent tools or the session-wide output filter. Delegation can increase total token use. See [subagents and permission boundaries](docs/subagents.md).
 
 ## Resume after closing a session
 
@@ -236,7 +236,7 @@ The commands below use the installed `fonn` name. In a local checkout, substitut
 | `doctor [--json]` | Check local compatibility and key presence offline. |
 | `--help`, `--version` | Print usage or package version offline. |
 
-SDK options include `--cwd`, `--profile`, `--budget`, `--max-turns`, `--filter`, `--state-dir`, `--resume`, and `--json`. New SDK tasks require a Claude profile; select one explicitly if your global default is Codex. Otherwise defaults are the configured profile (initially `opus-medium`), an estimated $5 stop threshold, 20 turns, and conservative `filter` mode. Requests may overshoot the threshold. Profiles are fixed for an SDK task; resume retains the saved profile and project directory. `observe` records potential reductions without changing delivered output; `off` disables reduction.
+SDK options include `--cwd`, `--profile`, `--budget`, `--max-turns`, `--filter`, `--filter-level`, `--state-dir`, `--resume`, and `--json`. New SDK tasks require a Claude profile; select one explicitly if your global default is Codex. Otherwise defaults are the configured profile (initially `opus-medium`), an estimated $5 stop threshold, 20 turns, and conservative `filter` mode. Requests may overshoot the threshold. Profiles are fixed for an SDK task; resume retains the saved profile and project directory. `observe` records potential reductions without changing delivered output; `off` disables reduction.
 
 `--json` reserves stdout for one machine-readable value on successful dispatch; progress, permissions, and errors use stderr. Errors may leave stdout empty. Failed, cancelled, budget-stopped, invalid, and failed-check outcomes exit nonzero. Ctrl+C requests cancellation; a saved cancelled outcome is shown when the runtime can produce one. Human-readable model/tool text escapes terminal controls.
 
@@ -257,6 +257,10 @@ Resume accepts only the latest saved task for a session and holds an owner-check
 If cumulative SDK usage counters reset, the run fails with indeterminate accounting and retains reported counters as observations. Start a fresh task without `--resume`; the reset is not reported as a free continuation.
 
 Output-reduction benchmarks motivated this experiment. They do not promise 60% savings, equivalent accuracy, or lower costs on real tasks. Character reduction is not token or dollar reduction.
+
+## Documentation site
+
+The [site source](site) is an Astro Starlight site with the docs, the guides from `docs/`, and an interactive filter visualiser. It is a separate npm project with its own lockfile. Preview it locally with `npm ci --ignore-scripts --prefix site` and then `npm run docs:dev`, which serves http://127.0.0.1:4321/. `npm run docs:build` writes `site/dist`. See [the site README](site/README.md) for the build and Vercel settings.
 
 ## References
 

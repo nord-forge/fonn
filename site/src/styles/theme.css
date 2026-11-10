@@ -1,0 +1,179 @@
+/*
+ * Fonn theme for Starlight: the cold "ice" palette.
+ *
+ * Starlight is dark by default and uses [data-theme="light"] for light mode.
+ * The --fonn-* style tokens (--bg, --text, --accent and so on) are shared by
+ * the hero, dock and visualiser styles; Starlight's own colour variables are
+ * mapped onto the same palette below.
+ */
+
+/* Dark mode (Starlight's default). */
+:root {
+  --bg: #09131d;
+  --bg-2: #0d1a27;
+  --surface: #0f1e2d;
+  --text: #e3eef8;
+  --muted: #a2b8cc;
+  --accent: #84bdf3;
+  --accent-strong: #a9d1f7;
+  --accent-soft: #15304a;
+  --border: #213a52;
+  --code-bg: #060e17;
+  --code-text: #d7e6f4;
+  --code-muted: #8aa3bb;
+  --ok: #7fd3a9;
+  --ok-soft: #12352a;
+  --warn: #f0c27a;
+  --warn-soft: #3a2a10;
+  --stop: #f29b8f;
+  --stop-soft: #3d1a16;
+  --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
+  --radius: 10px;
+  /* --sl-font and --sl-font-mono are optional overrides; fall back like Starlight does. */
+  --mono: var(--sl-font-mono, var(--sl-font-system-mono));
+  --sans: var(--sl-font, var(--sl-font-system));
+
+  /* Hero canvas colours, read by scripts/hero/hero.js as six-digit hex. */
+  --viz-top: #0c1a2a;
+  --viz-bottom: #050b13;
+  --viz-noise: #6f8fb3;
+  --viz-signal: #e6f4ff;
+  --viz-heat: #7cc4ff;
+
+  /* Starlight palette. */
+  --sl-color-accent-low: #15304a;
+  --sl-color-accent: #3d8ee0;
+  --sl-color-accent-high: #a9d1f7;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #e3eef8;
+  --sl-color-gray-2: #c2d3e3;
+  --sl-color-gray-3: #8aa3bb;
+  --sl-color-gray-4: #536b84;
+  --sl-color-gray-5: #213a52;
+  --sl-color-gray-6: #0f1e2d;
+  --sl-color-black: #09131d;
+
+  /* The section dock replaces Starlight's mobile "On this page" bar. */
+  --sl-mobile-toc-height: 0rem;
+}
+
+/* Light mode. */
+:root[data-theme="light"] {
+  --bg: #f3f7fb;
+  --bg-2: #e9f0f7;
+  --surface: #ffffff;
+  --text: #0e2236;
+  --muted: #46607a;
+  --accent: #1d5fa8;
+  --accent-strong: #15497f;
+  --accent-soft: #dfeaf6;
+  --border: #d3e0ec;
+  --code-bg: #0d1b2c;
+  --code-text: #dbe8f5;
+  --code-muted: #8ea7c0;
+  --ok: #1b6b4a;
+  --ok-soft: #dcf0e6;
+  --warn: #8a5300;
+  --warn-soft: #f7ead2;
+  --stop: #a2372c;
+  --stop-soft: #f7e0dc;
+  --shadow: 0 1px 2px rgb(14 34 54 / 6%), 0 8px 24px rgb(14 34 54 / 6%);
+  --viz-top: #13263b;
+  --viz-bottom: #08131f;
+
+  --sl-color-accent-low: #dfeaf6;
+  --sl-color-accent: #1d5fa8;
+  --sl-color-accent-high: #15497f;
+  --sl-color-white: #0e2236;
+  --sl-color-gray-1: #1c3047;
+  --sl-color-gray-2: #33495f;
+  --sl-color-gray-3: #46607a;
+  --sl-color-gray-4: #7f94a8;
+  --sl-color-gray-5: #c3d3e2;
+  --sl-color-gray-6: #e9f0f7;
+  --sl-color-gray-7: #f3f7fb;
+  --sl-color-black: #ffffff;
+}
+
+/* Header: the "Star on GitHub" link that replaces the social icons. */
+.star-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.star-link:hover {
+  background: var(--accent-strong);
+  color: var(--bg);
+}
+
+.star-link svg {
+  color: #f2c94c;
+}
+
+/* Shared pieces used by the visualiser and the generated demos. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: 600 0.92rem var(--sans);
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.note {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--muted);
+  font-size: 0.93rem;
+}
+
+.cmd,
+.output {
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-text);
+  font: 0.86rem/1.6 var(--mono);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font: 600 0.8rem/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Tab labels stay on one line; Starlight's tab bar scrolls when they do not fit. */
+starlight-tabs [role="tab"] {
+  white-space: nowrap;
+}
+
+@media (max-width: 40rem) {
+  starlight-tabs [role="tab"] {
+    padding-inline: 0.9rem;
+  }
+}

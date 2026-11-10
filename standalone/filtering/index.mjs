@@ -1,5 +1,5 @@
 // Generated from packages/core/dist/filtering/index.js by scripts/build-standalone-filter.mjs; do not edit.
-import { reduceRecognizedOutput } from './adapters.mjs';
+import { reduceRecognizedOutput, repeatedLineNote, similarLinesNote } from './adapters.mjs';
 export { createArtifactStore } from './artifact-store.mjs';
 export function createOutputFilter(options) {
     const minimumCharacters = options.minimumCharacters ?? 2_000;
@@ -32,7 +32,7 @@ export function createOutputFilter(options) {
             }
             if (stdout === undefined || record?.interrupted || record?.isImage || record?.type === 'image' || record?.is_error || record?.content)
                 return finish(response);
-            if (stdout.includes('[fonn: full original tool response archived as ') || stdout.includes('[fonn: identical diagnostic occurred ')) {
+            if (['[fonn: full original tool response archived as ', '[fonn: identical diagnostic occurred ', repeatedLineNote, similarLinesNote].some((note) => stdout.includes(note))) {
                 decision.reason = 'already_filtered';
                 return finish(response);
             }
@@ -41,7 +41,7 @@ export function createOutputFilter(options) {
                 return finish(response);
             }
             try {
-                const reduction = reduceRecognizedOutput(observation.toolInput, stdout);
+                const reduction = reduceRecognizedOutput(observation.toolInput, stdout, { level: options.level ?? 'standard' });
                 if (!reduction) {
                     decision.reason = 'unrecognized_format';
                     return finish(response);

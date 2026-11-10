@@ -49,7 +49,7 @@ export function renderRun(record: RunRecord): string {
   const delivered = record.filters.reduce((sum, item) => sum + item.deliveredCharacters, 0);
   const filtered = record.filters.filter(item => item.status === 'filtered').length;
   const observed = record.filters.filter(item => item.status === 'observed').length;
-  lines.push('', `Filtering (${record.filterMode}): ${filtered} reduced, ${observed} observed; ${original} → ${delivered} characters.`);
+  lines.push('', `Filtering (${record.filterMode}${record.filterLevel ? `, ${record.filterLevel}` : ''}): ${filtered} reduced, ${observed} observed; ${original} → ${delivered} characters.`);
   return lines.join('\n');
 }
 

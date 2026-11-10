@@ -1,0 +1,42 @@
+---
+title: Filter levels and modes
+description: Choose how far Fonn reduces output, and whether it acts, only records, or stays off.
+sidebar:
+  order: 2
+  label: Filter levels
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Two settings shape filtering. `--filter` decides whether Fonn acts, only records, or stays off. `--filter-level` decides how far it goes.
+
+## Levels
+
+| Level | Reduces | Use it when |
+| --- | --- | --- |
+| `strict` | Format adapters only | You want the narrowest change to what the model reads |
+| `standard` (default) | Adapters, plus identical lines from any command | Most work. Nothing is lost except exact copies, and they are counted |
+| `similar` | Also lines that differ only in numbers or IDs, keeping the first and last | Logs repeat a line with a changing counter, worker number or request ID, and those numbers do not matter |
+
+```sh
+fonn --default-filter-level similar   # save a default level
+fonn --default-filter-level           # show it
+fonn --filter-level strict            # override it for one launch
+fonn run "Explain the failing job" --filter-level similar
+```
+
+At the similar level, a changed word such as `healthy` becoming `unhealthy` breaks the run, so that line stays. Lines that mention errors, failures or warnings are never merged. `fonn resume` restores the level a session used. For the standalone filter, add `--level similar` or `--level strict` to the hook command.
+
+## Modes
+
+| Mode | What the model gets | What Fonn records |
+| --- | --- | --- |
+| `filter` (default) | The shortened output plus a recovery footer | The original, the decision and the character counts |
+| `observe` | The full original output, untouched | The original and what it would have removed |
+| `off` | The full original output | Nothing. No hook runs |
+
+`observe` is a dry run. Use it to try Fonn on your own projects before trusting it to change what the model sees, or to compare levels on your logs. Each observed reduction is saved in the launch's state folder under `~/.local/state/fonn/native/<launch-id>/`, where `filters/` holds each decision.
+
+<Aside>
+`--filter-level` with `--filter off` is rejected, because it would have no effect. A saved level is simply ignored while filtering is off.
+</Aside>

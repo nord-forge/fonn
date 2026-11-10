@@ -9,6 +9,7 @@ This is an independent TypeScript CLI and reusable library for native Claude and
 - `apps/desktop/README.md` reserves the future desktop host. No GUI, `.app`, signing/notarization pipeline, or GUI cask is implemented.
 - `packages/cli/dist/cli/main.js` is the canonical built CLI entrypoint. Keep the root `dist/cli/main.js` compatibility shim for local development.
 - `fonn` with no arguments or leading launcher options opens the native CLI selected by its profile; `fonn claude` and `fonn codex` explicitly select a provider. Preserve the explicit SDK and administration commands. `--help` and `--version` remain offline.
+- `site/` is the Astro Starlight docs site. It is a separate npm project with its own `site/package-lock.json`. Never add it to the root workspaces: the Homebrew runtime runs `npm ci --omit=dev` against the root lockfile on users' machines.
 - The root is a private npm-workspace coordinator. Keep workspace, root, and lockfile versions consistent. Shared contracts, package manifests, and the lockfile have one owner during parallel work.
 
 ## Verification
@@ -24,7 +25,7 @@ Tests must use fixtures and mocked SDK messages. Normal checks must never make p
 - SDK authentication initially requires an explicitly supplied `ANTHROPIC_API_KEY`. Do not extract subscription OAuth credentials or imply subscription quotas apply to API use. Native launchers inherit their corresponding CLI authentication and policy layers. Never extract either provider’s subscription credentials or bypass Codex hook trust.
 - SDK dollar figures and stop budgets are estimates. A request may overshoot a threshold. Never call estimates invoices or guarantee savings.
 - A filter rewrites only a new tool observation. It must not rewrite history, source files, user instructions, or reasoning blocks.
-- Reduce only recognized output formats. Preserve warnings, failures, stderr, and unknown content. Keep originals recoverable and reads bounded within the current task store and validated same-session/project ancestry.
+- Reduce only recognized output formats, plus the generic collapse of byte-identical adjacent lines. `--filter-level strict` turns the generic collapse off. Similar-line collapsing stays opt-in at `--filter-level similar` and never merges problem lines. Preserve warnings, failures, stderr content (both agents merge it into the command output), and other unknown content. Keep originals recoverable and reads bounded within the current task store and validated same-session/project ancestry.
 - Validate structured results and handoffs before rendering. Never present errors as successful checks.
 - Never log credentials or store secrets in configuration. Fonn records and raw artifacts are sensitive; retention is manual.
 - Preserve resume locking, profile/project invariants, and explicit indeterminate-accounting failures on usage regressions.

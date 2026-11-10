@@ -1,0 +1,114 @@
+/*
+ * Landing page hero (components/Hero.astro): title and actions beside the
+ * WebGL panel. The panel's background is a static CSS fallback; hero.js
+ * fades the canvas in over it once WebGL is running.
+ */
+
+.fonn-hero {
+  display: grid;
+  gap: 36px;
+  align-items: center;
+  padding-block: 1rem 2.5rem;
+}
+
+@media (min-width: 60rem) {
+  .fonn-hero {
+    grid-template-columns: 5fr 7fr;
+    padding-block: 2.5rem 3.5rem;
+  }
+}
+
+.fonn-hero h1 {
+  margin: 0 0 16px;
+  font-size: clamp(2rem, 4.4vw, 3.1rem);
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--sl-color-white);
+}
+
+.fonn-hero .lede {
+  max-width: 60ch;
+  margin: 0 0 24px;
+  font-size: 1.12rem;
+  color: var(--muted);
+}
+
+.fonn-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero-visual {
+  --gate: 51%;
+  position: relative;
+  margin: 0;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  background:
+    linear-gradient(90deg, transparent calc(var(--gate) - 1px), rgb(124 196 255 / 55%) var(--gate), transparent calc(var(--gate) + 1px)),
+    repeating-linear-gradient(0deg, transparent 0 22px, rgb(111 143 179 / 10%) 22px 23px),
+    linear-gradient(180deg, var(--viz-top), var(--viz-bottom));
+}
+
+@media (max-width: 40rem) {
+  .hero-visual {
+    aspect-ratio: 4 / 3;
+  }
+}
+
+.hero-visual canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.hero-visual.gl-ready canvas {
+  opacity: 1;
+}
+
+.hero-label {
+  position: absolute;
+  top: 14px;
+  font: 500 0.72rem/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9fb9d4;
+}
+
+.hero-label.left {
+  left: 16px;
+}
+
+.hero-label.right {
+  right: 16px;
+}
+
+.hero-gate {
+  position: absolute;
+  bottom: 14px;
+  left: var(--gate);
+  transform: translateX(-50%);
+}
+
+/* With WebGL running, hero.js positions the label with a transform only. */
+.hero-visual.gl-ready .hero-gate {
+  left: 0;
+  will-change: transform;
+}
+
+.hero-gate span {
+  display: block;
+  padding: 4px 9px;
+  border: 1px solid rgb(124 196 255 / 40%);
+  border-radius: 999px;
+  background: rgb(124 196 255 / 14%);
+  color: #cfe8ff;
+  font: 600 0.72rem/1 var(--mono);
+  white-space: nowrap;
+}

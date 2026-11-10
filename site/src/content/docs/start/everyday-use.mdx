@@ -1,0 +1,36 @@
+---
+title: Everyday use
+description: Launch Claude Code or Codex, pick a profile, choose filtering and resume a session.
+sidebar:
+  order: 3
+---
+
+These use the `fonn` name. In a checkout without an alias, use `node packages/cli/dist/cli/main.js`.
+
+```sh
+fonn                                  # open your default agent
+fonn claude                           # open Claude Code
+fonn codex                            # open Codex
+fonn --profile claude:fable-medium    # pick a profile for this launch
+fonn --default codex                  # save Codex as the default, then exit
+fonn --filter observe                 # record reductions, deliver full output
+fonn --filter-level similar           # also collapse lines that differ only in numbers
+fonn --filter off --subagents off     # register no Fonn hooks
+fonn help                             # offline help
+```
+
+Pass native arguments after `--`, for example `fonn -- --resume`. Flags that override the profile, hooks or permission policy are rejected.
+
+## Resume
+
+When a session closes, Fonn prints a command such as `fonn resume <launch-id>`. It restores the agent, profile, project, filter mode, filter level and subagent preference. If the provider's session ID was not observed, the same command opens the provider's session picker.
+
+## Read an original back
+
+A shortened observation ends with a footer naming its archived original. Read it in bounded slices:
+
+```sh
+fonn native-output <launch-id> <artifact-id> --offset 0 --limit 4000
+```
+
+Reads default to 4,000 characters and allow at most 20,000. Continue from the reported next offset.
