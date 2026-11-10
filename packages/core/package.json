@@ -30,6 +30,10 @@
       "types": "./dist/profiles.d.ts",
       "import": "./dist/profiles.js"
     },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "import": "./dist/settings.js"
+    },
     "./schema": {
       "types": "./dist/schema.d.ts",
       "import": "./dist/schema.js"

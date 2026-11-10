@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
-import type { ArtifactSlice, FilterLevel, FilterMode, PermissionRequest, ProfileName, RunRecord, RunTaskOptions, TaskProfile } from '@nord-forge/fonn-core/contracts';
-import { createProfileStore, effortSchema, filterLevelSchema, getDefaultConfigDirectory, modelSchema, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
+import type { ArtifactSlice, FilterLevel, FilterMode, PermissionRequest, ProfileName, ProfileProvider, RunRecord, RunTaskOptions, TaskProfile } from '@nord-forge/fonn-core/contracts';
+import { createProfileStore, effortSchema, filterLevelSchema, getDefaultConfigDirectory, modelSchema, profiles as builtInProfiles, providerSchema, resolveProfile, resolveProfileForProvider, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
+import { findProjectRoot, LOCAL_SETTINGS_FILE, projectSettingsSchema, projectSourcedValues, readProjectSettings, resolveSettings, SETTING_KEYS, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, type ResolvedSettings, type SettingKey, type SettingScope } from '@nord-forge/fonn-core/settings';
 import { renderRun, runExitCode, terminalText, validateResult } from './render.js';
 
 export interface CliDependencies {
@@ -36,6 +38,7 @@ Usage:
   fonn codex [launcher options] [-- <codex args>]
   fonn --default [claude|codex] [--json]
   fonn --default-filter-level [strict|standard|similar] [--json]
+  fonn config [show|get|set|unset] ...   Project settings; see fonn help config
   fonn resume <launch-id> [--state-dir <path>]
   fonn profiles [--json]
   fonn help profiles | codex | resume
@@ -128,6 +131,23 @@ Original outputs can be recovered with fonn native-output <launch-id> <artifact-
 fonn run remains Claude SDK only; a programmatic Codex SDK runtime is not implemented.
 `;
 
+const configHelp = `Fonn config — project settings for launches and runs
+
+Usage:
+  fonn config [show] [--cwd <dir>] [--json]
+  fonn config get <key> [--cwd <dir>] [--json]
+  fonn config set <key> <value> [--local|--shared] [--cwd <dir>]
+  fonn config unset <key> [--local|--shared] [--cwd <dir>]
+
+Keys: profile, filterLevel (strict|standard|similar), filterMode (filter|observe|off), subagents (auto|off).
+--local (default) writes .fonn/settings.local.json, which is personal and should stay out of Git.
+--shared writes .fonn.json at the project root, meant to be committed for the team.
+Precedence: command-line flag, personal file, shared file, global default, built-in default.
+The project is the nearest folder with one of these files, otherwise the Git root.
+Launches print which values came from project files. Global defaults stay in
+fonn --default, fonn --default-filter-level and fonn profiles default.
+`;
+
 const resumeHelp = `Fonn resume — reopen a saved native launch
 
 Usage:
@@ -153,7 +173,7 @@ function parse(args: string[], allowed: string[]): Parsed {
     const flag = value.slice(2);
     if (!allowed.includes(flag)) throw new Error(`Unknown option ${value}. Use --help for usage.`);
     if (flags.has(flag)) throw new Error(`Option ${value} was supplied more than once.`);
-    if (flag === 'json') { flags.set(flag, true); continue; }
+    if (flag === 'json' || flag === 'shared' || flag === 'local') { flags.set(flag, true); continue; }
     const argument = args[++index];
     if (!argument || argument.startsWith('--')) throw new Error(`Option ${value} requires a value.`);
     flags.set(flag, argument);
@@ -190,6 +210,91 @@ async function filterLevelFor(parsed: Parsed, filterMode: string, configDirector
 function stringFlag(parsed: Parsed, name: string): string | undefined {
   return parsed.flags.get(name) as string | undefined;
 }
+
+function choice<T extends string>(value: string | undefined, allowed: readonly T[], message: string): T | undefined {
+  if (value === undefined) return undefined;
+  if (!(allowed as readonly string[]).includes(value)) throw new Error(message);
+  return value as T;
+}
+
+interface Choices {
+  profile: TaskProfile;
+  filterMode: FilterMode;
+  filterLevel: FilterLevel;
+  subagents: 'auto' | 'off';
+  notices: string[];
+}
+
+/**
+ * Flags first, then the project's .fonn/settings.local.json and .fonn.json,
+ * then the global defaults. A project profile for the other agent is ignored
+ * for an explicit `fonn claude` or `fonn codex`; a mismatched flag is an error.
+ */
+async function choicesFor(parsed: Parsed, cwd: string, configDirectory: string, provider: ProfileProvider | undefined, native: boolean): Promise<Choices> {
+  const flags: ProjectSettings = {};
+  const mode = choice(stringFlag(parsed, 'filter'), ['filter', 'observe', 'off'] as const, '--filter must be filter, observe, or off.');
+  if (mode) flags.filterMode = mode;
+  if (native) {
+    const subagents = choice(stringFlag(parsed, 'subagents'), ['auto', 'off'] as const, '--subagents must be auto or off.');
+    if (subagents) flags.subagents = subagents;
+  }
+  const level = stringFlag(parsed, 'filter-level');
+  if (level !== undefined) {
+    if (mode === 'off') throw new Error('--filter-level has no effect with --filter off. Choose filter or observe.');
+    flags.filterLevel = parseLevel(level);
+  }
+  const profileFlag = stringFlag(parsed, 'profile');
+  if (profileFlag !== undefined) flags.profile = profileFlag;
+
+  const files = await readProjectSettings(await findProjectRoot(cwd));
+  const store = createProfileStore(configDirectory);
+  const resolved = resolveSettings({ flags, files, global: { profile: (await store.get()).name, filterLevel: await store.getDefaultFilterLevel() } });
+  const notices: string[] = [];
+  const fileFor = (source: string) => source === 'shared' ? SHARED_SETTINGS_FILE : LOCAL_SETTINGS_FILE;
+
+  let profile: TaskProfile;
+  try {
+    profile = await store.get(resolved.profile.value);
+  } catch (error) {
+    if (resolved.profile.source === 'shared' || resolved.profile.source === 'local') {
+      throw new Error(`Profile ${resolved.profile.value} set in ${fileFor(resolved.profile.source)} does not exist. Create it with fonn profiles create, or change the project setting with fonn config.`);
+    }
+    throw error;
+  }
+  let ignoredProfile = false;
+  if (provider && (profile.provider ?? 'claude') !== provider) {
+    if (resolved.profile.source === 'flag') throw new Error(`Profile ${profile.name} belongs to ${profile.provider ?? 'claude'}, not ${provider}. Select a ${provider} profile.`);
+    if (resolved.profile.source === 'shared' || resolved.profile.source === 'local') {
+      notices.push(`Ignoring profile ${profile.name} from ${fileFor(resolved.profile.source)}: it is a ${profile.provider ?? 'claude'} profile.`);
+      ignoredProfile = true;
+    }
+    profile = await resolveProfileForProvider(provider, undefined, configDirectory);
+  }
+
+  const used = projectSourcedValues(resolved)
+    .filter((item) => !(item.key === 'profile' && ignoredProfile))
+    .filter((item) => native || item.key !== 'subagents');
+  if (used.length) notices.push(`Project settings: ${used.map((item) => `${item.key} ${item.value} (${item.file})`).join(', ')}.`);
+
+  return { profile, filterMode: resolved.filterMode.value, filterLevel: resolved.filterLevel.value, subagents: resolved.subagents.value, notices };
+}
+
+const KEY_ALIASES: Record<string, SettingKey> = {
+  profile: 'profile',
+  filterLevel: 'filterLevel', 'filter-level': 'filterLevel',
+  filterMode: 'filterMode', 'filter-mode': 'filterMode', filter: 'filterMode',
+  subagents: 'subagents',
+};
+
+function settingKey(name: string | undefined): SettingKey {
+  const key = name === undefined ? undefined : KEY_ALIASES[name];
+  if (!key) throw new Error(`Unknown setting ${name ?? ''}. Use one of: ${SETTING_KEYS.join(', ')}.`);
+  return key;
+}
+
+function describeSource(source: ResolvedSettings[SettingKey]['source']): string {
+  return { flag: 'flag', local: `personal (${LOCAL_SETTINGS_FILE})`, shared: `shared (${SHARED_SETTINGS_FILE})`, global: 'global default', default: 'built-in default' }[source];
+}
 async function version(): Promise<string> {
   const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string };
   return manifest.version;
@@ -215,7 +320,8 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       if (args.length === 2 && args[1] === 'profiles') { stdout(profilesHelp); return 0; }
       if (args.length === 2 && args[1] === 'codex') { stdout(codexHelp); return 0; }
       if (args.length === 2 && args[1] === 'resume') { stdout(resumeHelp); return 0; }
-      throw new Error('Expected help [profiles|codex|resume]. Use --help for usage.');
+      if (args.length === 2 && args[1] === 'config') { stdout(configHelp); return 0; }
+      throw new Error('Expected help [profiles|codex|resume|config]. Use --help for usage.');
     }
     if (command === 'profiles' && args.length === 2 && args[1] === '--help') { stdout(profilesHelp); return 0; }
     if (command === 'codex' && args.length === 2 && args[1] === '--help') { stdout(codexHelp); return 0; }
@@ -238,6 +344,61 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       else stdout(`Default filter level: ${level}.\n`);
       return 0;
     }
+    if (command === 'config') {
+      if (args.length === 2 && args[1] === '--help') { stdout(configHelp); return 0; }
+      const action = ['show', 'get', 'set', 'unset'].includes(args[1] ?? '') ? args[1]! : 'show';
+      const parsed = parse(args.slice(action === args[1] ? 2 : 1), ['cwd', 'json', 'local', 'shared']);
+      if (parsed.flags.has('local') && parsed.flags.has('shared')) throw new Error('Choose --local or --shared, not both.');
+      const configDirectory = getDefaultConfigDirectory(env);
+      const root = await findProjectRoot(resolve(stringFlag(parsed, 'cwd') ?? process.cwd()));
+      const files = await readProjectSettings(root);
+      const store = createProfileStore(configDirectory);
+      const global = { profile: (await store.get()).name, filterLevel: await store.getDefaultFilterLevel() };
+
+      if (action === 'show' || action === 'get') {
+        argumentCount(parsed, action === 'get' ? 1 : 0, action === 'get' ? 'config get <key>' : 'config [show]');
+        const effective = resolveSettings({ files, global });
+        if (action === 'get') {
+          const key = settingKey(parsed.positionals[0]);
+          if (parsed.flags.has('json')) json({ key, ...effective[key] });
+          else stdout(`${String(effective[key].value)}\n`);
+          return 0;
+        }
+        if (parsed.flags.has('json')) { json({ root, files, effective }); return 0; }
+        const lines = [`Project: ${terminalText(root)}`,
+          `Shared:  ${SHARED_SETTINGS_FILE} ${files.shared.exists ? 'present' : 'not present'}`,
+          `Personal: ${LOCAL_SETTINGS_FILE} ${files.local.exists ? 'present' : 'not present'}`, ''];
+        for (const key of SETTING_KEYS) lines.push(`${key.padEnd(12)} ${String(effective[key].value).padEnd(22)} ${describeSource(effective[key].source)}`);
+        stdout(lines.join('\n') + '\n');
+        return 0;
+      }
+
+      const scope: SettingScope = parsed.flags.has('shared') ? 'shared' : 'local';
+      argumentCount(parsed, action === 'set' ? 2 : 1, action === 'set' ? 'config set <key> <value>' : 'config unset <key>');
+      const key = settingKey(parsed.positionals[0]);
+      const next: ProjectSettings = { ...files[scope].settings };
+      if (action === 'set') {
+        const candidate = projectSettingsSchema.safeParse({ [key]: parsed.positionals[1] });
+        if (!candidate.success) throw new Error(`Invalid value for ${key}: ${parsed.positionals[1]}.`);
+        Object.assign(next, candidate.data);
+        if (key === 'profile') {
+          const known = await store.get(parsed.positionals[1]!).catch(() => undefined);
+          if (!known) stderr(`Note: profile ${parsed.positionals[1]} does not exist yet. Launches fail until it is created.`);
+          else if (scope === 'shared' && !Object.hasOwn(builtInProfiles, known.name)) {
+            stderr(`Note: ${known.name} is a custom profile. Teammates need a profile with the same name.`);
+          }
+        }
+      } else {
+        delete next[key];
+      }
+      const written = await writeProjectSettings(root, scope, next);
+      stdout(`${action === 'set' ? `Set ${key} to ${parsed.positionals[1]}` : `Removed ${key}`} in ${terminalText(written)}.\n`);
+      if (scope === 'local' && action === 'set') {
+        const check = spawnSync('git', ['check-ignore', '-q', written], { cwd: root });
+        if (check.status === 1) stderr(`Note: ${LOCAL_SETTINGS_FILE} is not ignored by Git. Add .fonn/ to .gitignore to keep personal settings out of commits.`);
+      }
+      return 0;
+    }
     if (command === '--default') {
       const parsed = parse(args.slice(1), ['json']);
       if (parsed.positionals.length > 1) throw new Error('Expected --default [claude|codex] [--json].');
@@ -254,19 +415,14 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       const separator = args.indexOf('--');
       const parsed = parse(args.slice(1, separator < 0 ? undefined : separator), ['cwd', 'profile', 'filter', 'filter-level', 'subagents', 'state-dir']);
       argumentCount(parsed, 0, `${command} [options] [-- <native args>]`);
-      const filterMode = stringFlag(parsed, 'filter') ?? 'filter';
-      if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
-      const subagents = stringFlag(parsed, 'subagents') ?? 'auto';
-      if (subagents !== 'auto' && subagents !== 'off') throw new Error('--subagents must be auto or off.');
       const configDirectory = getDefaultConfigDirectory(env);
-      const filterLevel = await filterLevelFor(parsed, filterMode, configDirectory);
-      const profile = autoLaunch
-        ? await resolveProfile(stringFlag(parsed, 'profile'), configDirectory)
-        : await resolveProfileForProvider(command, stringFlag(parsed, 'profile'), configDirectory);
-      const launch = profile.provider === 'codex'
+      const cwd = resolve(stringFlag(parsed, 'cwd') ?? process.cwd());
+      const chosen = await choicesFor(parsed, cwd, configDirectory, autoLaunch ? undefined : command, true);
+      for (const notice of chosen.notices) stderr(notice);
+      const launch = chosen.profile.provider === 'codex'
         ? injected.launchCodex ?? (await import('../native/codex.js')).launchCodex
         : injected.launchClaude ?? (await import('../native/index.js')).launchClaude;
-      return await launch({ cwd: resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), profile: profile.name, filterMode: filterMode as FilterMode, filterLevel, subagents, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
+      return await launch({ cwd, profile: chosen.profile.name, filterMode: chosen.filterMode, filterLevel: chosen.filterLevel, subagents: chosen.subagents, stateDirectory: stringFlag(parsed, 'state-dir'), configDirectory, args: separator < 0 ? [] : args.slice(separator + 1) });
     }
     if (command === 'codex-hook') {
       const parsed = parse(args.slice(1), []);
@@ -349,14 +505,21 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       if (!parsed.positionals[0]!.trim()) throw new Error('The prompt must not be empty.');
       const configDirectory = getDefaultConfigDirectory(env);
       let profile = stringFlag(parsed, 'profile');
-      if (!parsed.flags.has('resume')) {
-        const selected = await resolveProfile(profile, configDirectory);
-        if (selected.provider === 'codex') throw new Error(`fonn run supports Claude SDK profiles only. Use fonn codex --profile ${selected.name} for native Codex, or run with --profile opus-medium.`);
-        profile = selected.name;
+      let filterMode: string;
+      let filterLevel: FilterLevel | undefined;
+      if (parsed.flags.has('resume')) {
+        // SDK resume keeps the task's saved profile and level and reads no settings files.
+        filterMode = stringFlag(parsed, 'filter') ?? 'filter';
+        if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
+        filterLevel = await filterLevelFor(parsed, filterMode, configDirectory);
+      } else {
+        const chosen = await choicesFor(parsed, resolve(stringFlag(parsed, 'cwd') ?? process.cwd()), configDirectory, undefined, false);
+        if (chosen.profile.provider === 'codex') throw new Error(`fonn run supports Claude SDK profiles only. Use fonn codex --profile ${chosen.profile.name} for native Codex, or run with --profile opus-medium.`);
+        for (const notice of chosen.notices) stderr(notice);
+        profile = chosen.profile.name;
+        filterMode = chosen.filterMode;
+        filterLevel = chosen.filterLevel;
       }
-      const filterMode = stringFlag(parsed, 'filter') ?? 'filter';
-      if (!['filter', 'observe', 'off'].includes(filterMode)) throw new Error('--filter must be filter, observe, or off.');
-      const filterLevel = await filterLevelFor(parsed, filterMode, configDirectory);
       const budgetUsd = numeric(parsed.flags.get('budget'), '--budget', 5);
       const maxTurns = numeric(parsed.flags.get('max-turns'), '--max-turns', 20, true);
       const abort = new AbortController();

@@ -411,3 +411,54 @@ test('renderer is concise, preserves failed checks and bounds handoffs', () => {
   assert.doesNotMatch(rendered, /\u001b|\u202e/);
   assert.equal(terminalText('safe\ntext'), 'safe\ntext');
 });
+
+test('project settings drive launches and fonn config edits them', async () => {
+  const project = await mkdtemp(join(await realpath(tmpdir()), 'fonn-cli-project-'));
+  try {
+    const launches: Array<Parameters<CliDependencies['launchClaude']>[0]> = [];
+    const capture = async (options: Parameters<CliDependencies['launchClaude']>[0]) => { launches.push(options); return 0; };
+    const h = () => harness({ launchClaude: capture, launchCodex: capture });
+
+    const shared = h();
+    assert.equal(await shared.run(['config', 'set', 'filterLevel', 'similar', '--shared', '--cwd', project]), 0);
+    assert.equal(await h().run(['config', 'set', 'subagents', 'off', '--cwd', project]), 0);
+    assert.equal(await h().run(['config', 'set', 'profile', 'codex:sol-medium', '--shared', '--cwd', project]), 0);
+
+    const show = h();
+    assert.equal(await show.run(['config', '--cwd', project]), 0);
+    assert.match(show.out(), /filterLevel\s+similar\s+shared \(\.fonn\.json\)/);
+    assert.match(show.out(), /subagents\s+off\s+personal/);
+    const get = h();
+    assert.equal(await get.run(['config', 'get', 'filter-level', '--cwd', project, '--json']), 0);
+    assert.deepEqual(JSON.parse(get.out()), { key: 'filterLevel', value: 'similar', source: 'shared' });
+
+    // Implicit launch: the project's Codex profile chooses Codex, with a notice.
+    const implicit = h();
+    assert.equal(await implicit.run(['--cwd', project]), 0);
+    assert.equal(launches.at(-1)?.profile, 'codex:sol-medium');
+    assert.equal(launches.at(-1)?.filterLevel, 'similar');
+    assert.equal(launches.at(-1)?.subagents, 'off');
+    assert.match(implicit.err(), /Project settings: profile codex:sol-medium \(\.fonn\.json\)/);
+
+    // Explicit Claude ignores the Codex project profile; flags still win.
+    const claude = h();
+    assert.equal(await claude.run(['claude', '--cwd', project, '--filter-level', 'strict']), 0);
+    assert.equal(launches.at(-1)?.profile, 'opus-medium');
+    assert.equal(launches.at(-1)?.filterLevel, 'strict');
+    assert.match(claude.err(), /Ignoring profile codex:sol-medium from \.fonn\.json/);
+
+    // A project profile that does not exist fails clearly.
+    assert.equal(await h().run(['config', 'set', 'profile', 'missing-profile', '--shared', '--cwd', project]), 0);
+    const missing = h();
+    assert.equal(await missing.run(['--cwd', project]), 1);
+    assert.match(missing.err(), /Profile missing-profile set in \.fonn\.json does not exist/);
+
+    assert.equal(await h().run(['config', 'unset', 'profile', '--shared', '--cwd', project]), 0);
+    const bad = h();
+    assert.equal(await bad.run(['config', 'set', 'filterMode', 'sometimes', '--cwd', project]), 1);
+    assert.match(bad.err(), /Invalid value for filterMode/);
+    assert.equal(await h().run(['config', 'set', 'colour', 'blue', '--cwd', project]), 1);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
