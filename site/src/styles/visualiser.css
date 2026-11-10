@@ -7,9 +7,18 @@
  *   1200px and up wide main column with a sticky checks sidebar
  */
 
-/* The top bar widens on this page so its edges line up with the visualiser. */
-.page-viz .topbar-inner {
+/* Starlight's content column is narrow. On the visualiser page, the title and
+   the content containers share a 1,520px width instead. */
+:root:has(.viz-page) .sl-container {
   max-width: 1520px;
+  margin-inline: auto;
+}
+
+/* Starlight's container already supplies the side padding. */
+.viz-page .viz-intro,
+.viz-page .viz,
+.viz-page .viz-docs {
+  padding-inline: 0;
 }
 
 .viz-intro,

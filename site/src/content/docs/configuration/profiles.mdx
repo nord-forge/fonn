@@ -1,0 +1,22 @@
+---
+title: Profiles
+description: The built-in model profiles, and how to save your own.
+sidebar:
+  order: 1
+---
+
+import ProfilesTable from '../../../components/ProfilesTable.astro';
+
+Six built-in profiles ship with Fonn. This table is generated from the core package.
+
+<ProfilesTable />
+
+Anthropic controls access to Fable and Mythos. Mythos needs an eligible verified account. Selecting a profile does not grant access or change billing.
+
+```sh
+fonn profiles create focused --model sonnet --effort medium
+fonn profiles default focused
+fonn profiles
+```
+
+Custom profiles live in `~/.config/fonn/profiles.json`. See the [profiles reference](/reference/profiles/).

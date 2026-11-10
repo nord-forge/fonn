@@ -1,0 +1,30 @@
+---
+title: FAQ
+description: Common questions about savings, safety, storage, subagents and distribution.
+sidebar:
+  order: 1
+---
+
+## Will Fonn lower my bill?
+
+Fonn makes no such promise. Fewer characters in an observation is not the same as fewer tokens or dollars, and real tasks vary. Use `--filter observe` to see what would be removed without changing anything.
+
+## Can the model miss something important?
+
+By default, Fonn removes only lines that match strict progress patterns or exact duplicates, and it states the count. At the similar level, it also drops the middle of runs that differ only in numbers. It never does that for lines that mention errors, failures or warnings. The footer tells the agent how to read the full original if it needs it.
+
+## Does it edit my conversation or files?
+
+No. It rewrites only a new tool observation as it arrives. History, reasoning, instructions and source files are left alone.
+
+## Where are originals stored?
+
+Under `~/.local/state/fonn` by default, or a `--state-dir` you choose. They can contain private data. Retention is manual, and they should stay out of Git.
+
+## Do subagents get filtered too?
+
+Yes. Native workers inherit the session hooks, so their supported Bash observations go through the same filter for every model. `--filter off` turns it off for parent and workers.
+
+## Is there a GUI or npm package?
+
+A desktop app is planned but not built. The workspace packages are not published to npm as a supported install route.

@@ -1,31 +1,25 @@
 /*
- * Mobile section dock (dock.js): a floating pill showing the current section
- * and scroll progress, and a bottom sheet with sections and site links.
- * Only used below 960px. Without JavaScript the plain link lists remain.
+ * Section dock (scripts/dock.js): a floating pill with the current section
+ * and scroll progress, and a bottom sheet with the page sections, the docs
+ * navigation, a theme switch and the GitHub link.
+ *
+ * Shown below 72rem, where Starlight hides its "On this page" column. The
+ * mobile menu button and table of contents bar are switched off in
+ * astro.config.mjs, so the dock is the mobile navigation.
  */
 
 .dock {
   display: none;
 }
 
-@media (max-width: 959px) {
-  .js .dock {
+@media (max-width: 71.99rem) {
+  .dock {
     display: block;
   }
 
-  /* The dock replaces the wrapped section list and, on phones, the nav row. */
-  .js .toc {
-    display: none;
-  }
-
-  .js body {
+  /* Room for the pill below the last content. */
+  body {
     padding-bottom: 88px;
-  }
-}
-
-@media (max-width: 719px) {
-  .js .topnav {
-    display: none;
   }
 }
 
@@ -217,36 +211,110 @@
   color: var(--accent-strong);
 }
 
+/* Docs navigation groups in the sheet. */
+.dock-group {
+  margin: 14px 0 4px;
+  padding: 0 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 .dock-links {
   list-style: none;
-  margin: 10px 0 0;
+  margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
 }
 
 .dock-links a {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
+  display: block;
+  padding: 8px 12px;
+  border-radius: 10px;
   color: var(--text);
   text-decoration: none;
-  font-weight: 600;
+}
+
+.dock-links a:hover {
+  background: var(--bg-2);
 }
 
 .dock-links a[aria-current="page"] {
-  border-color: var(--accent);
+  background: var(--accent-soft);
   color: var(--accent-strong);
+  font-weight: 700;
 }
 
-.dock-links .dock-star {
+/* Theme switch and GitHub link at the bottom of the sheet. */
+.dock-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.dock-theme {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+}
+
+.dock-theme label {
+  position: relative;
+}
+
+.dock-theme input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dock-theme span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.dock-theme input:checked + span {
   background: var(--text);
-  border-color: var(--text);
   color: var(--bg);
+}
+
+.dock-theme input:focus-visible + span {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dock-star {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-toggle,
+  .dock-sheet,
+  .dock-backdrop {
+    transition: none;
+  }
 }

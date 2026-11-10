@@ -1,0 +1,34 @@
+---
+// Landing page hero: Starlight's title, tagline and action buttons beside the
+// WebGL filter effect (src/scripts/hero). The canvas is decorative; a CSS
+// gradient shows when WebGL is unavailable.
+import { LinkButton } from '@astrojs/starlight/components';
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero ?? {};
+---
+
+<section class="fonn-hero" aria-labelledby="_top">
+  <div class="fonn-hero-copy">
+    <p class="eyebrow">Local CLI for Claude Code and Codex</p>
+    <h1 id="_top" data-page-title set:html={title} />
+    {tagline && <p class="lede" set:html={tagline} />}
+    {actions.length > 0 && (
+      <div class="fonn-hero-actions">
+        {actions.map(({ text, link, variant, icon }) => (
+          <LinkButton href={link} variant={variant} icon={icon?.name}>{text}</LinkButton>
+        ))}
+      </div>
+    )}
+  </div>
+  <figure class="hero-visual" aria-hidden="true">
+    <canvas id="hero-canvas"></canvas>
+    <div class="hero-label left">raw Bash observation</div>
+    <div class="hero-label right">model context</div>
+    <div class="hero-gate"><span>fonn filter</span></div>
+  </figure>
+</section>
+
+<script>
+  import '../scripts/hero/hero.js';
+</script>

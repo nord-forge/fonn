@@ -27,6 +27,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Typecheck, mocked tests, and build
         run: npm run check
+      - name: Install the documentation site's locked dependencies
+        run: npm ci --ignore-scripts --prefix site
       - name: Build the documentation site
         run: npm run docs:build
       - name: Verify committed standalone filters match the shared build

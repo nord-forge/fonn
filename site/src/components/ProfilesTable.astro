@@ -1,0 +1,55 @@
+---
+// The built-in profiles, generated from the compiled core so the table can
+// never drift from the CLI.
+import { getProfile, profiles } from '../../../packages/core/dist/profiles.js';
+
+const initialDefault = getProfile().name;
+
+function requirementFor(profile) {
+  if ((profile.provider ?? 'claude') === 'codex') return 'Codex CLI 0.167.0+';
+  if (/^claude-(?:fable|mythos)-/.test(profile.model)) {
+    const verified = profile.model.startsWith('claude-mythos-') ? ', eligible verified account' : '';
+    return `Claude Code 2.1.321+ and account access${verified}`;
+  }
+  return 'Claude Code 2.1.319+';
+}
+
+const rows = Object.values(profiles).map((profile) => ({
+  name: profile.name,
+  agent: (profile.provider ?? 'claude') === 'codex' ? 'Codex' : 'Claude',
+  model: profile.model,
+  effort: profile.effort,
+  requires: requirementFor(profile),
+  note: profile.name === initialDefault ? 'Initial default' : profile.name === 'codex:sol-medium' ? 'Codex default' : '',
+}));
+---
+
+<table>
+  <thead>
+    <tr><th scope="col">Profile</th><th scope="col">Agent</th><th scope="col">Model</th><th scope="col">Effort</th><th scope="col">Requires</th></tr>
+  </thead>
+  <tbody>
+    {rows.map((row) => (
+      <tr>
+        <th scope="row"><code>{row.name}</code>{row.note && <> <span class="profile-note">{row.note}</span></>}</th>
+        <td>{row.agent}</td>
+        <td><code>{row.model}</code></td>
+        <td>{row.effort}</td>
+        <td>{row.requires}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
+<style>
+  .profile-note {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+</style>

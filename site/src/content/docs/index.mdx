@@ -1,0 +1,49 @@
+---
+title: Fonn
+description: A local CLI around native Claude Code and Codex. Saved model profiles, subagent guidance, and conservative filtering of noisy shell output with recoverable originals.
+template: splash
+hero:
+  title: Less noise in the context window. Nothing lost.
+  tagline: Fonn opens the native Claude Code or Codex CLI with your saved model profile. It trims recognized noisy shell output before the model reads it, and keeps every original on disk so the agent can read it back.
+  actions:
+    - text: Install from source
+      link: /start/install/
+      icon: right-arrow
+    - text: See the filter work
+      link: /how-it-works/
+      variant: secondary
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Saved profiles" icon="setting">
+    A provider, model and effort level under a short name, so `fonn --profile focused` always starts the same way.
+  </Card>
+  <Card title="Subagent guidance" icon="rocket">
+    Startup instructions ask the agent to hand meaningful independent work to its built-in subagents. Simple tasks stay with the parent.
+  </Card>
+  <Card title="Output filtering" icon="document">
+    Recognized noisy shell output, like test progress rows, is shortened before the model reads it. The full original stays recoverable.
+  </Card>
+  <Card title="Your CLI, unchanged" icon="approve-check">
+    Claude Code and Codex keep their own login, settings, permissions and questions. Fonn never bypasses an approval.
+  </Card>
+</CardGrid>
+
+## Quick start
+
+```sh
+git clone https://github.com/nord-forge/fonn.git
+cd fonn
+npm ci --ignore-scripts
+npm run build
+node packages/cli/dist/cli/main.js claude --cwd /absolute/path/to/project
+```
+
+<CardGrid>
+  <LinkCard title="Install" description="Source checkout, standalone filters, and the upcoming Homebrew cask." href="/start/install/" />
+  <LinkCard title="How the filter decides" description="Step through every check with real samples or your own output." href="/how-it-works/" />
+</CardGrid>
+
+Version 0.1.0. MIT licensed. Fonn is independent of Anthropic and OpenAI.

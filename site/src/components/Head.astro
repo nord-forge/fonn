@@ -1,0 +1,36 @@
+---
+// Starlight's default <head>, plus the data and script for the section dock.
+// The dock is built in the browser because Starlight only renders its mobile
+// navigation components on pages with a sidebar or table of contents.
+import Default from '@astrojs/starlight/components/Head.astro';
+
+const route = Astro.locals.starlightRoute;
+
+// Page sections: the top-level headings, without Starlight's "Overview" entry.
+const sections = (route.toc?.items ?? [])
+  .filter((item) => item.slug !== '_top')
+  .map((item) => ({ id: item.slug, label: item.text }));
+
+// Docs navigation: sidebar groups and links, flattened one level.
+function flatten(entries) {
+  return entries.map((entry) => entry.type === 'group'
+    ? { label: entry.label, links: entry.entries.filter((child) => child.type === 'link').map(link) }
+    : { label: '', links: [link(entry)] });
+}
+function link(entry) {
+  return { label: entry.label, href: entry.href, current: entry.isCurrent };
+}
+
+const data = {
+  title: route.entry.data.title,
+  sections,
+  navigation: flatten(route.sidebar),
+  github: 'https://github.com/nord-forge/fonn',
+};
+---
+
+<Default />
+<script type="application/json" id="dock-data" set:html={JSON.stringify(data)} />
+<script>
+  import '../scripts/dock.js';
+</script>

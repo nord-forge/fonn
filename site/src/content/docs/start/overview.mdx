@@ -1,0 +1,54 @@
+---
+title: What is this
+description: Fonn is a local command line tool and reusable TypeScript core around native Claude Code and Codex.
+sidebar:
+  order: 1
+---
+
+import { Steps, Tabs, TabItem, Aside, LinkCard } from '@astrojs/starlight/components';
+import FilterDemo from '../../../components/FilterDemo.astro';
+
+Fonn is a local command line tool and a reusable TypeScript core. It wraps the CLIs you already use. Running `fonn` opens the unmodified Claude Code or Codex interface, with its own login, settings, permissions and questions.
+
+On top of that launch, Fonn adds three things:
+
+- **Saved profiles.** A provider, model and effort level stored under a short name, so `fonn --profile focused` always starts the same way.
+- **Subagent guidance.** Startup instructions that ask the agent to hand meaningful independent work to its built-in subagents, while simple tasks stay with the parent.
+- **Output filtering.** Recognized noisy shell output, like test progress rows, is shortened before the model reads it. The full original is archived locally and can be read back in bounded slices.
+
+Separately, `fonn run` starts a structured task through the Claude Agent SDK, with validated results, budgets and estimated usage accounting. That path uses an API key and API billing. See [permissions and billing](/configuration/permissions-and-billing/).
+
+## How it works
+
+<Steps>
+
+1. **Launch.** Fonn starts the native CLI with your profile's model and effort, plus per-launch hook settings. Your global Claude or Codex settings are not changed.
+
+2. **Delegate.** With `--subagents auto`, startup guidance suggests at most two workers, no nested delegation and read-only exploration. These are instructions. Your policies still decide.
+
+3. **Filter.** Each **new Bash observation** passes through a post-tool hook, including observations from native workers. Only recognized formats and repeated lines are reduced. Reasoning, history, instructions and source files are never rewritten.
+
+4. **Recover.** A reduced observation ends with a footer naming the archived original. The agent, or you, can read it back 4,000 characters at a time, up to 20,000 per request.
+
+</Steps>
+
+## See it on real samples
+
+<Tabs>
+  <TabItem label="PHPUnit">
+    <FilterDemo sample="phpunit" />
+  </TabItem>
+  <TabItem label="Repeated lines">
+    <FilterDemo sample="repeated" />
+  </TabItem>
+  <TabItem label="Heartbeat log">
+    <FilterDemo sample="heartbeat" compare={false} />
+    <FilterDemo sample="heartbeat" level="similar" />
+  </TabItem>
+</Tabs>
+
+<Aside>
+These panels are generated at build time by running the shipped filter on illustrative output. Character counts describe that sample. They are not a token, cost or accuracy benchmark.
+</Aside>
+
+<LinkCard title="Open the interactive visualiser" description="Step through every check with your own command and output." href="/how-it-works/" />

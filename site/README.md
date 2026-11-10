@@ -1,43 +1,44 @@
 # Fonn docs site
 
-A small static site with two pages. `index.html` is the documentation. `how-it-works.html` is an interactive visualiser that runs the compiled core filter in the browser. There is no framework and no runtime dependency.
+The documentation site, built with [Astro Starlight](https://starlight.astro.build/). It has a landing page with a WebGL hero, the docs pages, the guides from `../docs` under *Reference*, and an interactive filter visualiser at `/how-it-works/`.
+
+This is a separate npm project with its own `package-lock.json`. Keep it out of the root workspaces: the Homebrew cask runs `npm ci --omit=dev` against the root lockfile on users' machines, and the site's dependencies must never reach that install.
 
 ## Preview locally
 
+From the repository root:
+
 ```sh
 npm ci --ignore-scripts
+npm ci --ignore-scripts --prefix site
 npm run docs:dev
 ```
 
-This compiles the core, builds `site/dist` and serves it at http://127.0.0.1:4321/. It rebuilds when `site/src` changes; reload the page to see the result. Set `PORT` to use another port.
-
-`npm run docs:build` builds without serving. `npm run build` stays focused on the CLI and core and does not build the site.
+`docs:dev` compiles the core, then starts Astro's dev server at http://127.0.0.1:4321/. `npm run docs:build` writes the static site to `site/dist`. `npm run build` at the root stays focused on the CLI and core.
 
 ## How the build works
 
-`scripts/docs/build.mjs` reads `site/src` and writes `site/dist`:
+`npm run build` in `site/` runs three steps:
 
-- The profile table is generated from `packages/core/dist/profiles.js`.
-- `site/src/js/visualiser/samples.js` holds the illustrative observations. Every sample runs through the compiled filter and the build fails if a sample's expected decision no longer matches. The static before and after demo on the docs page comes from the same run.
-- `packages/core/dist/filtering/index.js` and `adapters.js` are copied to `site/dist/filter/` for the visualiser. A browser stub replaces the file-backed artifact store.
-- Every local link, asset and anchor across both pages is checked, and so is every relative import in the site's modules.
+1. **`scripts/prepare-content.mjs`** copies the guides from `../docs` into `src/content/docs/reference/`, which is generated and ignored by Git. Links between guides become site links, and links to other repository files point at GitHub. The script also runs every visualiser sample through the compiled filter at each level, and fails when a result no longer matches.
+2. **`astro build`** renders the pages. The profile table and the before and after demos are generated from the compiled core at build time. The visualiser bundles the real compiled filter; `astro.config.mjs` swaps its file-backed archive module for a browser stub.
+3. **`scripts/check-links.mjs`** fails the build if any internal link or `#anchor` in the output points nowhere.
 
 Sample character counts describe those samples only. They are not token, cost or accuracy benchmarks.
 
-## Files
+## Layout
 
-| File | Purpose |
+| Path | Purpose |
 | --- | --- |
-| `src/index.html` | Docs page with `{{placeholder}}` slots filled at build time |
-| `src/how-it-works.html` | Visualiser page |
-| `src/styles/` | Stylesheet parts, one topic per file. `main.css` lists them in order and the build joins them into one `styles.css` |
-| `src/js/app.js` | Entry for both pages: tabs, copy buttons, the section highlight and the mobile dock, one module each |
-| `src/js/hero/` | WebGL hero on the docs page: shaders, WebGL helpers, glyph atlas, particle data and the frame loop |
-| `src/js/visualiser/` | Visualiser: checks, line alignment, the filter call, each card's rendering and the sticky controls |
-| `src/js/visualiser/samples.js` | Sample observations shared by the build and the visualiser |
-| `src/favicon.svg` | Mark and favicon |
-
-Both pages stay readable without JavaScript. The hero falls back to a CSS gradient when WebGL is unavailable and draws one still frame when reduced motion is requested.
+| `astro.config.mjs` | Starlight settings: sidebar, theme CSS, component overrides |
+| `src/content/docs/` | The pages, as Markdown and MDX. `reference/` is generated |
+| `src/pages/how-it-works.astro` | The interactive visualiser page |
+| `src/components/` | Starlight overrides (`Hero`, `Head`, the header star link, the empty mobile controls) and build-time components (`ProfilesTable`, `FilterDemo`) |
+| `src/scripts/dock.js` | The mobile section dock, which replaces Starlight's mobile menu and "On this page" bar |
+| `src/scripts/hero/` | WebGL hero: shaders, WebGL helpers, glyph atlas, particle data and the frame loop |
+| `src/scripts/visualiser/` | Visualiser: checks, line alignment, the filter call, each card's rendering, sticky controls and samples |
+| `src/styles/` | The ice theme mapped onto Starlight's variables, plus hero, dock and visualiser styles |
+| `scripts/` | The content preparation and link check steps |
 
 ## Vercel
 
@@ -46,8 +47,8 @@ Both pages stay readable without JavaScript. The hero falls back to a CSS gradie
 | Setting | Value |
 | --- | --- |
 | Framework preset | Other (`framework: null`) |
-| Install command | `npm ci --ignore-scripts` |
+| Install command | `npm ci --ignore-scripts && npm ci --ignore-scripts --prefix site` |
 | Build command | `npm run docs:build` |
 | Output directory | `site/dist` |
 
-The site needs no environment variables and no provider credentials. Publishing is done by the maintainer; CI only builds the site.
+The site needs no environment variables and no provider credentials. Publishing is done by the maintainer; CI only builds the site. Once the production URL exists, set `site` in `astro.config.mjs` so Astro also generates a sitemap.

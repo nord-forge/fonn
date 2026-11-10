@@ -9,6 +9,7 @@ This is an independent TypeScript CLI and reusable library for native Claude and
 - `apps/desktop/README.md` reserves the future desktop host. No GUI, `.app`, signing/notarization pipeline, or GUI cask is implemented.
 - `packages/cli/dist/cli/main.js` is the canonical built CLI entrypoint. Keep the root `dist/cli/main.js` compatibility shim for local development.
 - `fonn` with no arguments or leading launcher options opens the native CLI selected by its profile; `fonn claude` and `fonn codex` explicitly select a provider. Preserve the explicit SDK and administration commands. `--help` and `--version` remain offline.
+- `site/` is the Astro Starlight docs site. It is a separate npm project with its own `site/package-lock.json`. Never add it to the root workspaces: the Homebrew runtime runs `npm ci --omit=dev` against the root lockfile on users' machines.
 - The root is a private npm-workspace coordinator. Keep workspace, root, and lockfile versions consistent. Shared contracts, package manifests, and the lockfile have one owner during parallel work.
 
 ## Verification
