@@ -19,7 +19,7 @@ Press Ctrl+C in the terminal to stop it. Everything you change in the interface 
 | Rules | Your global filter rules: add, edit, delete and save them |
 | Test bench | Paste a command and its output and see exactly what the model would receive with a project's settings and rules, or with a rule you are still editing. Nothing is saved or archived |
 | Open a project | Open any Git repository or Fonn project by its path, pick the folder in your system's folder dialog, or choose one of the projects Fonn already knows |
-| Projects | Effective settings with their sources, editors for the shared `.fonn.json` and the personal `.fonn/settings.local.json` (settings and rules), project rule approval, instruction files such as `CLAUDE.md` and `AGENTS.md`, and that project's activity |
+| Projects | Tabs. **Overview** shows what a new launch uses and where each value comes from, how many rules apply, and three key numbers. **Settings** and **Rules** each have one editor with a Personal or Shared switch for which file to save. **Rules** also lists the rules that apply and the approval for project rules. **Instructions** opens files such as `CLAUDE.md` and `AGENTS.md`, and **Activity** has the project's totals, launches and runs. Rules waiting for approval show a notice above the tabs |
 | Activity | Recent native launches, titled by project, agent and profile, and SDK runs, each with filter totals |
 | Launch detail | Each filter decision. "View original" loads the archived original in bounded slices and shows it as command output, with "Show raw JSON" for the exact stored response. You can delete the launch's records and archived originals to free space |
 

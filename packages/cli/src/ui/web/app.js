@@ -82,7 +82,8 @@ function parseRoute(hash) {
   if (hash === '#/global/profiles') return { title: 'Profiles', view: profilesView };
   if (hash === '#/global/activity') return { title: 'Activity', view: activityView };
   if (hash === '#/projects/open') return { title: 'Open a project', view: openProjectView };
-  const match = /^#\/(project|launch)\/([^/]+)$/.exec(hash);
+  // A project page may carry its tab, as in #/project/<root>?tab=rules.
+  const match = /^#\/(project|launch)\/([^/?]+)(?:\?[a-z=&]*)?$/.exec(hash);
   if (!match) return null;
   try {
     const id = decodeURIComponent(match[2]);
