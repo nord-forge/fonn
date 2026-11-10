@@ -52,3 +52,55 @@ test('project settings: discovery, precedence, validation and atomic writes', as
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('project filter rules only apply once approved, and changes need approving again', async () => {
+  const { createProfileStore } = await import('../../src/profiles.js');
+  const { projectRulesFingerprint } = await import('../../src/settings.js');
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'fonn-rules-'));
+  try {
+    const project = join(root, 'project');
+    await mkdir(join(project, '.git'), { recursive: true });
+    const store = createProfileStore(join(root, 'config'));
+    await store.setGlobalRules([{ name: 'mine', command: 'make', remove: ['noise'] }]);
+    await writeProjectSettings(project, 'shared', { rules: [{ name: 'theirs', command: 'npm audit', remove: ['vulnerab'] }] });
+
+    const resolve = async () => {
+      const files = await readProjectSettings(project);
+      const approved = await store.projectRulesApproved(project, projectRulesFingerprint(project, files));
+      return { files, settings: resolveSettings({ files, global: await store.getGlobalSettings(), projectRulesApproved: approved }) };
+    };
+
+    // Unapproved: global rules apply, the project's are reported but skipped.
+    let { files, settings } = await resolve();
+    assert.deepEqual(settings.rules.map((rule) => rule.name), ['mine']);
+    assert.deepEqual(settings.unapprovedRules.map((rule) => rule.name), ['theirs']);
+
+    await store.approveProjectRules(project, projectRulesFingerprint(project, files)!);
+    ({ files, settings } = await resolve());
+    assert.deepEqual(settings.rules.map((rule) => rule.name), ['mine', 'theirs']);
+    assert.equal(settings.unapprovedRules.length, 0);
+
+    // Someone changes the committed rules: approval lapses.
+    await writeProjectSettings(project, 'shared', { rules: [{ name: 'theirs', command: 'npm', remove: ['found'] }] });
+    ({ settings } = await resolve());
+    assert.deepEqual(settings.rules.map((rule) => rule.name), ['mine']);
+
+    // A file that reads would refuse is never written.
+    const big = Array.from({ length: 40 }, (_, i) => ({ name: `rule ${i}`, command: 'npm', remove: ['x'.repeat(120), 'y'.repeat(120), 'z'.repeat(120)] }));
+    await assert.rejects(writeProjectSettings(project, 'shared', { rules: big }), /larger than 16 KiB/);
+    await readProjectSettings(project);
+
+    // A hand-edited global rule that breaks the rule limits is refused on read, before it reaches a launch.
+    const configFile = join(root, 'config', 'profiles.json');
+    const config = JSON.parse(await readFile(configFile, 'utf8'));
+    await writeFile(configFile, JSON.stringify({ ...config, rules: [{ name: 'empty', command: 'npm', remove: [''] }] }));
+    await assert.rejects(store.getGlobalSettings());
+    await writeFile(configFile, JSON.stringify(config));
+
+    // A project without rules needs no approval.
+    await writeProjectSettings(project, 'shared', {});
+    assert.equal(projectRulesFingerprint(project, await readProjectSettings(project)), undefined);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

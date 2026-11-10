@@ -5,6 +5,12 @@ export type FilterMode = 'filter' | 'observe' | 'off';
  * any command. similar: also collapses lines that differ only in numbers or IDs.
  */
 export type FilterLevel = 'strict' | 'standard' | 'similar';
+/** See FilterRule in filtering/adapters.ts; repeated here so contracts stay dependency-free. */
+export interface FilterRule {
+  name: string;
+  command: string;
+  remove: string[];
+}
 export type ProfileName = string;
 export type ProfileProvider = 'claude' | 'codex';
 export type ProfileEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -68,6 +74,8 @@ export interface OutputFilterOptions {
   mode: FilterMode;
   /** Defaults to standard. */
   level?: FilterLevel;
+  /** User rules: remove lines containing given text for matching commands. */
+  rules?: readonly FilterRule[];
   minimumCharacters?: number;
   minimumSavingsCharacters?: number;
   onDecision?: (decision: FilterDecision) => void;
@@ -110,6 +118,8 @@ export interface RunRecord {
   filterMode: FilterMode;
   /** Absent on records saved before filter levels existed. */
   filterLevel?: FilterLevel;
+  /** User filter rules the task ran with; absent when there were none. */
+  filterRules?: FilterRule[];
   result?: TaskResult;
   usage: TaskUsage;
   filters: FilterDecision[];
@@ -138,6 +148,7 @@ export interface RunTaskOptions {
   maxTurns?: number;
   filterMode?: FilterMode;
   filterLevel?: FilterLevel;
+  filterRules?: FilterRule[];
   stateDirectory?: string;
   resumeTaskId?: string;
   signal?: AbortSignal;

@@ -32,9 +32,9 @@
     "directory": "packages/cli"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts"
+    "build": "node ../../scripts/build-ui-assets.mjs && tsc -p tsconfig.build.json",
+    "typecheck": "node ../../scripts/build-ui-assets.mjs && tsc --noEmit",
+    "test": "node ../../scripts/build-ui-assets.mjs && tsx --test tests/**/*.test.ts tests/**/*.test.mjs"
   },
   "dependencies": {
     "@nord-forge/fonn-core": "0.1.0",

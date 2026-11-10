@@ -19,3 +19,6 @@ coverage/
 
 # Vercel project settings and build output from npm run docs:deploy
 .vercel/
+
+# Generated from packages/cli/src/ui/web by scripts/build-ui-assets.mjs
+packages/cli/src/ui/assets.generated.ts
