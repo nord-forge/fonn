@@ -1,8 +1,17 @@
 name: CI
 
+# Pull requests get one run, and pushes only run for main. Running both for
+# every push to a PR branch doubled the macOS jobs, which then queued until
+# GitHub cancelled them.
 on:
   push:
+    branches: [main]
   pull_request:
+
+# A newer push replaces an older run of the same branch or PR.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
