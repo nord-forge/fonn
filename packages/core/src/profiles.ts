@@ -13,7 +13,16 @@ export const profiles: Readonly<Record<ProfileName, TaskProfile>> = Object.freez
   'sonnet-medium': Object.freeze({ name: 'sonnet-medium', model: 'claude-sonnet-5-5', effort: 'medium' }),
   'claude:fable-medium': Object.freeze({ name: 'claude:fable-medium', model: 'claude-fable-5-2', effort: 'medium' }),
   'claude:mythos-medium': Object.freeze({ name: 'claude:mythos-medium', model: 'claude-mythos-5-2', effort: 'medium' }),
+  // Codex: every model the Codex 0.167 catalog lists as visible. The newest
+  // model of each family gets the short name; older versions name the model.
   'codex:sol-medium': Object.freeze({ name: 'codex:sol-medium', provider: 'codex', model: 'gpt-6.1-sol', effort: 'medium' }),
+  'codex:terra-medium': Object.freeze({ name: 'codex:terra-medium', provider: 'codex', model: 'gpt-6.1-terra', effort: 'medium' }),
+  'codex:astra-medium': Object.freeze({ name: 'codex:astra-medium', provider: 'codex', model: 'gpt-6-astra', effort: 'medium' }),
+  'codex:luna-medium': Object.freeze({ name: 'codex:luna-medium', provider: 'codex', model: 'gpt-6-luna', effort: 'medium' }),
+  'codex:gpt-6-sol-medium': Object.freeze({ name: 'codex:gpt-6-sol-medium', provider: 'codex', model: 'gpt-6-sol', effort: 'medium' }),
+  'codex:gpt-5.6-sol-medium': Object.freeze({ name: 'codex:gpt-5.6-sol-medium', provider: 'codex', model: 'gpt-5.6-sol', effort: 'medium' }),
+  'codex:gpt-5.6-terra-medium': Object.freeze({ name: 'codex:gpt-5.6-terra-medium', provider: 'codex', model: 'gpt-5.6-terra', effort: 'medium' }),
+  'codex:gpt-5.6-luna-medium': Object.freeze({ name: 'codex:gpt-5.6-luna-medium', provider: 'codex', model: 'gpt-5.6-luna', effort: 'medium' }),
 });
 
 /** Synchronous compatibility API: resolves built-in profiles only. */

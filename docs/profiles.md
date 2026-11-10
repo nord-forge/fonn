@@ -1,6 +1,6 @@
 # Profiles
 
-A profile names a provider, model and effort choice. The Claude built-ins are `opus-high`, `opus-medium`, `sonnet-medium`, `claude:fable-medium` and `claude:mythos-medium`; the Codex built-in is `codex:sol-medium` (`gpt-6.1-sol`, medium effort). The initial default is `opus-medium`. Profiles without a provider field remain Claude profiles.
+A profile names a provider, model and effort choice. The Claude built-ins are `opus-high`, `opus-medium`, `sonnet-medium`, `claude:fable-medium` and `claude:mythos-medium`; the Codex built-ins cover every model the Codex 0.167 catalog lists. `codex:sol-medium` (`gpt-6.1-sol`) is the Codex default; `codex:terra-medium` (`gpt-6.1-terra`), `codex:astra-medium` (`gpt-6-astra`) and `codex:luna-medium` (`gpt-6-luna`) are the newest of the other families; `codex:gpt-6-sol-medium`, `codex:gpt-5.6-sol-medium`, `codex:gpt-5.6-terra-medium` and `codex:gpt-5.6-luna-medium` keep the older versions. All use medium effort; create a custom profile for another effort. The initial default is `opus-medium`. Profiles without a provider field remain Claude profiles.
 
 ```sh
 fonn profiles
