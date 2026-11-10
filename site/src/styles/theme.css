@@ -193,3 +193,11 @@ starlight-tabs [role="tab"] {
 [data-fade-start="true"][data-fade-end="true"] {
   mask-image: linear-gradient(to right, transparent, #000 40px, #000 calc(100% - 40px), transparent);
 }
+
+/* Install page comparison: five narrow columns that fit a phone. */
+.install-compare table { width: 100%; }
+@media (max-width: 50rem) {
+  .install-compare table { display: table; font-size: var(--sl-text-xs); }
+  .install-compare :is(th, td) { padding-inline: 0.35rem; }
+  .install-compare th:first-child, .install-compare td:first-child { min-width: 7.5rem; }
+}
