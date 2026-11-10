@@ -1,81 +1,180 @@
 ---
 title: Install
-description: Install Fonn from a source checkout, use only the standalone filters, or wait for the Homebrew cask.
+description: Four ways to get Fonn, from a one-line Homebrew install to the filter on its own with Ollama and an open-source agent.
 sidebar:
   order: 2
 ---
 
-import { Tabs, TabItem, Badge, Aside } from '@astrojs/starlight/components';
+import { Aside, Badge, Card, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
 
-The routes are ordered from easiest to most hands-on. Every route needs Node 22 or later, and Claude Code or Codex must already be installed and signed in on its own.
+Pick the way that matches how you work. Every way needs Node 22 or later. Nothing here signs you in to a model provider: Claude Code, Codex or Ollama stay set up on their own.
 
-<Tabs syncKey="install">
-  <TabItem label="Homebrew">
+<CardGrid>
+  <Card title="Homebrew" icon="rocket">
+    The Fonn CLI on macOS in two commands, for Claude Code and Codex.
 
-<Badge text="Available now" variant="success" />
+    [Install with Homebrew](#homebrew)
+  </Card>
+  <Card title="Source checkout" icon="github">
+    The newest features first: `fonn ui`, filter rules and open models.
 
-Install the CLI with Homebrew on macOS. The tap is this repository, so the full tap URL is needed:
+    [Build from source](#source-checkout)
+  </Card>
+  <Card title="Filter only" icon="puzzle">
+    Just the output filter in your existing Claude Code or Codex project.
 
-```sh
-brew tap nord-forge/fonn https://github.com/nord-forge/fonn
-brew install --cask nord-forge/fonn/fonn
-```
+    [Add the filter](#filter-only)
+  </Card>
+  <Card title="With Ollama" icon="laptop">
+    Open models on your own machine with Crush, OpenCode or Claude Code.
 
-Then run `fonn --help`. The cask installs the CLI only. It depends on Homebrew Node and fetches locked runtime dependencies on your machine without `sudo`. Update later with `brew upgrade --cask nord-forge/fonn/fonn`. See [distribution](/reference/distribution/).
+    [Use it with Ollama](#ollama-and-open-agents)
+  </Card>
+</CardGrid>
 
-If you already have a shell alias named `fonn`, for example from a source checkout, it takes priority over the installed command. Check with `type -a fonn`.
+## At a glance
 
-  </TabItem>
-  <TabItem label="Source checkout">
+<div class="install-compare">
 
-<Badge text="Available now" variant="success" />
+| | Homebrew | Source | Filter only | Ollama |
+| --- | :---: | :---: | :---: | :---: |
+| Output filter | ✓ | ✓ | ✓ | ✓ |
+| The `fonn` command | ✓ | ✓ | | |
+| `fonn ui` and rules | 0.2.0 | ✓ | | |
+| Needs Claude or Codex | ✓ | ✓ | ✓ | |
 
-```sh
-git clone https://github.com/nord-forge/fonn.git
-cd fonn
-npm ci --ignore-scripts
-npm run build
-node packages/cli/dist/cli/main.js --help
-```
+</div>
 
-The checkout does not install a global command. Run the built CLI against a project with `--cwd`:
+## Homebrew
 
-```sh
-node packages/cli/dist/cli/main.js claude --cwd /absolute/path/to/project
-```
+<Badge text="Released 0.1.0" variant="success" />
 
-To type `fonn` instead, print an alias line from inside the checkout and add it to your shell profile, such as `~/.zshrc`:
+Homebrew runs on macOS.
 
-```sh
-echo "alias fonn='node $PWD/packages/cli/dist/cli/main.js'"
-```
+<Steps>
 
-  </TabItem>
-  <TabItem label="Standalone filters">
+1. Add the tap. It is this repository, so the full URL is needed.
 
-<Badge text="Available now" variant="success" />
+   ```sh
+   brew tap nord-forge/fonn https://github.com/nord-forge/fonn
+   ```
 
-Use only the filter with your existing Claude Code or Codex. You need Node 22 or later. No Fonn CLI, npm install or provider SDK is involved. From the project where you want filtering:
+2. Install the cask. It uses Homebrew's Node and fetches Fonn's locked dependencies on your machine, without `sudo`.
 
-```sh
-mkdir -p scripts/fonn-filter
-for file in hook.mjs index.mjs adapters.mjs artifact-store.mjs LICENSE; do
-  curl -fL "https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/$file" \
-    -o "scripts/fonn-filter/$file"
-done
-node scripts/fonn-filter/hook.mjs --help
-```
+   ```sh
+   brew install --cask nord-forge/fonn/fonn
+   ```
 
-Then give your agent this prompt. It keeps your existing hooks and permissions, and leaves Codex hook trust to you.
+3. Check it works, then start Claude Code or Codex through Fonn in any project.
 
-```text wrap
-Read scripts/fonn-filter/*.mjs and its LICENSE. Configure this local filter for the agent I am using: merge a Bash PostToolUse hook into .claude/settings.local.json for Claude Code, or .codex/hooks.json for Codex. Use absolute, correctly quoted paths to Node, hook.mjs and this project's .fonn/filtering directory, with --provider claude or codex and --mode filter. Preserve all existing hooks, permissions and policies; change no global settings and install no CLI, npm packages or SDKs. Add .fonn/ to .gitignore if needed. Explain how to recover full originals using the footer's bounded read command. For Codex, leave the required /hooks review and trust to me; do not bypass it. Show the local changes and any manual step. Do not make model requests to test this.
-```
+   ```sh
+   fonn --help
+   fonn claude
+   ```
 
-The hook accepts `--level strict|standard|similar`; see [filter levels](/filtering/levels/). The [local filtering guide](/reference/local-filtering/) has complete hook examples and shows how to pin downloads to one reviewed commit.
+</Steps>
 
-  </TabItem>
-</Tabs>
+Update later with `brew upgrade --cask nord-forge/fonn/fonn`. If you already have a shell alias named `fonn`, for example from a source checkout, it wins over the installed command; check with `type -a fonn`. See [distribution](/reference/distribution/) for what the cask installs.
+
+<Aside type="note" title="Newer features">
+Homebrew installs the released version, 0.1.0. The [local interface](/reference/ui/), filter rules and open model profiles arrive in 0.2.0. Until then, use a source checkout to try them.
+</Aside>
+
+## Source checkout
+
+<Badge text="Newest features" variant="tip" />
+
+<Steps>
+
+1. Clone the repository and build it.
+
+   ```sh
+   git clone https://github.com/nord-forge/fonn.git
+   cd fonn
+   npm ci --ignore-scripts
+   npm run build
+   ```
+
+2. Add a `fonn` alias. This prints the line for your shell profile, such as `~/.zshrc`:
+
+   ```sh
+   echo "alias fonn='node $PWD/packages/cli/dist/cli/main.js'"
+   ```
+
+3. Open a new terminal and try it.
+
+   ```sh
+   fonn --help
+   fonn ui
+   ```
+
+</Steps>
+
+Without the alias, run `node packages/cli/dist/cli/main.js` from the checkout and pass `--cwd /absolute/path/to/project`. Update with `git pull` followed by `npm ci --ignore-scripts && npm run build`.
+
+## Filter only
+
+<Badge text="No Fonn CLI" variant="note" />
+
+Use only the filter with the Claude Code or Codex you already have. There is no npm install or SDK, just five files in your project.
+
+<Steps>
+
+1. Download the files from your project's root.
+
+   ```sh
+   mkdir -p scripts/fonn-filter
+   curl -fsSL https://codeload.github.com/nord-forge/fonn/tar.gz/main \
+     | tar -xz -C scripts/fonn-filter --strip-components=3 fonn-main/standalone/filtering
+   node scripts/fonn-filter/hook.mjs --help
+   ```
+
+   GitHub serves the repository as one small archive, and `tar` keeps only the filter folder.
+
+2. Ask your agent to set up the hook. This prompt keeps your existing hooks and permissions, and leaves Codex hook trust to you.
+
+   ```text wrap
+   Read scripts/fonn-filter/*.mjs and its LICENSE. Configure this local filter for the agent I am using: merge a Bash PostToolUse hook into .claude/settings.local.json for Claude Code, or .codex/hooks.json for Codex. Use absolute, correctly quoted paths to Node, hook.mjs and this project's .fonn/filtering directory, with --provider claude or codex and --mode filter. Preserve all existing hooks, permissions and policies; change no global settings and install no CLI, npm packages or SDKs. Add .fonn/ to .gitignore if needed. Explain how to recover full originals using the footer's bounded read command. For Codex, leave the required /hooks review and trust to me; do not bypass it. Show the local changes and any manual step. Do not make model requests to test this.
+   ```
+
+3. For Codex, open `/hooks` and trust the Fonn hook. Claude Code picks it up at the next start.
+
+</Steps>
+
+The hook takes `--level strict|standard|similar`; see [filter levels](/filtering/levels/). The [local filtering guide](/reference/local-filtering/) has complete hook examples and shows how to pin the download to one reviewed commit.
+
+## Ollama and open agents
+
+<Badge text="No Claude or Codex needed" variant="tip" />
+
+Run open models such as Qwen, Gemma or Kimi with [Ollama](https://ollama.com) and an open-source agent. The same filter plugs into the agent's own hook.
+
+<Steps>
+
+1. Start Ollama with a bigger context. On most laptops its default is 4,096 tokens, too small for an agent's instructions and tools. Ollama recommends at least 64k for coding agents.
+
+   ```sh
+   OLLAMA_CONTEXT_LENGTH=65536 ollama serve
+   ollama pull qwen3.8:27b
+   ```
+
+2. Download the filter into your project. For OpenCode, use `.opencode/plugins` as the folder instead, so the plugin and the filter sit together.
+
+   ```sh
+   mkdir -p scripts/fonn-filter
+   curl -fsSL https://codeload.github.com/nord-forge/fonn/tar.gz/main \
+     | tar -xz -C scripts/fonn-filter --strip-components=3 fonn-main/standalone/filtering
+   ```
+
+3. Connect it to your agent. Each one takes a few lines of configuration:
+
+   - **Crush**: a `PostToolUse` hook that runs `hook.mjs --provider crush`.
+   - **OpenCode**: nothing more to copy when you downloaded into `.opencode/plugins`. The plugin finds `hook.mjs` beside it. A plugin on its own skips filtering without any error, unless `FONN_FILTER_HOOK` points at `hook.mjs`.
+   - **Claude Code**: point it at Ollama's Anthropic API and use the normal Claude hook from [Filter only](#filter-only).
+
+</Steps>
+
+<LinkCard title="Use the filter with Ollama and other agents" description="Exact configuration for Crush, OpenCode and Claude Code with Ollama, model tips and which agents cannot use the filter yet." href="/reference/other-agents/" />
 
 <Aside>
 Installing from npm is not a supported distribution method today. A desktop app is planned, and none exists yet.

@@ -4,7 +4,8 @@ import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, wr
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { EventEmitter } from 'node:events';
 import { generateStandalone } from '../../scripts/build-standalone-filter.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -172,4 +173,116 @@ test('standalone downloads work without dependencies and preserve recovery, prov
     assert.notEqual(invoke(baseRead).status, 0);
     assert.notEqual(invoke(['read', '../outside', id, '--state-dir', state]).status, 0);
   }
+});
+
+test('crush and opencode hooks take and return plain text, keep problem lines and fail open', async t => {
+  const temporary = await realpath(await mkdtemp(join(tmpdir(), 'fonn-standalone-text-')));
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+  const directory = join(temporary, 'scripts');
+  await mkdir(directory);
+  for (const name of ['hook.mjs', 'index.mjs', 'adapters.mjs', 'artifact-store.mjs', 'opencode-plugin.js']) await cp(join(root, 'standalone/filtering', name), join(directory, name));
+  const project = join(temporary, 'project');
+  await mkdir(project);
+  const script = join(directory, 'hook.mjs');
+  const invoke = (args, input) => spawnSync(process.execPath, [script, ...args], { cwd: project, input: typeof input === 'string' ? input : JSON.stringify(input), encoding: 'utf8', env: { PATH: process.env.PATH } });
+  const success = result => { assert.equal(result.status, 0, result.stderr); return JSON.parse(result.stdout); };
+  const text = `PHPUnit 12.0.0\n${'............................................................ 100 / 100 (100%)\n'.repeat(400)}WARNING: preserve this warning\nFAILURES!\nTests: 100, Assertions: 100, Failures: 1.\nExit code 1`;
+  const event = { event: 'PostToolUse', hook_event_name: 'PostToolUse', session_id: 'fixture-session', cwd: project, tool_name: 'bash', tool_input: { command: 'vendor/bin/phpunit' }, tool_use_id: 'call_01', tool_response: text };
+  const hookArgs = (provider, state) => ['hook', '--provider', provider, '--mode', 'filter', '--state-dir', state];
+  const keys = [];
+  for (const provider of ['crush', 'opencode']) {
+    const state = join(temporary, `${provider}-state`);
+    const output = success(invoke(hookArgs(provider, state), event));
+    assert.deepEqual(Object.keys(output), ['updated_output']);
+    const filtered = output.updated_output;
+    assert.equal(typeof filtered, 'string');
+    assert(filtered.length < text.length);
+    assert(filtered.includes('WARNING: preserve this warning\nFAILURES!\nTests: 100, Assertions: 100, Failures: 1.\nExit code 1'));
+    const [storeKey] = await readdir(state);
+    keys.push(storeKey);
+    const recoveryCommand = filtered.match(/; recover with (.+)\.\]\n$/)?.[1];
+    assert(recoveryCommand);
+    let restored = '';
+    let offset = 0;
+    do {
+      const part = success(spawnSync('/bin/sh', ['-c', `${recoveryCommand} --offset ${offset} --limit 20000`], { cwd: project, encoding: 'utf8' }));
+      restored += part.text;
+      offset = part.nextOffset;
+    } while (offset !== null);
+    assert.equal(JSON.parse(restored), text);
+    assert.equal(success(invoke(hookArgs(provider, state), { ...event, tool_name: 'BASH' })).updated_output.length, filtered.length);
+    const untouched = join(temporary, `${provider}-untouched`);
+    for (const other of [
+      { ...event, tool_response: 'short output\n' },
+      { ...event, tool_response: { stdout: text } },
+      { ...event, tool_name: 'view' },
+      { ...event, hook_event_name: 'PostToolUseFailure' },
+      { ...event, session_id: '' }, { ...event, cwd: 'relative' },
+    ]) assert.deepEqual(success(invoke(hookArgs(provider, untouched), other)), {});
+    await assert.rejects(lstat(untouched), { code: 'ENOENT' });
+    const malformed = invoke(hookArgs(provider, untouched), '{"secret":"do-not-log"');
+    assert.deepEqual(success(malformed), {});
+    assert(!malformed.stderr.includes('do-not-log'));
+  }
+  assert.notEqual(keys[0], keys[1]);
+  // The lowercase tool name and string response stay specific to the text providers.
+  assert.deepEqual(success(invoke(hookArgs('claude', join(temporary, 'claude-state')), event)), {});
+
+  const { FonnFilter } = await import(pathToFileURL(join(directory, 'opencode-plugin.js')).href);
+  const fakeChild = (stdout, { code = 0, close = true } = {}) => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stdin = Object.assign(new EventEmitter(), {
+      end(input) {
+        child.input = input;
+        if (close) setImmediate(() => { if (stdout !== undefined) child.stdout.emit('data', Buffer.from(stdout)); child.emit('close', code); });
+      },
+    });
+    child.kill = () => { child.killed = true; };
+    return child;
+  };
+  const calls = [];
+  const spawnWith = child => (command, args) => { calls.push({ command, args, child }); if (child instanceof Error) throw child; return child; };
+  const run = async (spawn, input = {}, options = {}) => {
+    const hooks = await FonnFilter({ directory: project }, { spawn, ...options });
+    const output = { title: 'vendor/bin/phpunit', output: text, metadata: { exit: 1 } };
+    await hooks['tool.execute.after']({ tool: 'bash', sessionID: 'ses_1', callID: 'call_1', args: { command: 'vendor/bin/phpunit' }, ...input }, output);
+    return output;
+  };
+  const mutated = await run(spawnWith(fakeChild('{"updated_output":"filtered text"}\n')));
+  assert.equal(mutated.output, 'filtered text');
+  assert.deepEqual(mutated.metadata, { exit: 1 });
+  const [call] = calls;
+  assert.equal(call.command, 'node');
+  assert.deepEqual(call.args, [script, 'hook', '--provider', 'opencode', '--mode', 'filter', '--level', 'standard', '--state-dir', join(project, '.fonn/filtering')]);
+  assert.deepEqual(JSON.parse(call.child.input), { hook_event_name: 'PostToolUse', tool_name: 'bash', session_id: 'ses_1', tool_use_id: 'call_1', tool_input: { command: 'vendor/bin/phpunit' }, tool_response: text, cwd: project });
+  for (const spawn of [
+    spawnWith(fakeChild('{}\n')), spawnWith(fakeChild('not json')), spawnWith(fakeChild('{"updated_output":"x"}', { code: 1 })),
+    spawnWith(fakeChild('{"updated_output":42}')), spawnWith(new Error('spawn failed')),
+  ]) assert.equal((await run(spawn)).output, text);
+  const hanging = fakeChild(undefined, { close: false });
+  const started = Date.now();
+  assert.equal((await run(spawnWith(hanging), {}, { timeoutMs: 50 })).output, text);
+  assert(hanging.killed && Date.now() - started < 4000);
+  calls.length = 0;
+  assert.equal((await run(spawnWith(fakeChild('{"updated_output":"x"}')), { tool: 'read' })).output, text);
+  assert.equal(calls.length, 0);
+
+  // End to end with the real hook: a copied plugin finds it through FONN_FILTER_HOOK and FONN_FILTER_NODE.
+  const names = ['FONN_FILTER_HOOK', 'FONN_FILTER_NODE', 'FONN_FILTER_STATE_DIR'];
+  const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  t.after(() => { for (const name of names) if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; });
+  const plugins = join(temporary, 'plugins');
+  await mkdir(plugins);
+  await cp(join(directory, 'opencode-plugin.js'), join(plugins, 'fonn-filter.js'));
+  const { FonnFilter: Installed } = await import(pathToFileURL(join(plugins, 'fonn-filter.js')).href);
+  Object.assign(process.env, { FONN_FILTER_HOOK: script, FONN_FILTER_NODE: process.execPath, FONN_FILTER_STATE_DIR: join(temporary, 'opencode-plugin-state') });
+  const hooks = await Installed({ directory: project });
+  const real = { title: 'vendor/bin/phpunit', output: text, metadata: {} };
+  await hooks['tool.execute.after']({ tool: 'bash', sessionID: 'ses_2', callID: 'call_2', args: { command: 'vendor/bin/phpunit' } }, real);
+  assert(real.output.length < text.length);
+  assert(real.output.includes('WARNING: preserve this warning'));
+  assert.match(real.output, /\[fonn: full original tool response archived as /);
+  assert.equal((await readdir(join(temporary, 'opencode-plugin-state'))).length, 1);
+  assert.deepEqual(Object.keys(await import(pathToFileURL(join(plugins, 'fonn-filter.js')).href)), ['FonnFilter'], 'OpenCode loads every export as a plugin');
 });
