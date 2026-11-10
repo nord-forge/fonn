@@ -149,19 +149,23 @@
 }
 
 .viz-docs {
-  max-width: 900px;
+  max-width: 1520px;
   margin: 0 auto;
   padding: 24px 16px 64px;
 }
 
 .viz-docs section {
-  padding: 24px 0;
+  padding: 32px 0;
   border-top: 1px solid var(--border);
+}
+
+.viz-docs p {
+  max-width: 80ch;
 }
 
 .checks {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
 }
 
@@ -171,20 +175,44 @@
   }
 }
 
+/* Wide screens: three columns, with the longest check spanning two, fill a 3 by 3 grid. */
+@media (min-width: 1200px) {
+  .checks {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .checks .check-wide {
+    grid-column: span 2;
+  }
+}
+
 .checks div {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px 14px;
+  padding: 14px 16px;
 }
 
 .checks dt {
   font-weight: 700;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .checks dd {
   margin: 0;
   color: var(--muted);
   font-size: 0.93rem;
+}
+
+/* The limits list runs in two columns on wide screens. */
+@media (min-width: 1200px) {
+  #limits .features {
+    columns: 2;
+    column-gap: 48px;
+  }
+
+  #limits .features li {
+    break-inside: avoid;
+    margin: 0 0 10px;
+  }
 }
