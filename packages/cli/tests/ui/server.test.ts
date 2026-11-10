@@ -262,6 +262,17 @@ test('fonn ui change endpoints save through the stores and refuse invalid values
   assert.equal(created.status, 200);
   assert.ok(created.body.profiles.some((item: { name: string; builtIn: boolean }) => item.name === 'my-review' && !item.builtIn));
   assert.equal((await change('POST', '/api/profiles', { name: 'my-review', provider: 'claude', model: 'claude-opus-5-5', effort: 'low' })).status, 400);
+  // A Codex profile can run a local or other model; null goes back to OpenAI.
+  const qwen = 'hf.co/unsloth/Qwen3.8-27B-GGUF:UD-IQ3_XXS';
+  const local = await change('POST', '/api/profiles', { name: 'qwen-local', provider: 'codex', model: qwen, effort: 'medium', source: 'ollama' });
+  assert.equal(local.status, 200);
+  assert.deepEqual(local.body.profiles.find((item: { name: string }) => item.name === 'qwen-local'), { name: 'qwen-local', provider: 'codex', model: qwen, effort: 'medium', source: 'ollama', builtIn: false, isDefault: false });
+  assert.equal((await change('POST', '/api/profiles', { name: 'bad-source', provider: 'codex', model: 'qwen3', effort: 'low', source: 'provider:a b' })).status, 400);
+  assert.equal((await change('PUT', '/api/profiles/qwen-local', { source: null })).status, 400, 'an open model name needs a source');
+  const openai = await change('PUT', '/api/profiles/qwen-local', { source: null, model: 'gpt-6.1-sol' });
+  assert.equal(openai.body.profiles.find((item: { name: string }) => item.name === 'qwen-local').source, null);
+  assert.equal(created.body.profiles.find((item: { name: string }) => item.name === 'my-review').source, null);
+
   const edited = await change('PUT', '/api/profiles/my-review', { effort: 'high' });
   assert.equal(edited.body.profiles.find((item: { name: string }) => item.name === 'my-review').effort, 'high');
   assert.equal((await change('PUT', '/api/profiles/my-review', {})).status, 400);

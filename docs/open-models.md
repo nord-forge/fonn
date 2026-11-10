@@ -9,7 +9,7 @@ Fonn's filtering does not depend on the model. It runs in the agent's tool-outpu
 | `lmstudio` | A local model through `codex --oss --local-provider lmstudio` | LM Studio, with the model loaded |
 | `provider:<name>` | A hosted model from a provider in your Codex config | A `model_providers.<name>` entry in `~/.codex/config.toml` |
 
-With a source, the model is the name that source uses, such as `qwen3-coder:30b` in Ollama.
+With a source, the model is the name that source uses, such as `qwen3-coder:30b` in Ollama. In `fonn ui`, choose Codex in the profile form, then pick where it runs under "Runs on".
 
 ## Local models
 

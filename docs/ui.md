@@ -15,7 +15,7 @@ Press Ctrl+C in the terminal to stop it. Everything you change in the interface 
 | Page | What it does |
 | --- | --- |
 | Overview | Version, Node and the config and state folders. Change each global setting (profile, filter level, filter mode, subagents) or reset it to the built-in default. Also shows the exact startup guidance Fonn adds when subagents are on |
-| Profiles | The default profile at the top, then your own profiles and the built-in ones by agent. Create a profile, or copy a built-in one to change its model or effort. Edit or delete your own, and use any profile as the default |
+| Profiles | The default profile at the top, then your own profiles and the built-in ones by agent. Create a profile, or copy a built-in one to change its model or effort. A Codex profile can run on OpenAI, a local model through Ollama or LM Studio, or another provider from your Codex config. Edit or delete your own, and use any profile as the default |
 | Rules | Your global filter rules: add, edit, delete and save them |
 | Test bench | Paste a command and its output and see exactly what the model would receive with a project's settings and rules, or with a rule you are still editing. Nothing is saved or archived |
 | Projects | Effective settings with their sources, editors for the shared `.fonn.json` and the personal `.fonn/settings.local.json` (settings and rules), project rule approval, instruction files such as `CLAUDE.md` and `AGENTS.md`, and that project's activity. "Open by path" in the sidebar opens any Git repository or Fonn project |
