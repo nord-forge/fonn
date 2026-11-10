@@ -68,7 +68,7 @@ done
 node scripts/fonn-filter/hook.mjs --help
 ```
 
-The [local hook runner](standalone/filtering/hook.mjs) uses the [same generated filtering modules](standalone/filtering) as Fonn. Keep all four modules and the license together. See [the local setup guide](docs/local-filtering.md) for complete Claude/Codex hook examples, observe/off modes, and original-output recovery.
+The [local hook runner](standalone/filtering/hook.mjs) uses the [same generated filtering modules](standalone/filtering) as Fonn. Keep all four modules and the license together. See [the local setup guide](docs/local-filtering.md) for complete Claude/Codex hook examples, observe/off modes, and original-output recovery. Crush and OpenCode can use the same filter with Ollama. See [the other agents guide](docs/other-agents.md).
 
 After downloading, give your agent this prompt:
 

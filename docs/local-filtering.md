@@ -1,22 +1,19 @@
 # Download the filter and use it locally
 
-You can use Fonn's output filter in an existing Claude Code or Codex project without installing the Fonn CLI, npm packages, or either provider's SDK. Download four JavaScript modules and their MIT license; the only runtime requirement is Node.js 22 or later. Install and authenticate your normal agent separately. These hooks use the same supported baseline as Fonn: Claude Code 2.1.319+ or Codex CLI 0.167.0+.
+You can use Fonn's output filter in an existing Claude Code or Codex project without installing the Fonn CLI, npm packages, or either provider's SDK. Download four JavaScript modules and their MIT license; the only runtime requirement is Node.js 22 or later. Install and authenticate your normal agent separately. These hooks use the same supported baseline as Fonn: Claude Code 2.1.319+ or Codex CLI 0.167.0+. For Crush, OpenCode or Claude Code with Ollama, see [Use the filter with Ollama and other agents](other-agents.md).
 
-From your project's root, download the files together:
+From your project's root, download the filter folder in one go. GitHub serves the repository as one archive of about 350 KB, and `tar` keeps only the filter folder:
 
 ```sh
 mkdir -p scripts/fonn-filter
-curl -fL https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/hook.mjs -o scripts/fonn-filter/hook.mjs
-curl -fL https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/index.mjs -o scripts/fonn-filter/index.mjs
-curl -fL https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/adapters.mjs -o scripts/fonn-filter/adapters.mjs
-curl -fL https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/artifact-store.mjs -o scripts/fonn-filter/artifact-store.mjs
-curl -fL https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/LICENSE -o scripts/fonn-filter/LICENSE
+curl -fsSL https://codeload.github.com/nord-forge/fonn/tar.gz/main \
+  | tar -xz -C scripts/fonn-filter --strip-components=3 fonn-main/standalone/filtering
 node --version
 node scripts/fonn-filter/hook.mjs --help
 command -v node
 ```
 
-`main` changes over time. For a reviewed, repeatable download, replace `main` in all five URLs with the same reviewed commit SHA. Read the downloaded files before enabling them. The three generated filter modules come directly from the core build; `hook.mjs` handles native hook input and local recovery. No model calls occur in these scripts.
+`main` changes over time. To pin a reviewed commit, replace `main` in the URL and `fonn-main` in the path with that commit's full SHA, for example `fonn-<sha>`. Read the downloaded files before enabling them. The three generated filter modules come directly from the core build; `hook.mjs` handles native hook input and local recovery. No model calls occur in these scripts.
 
 ## Ask your agent to set it up
 
@@ -75,4 +72,4 @@ Original responses are stored atomically as private files (`0600`) in private na
 
 ## Maintain the downloaded modules
 
-In the Fonn checkout, `npm run build` compiles the core and regenerates the three standalone modules and license through `scripts/build-standalone-filter.mjs`. Edit the shared TypeScript filter sources rather than the generated `.mjs` files. `hook.mjs` is the small hand-authored native wrapper. The focused packaging test runs these five files in a dependency-free temporary directory with mocked tool responses.
+In the Fonn checkout, `npm run build` compiles the core and regenerates the three standalone modules and license through `scripts/build-standalone-filter.mjs`. Edit the shared TypeScript filter sources rather than the generated `.mjs` files. `hook.mjs` is the small hand-authored native wrapper, and `opencode-plugin.js` is a hand-authored OpenCode plugin that calls it. The focused packaging test runs these five files in a dependency-free temporary directory with mocked tool responses.

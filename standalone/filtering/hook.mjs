@@ -8,8 +8,11 @@ import { createArtifactStore, createOutputFilter } from './index.mjs';
 const STORE_KEY = /^[0-9a-f]{64}$/;
 const ARTIFACT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAX_INPUT_BYTES = 10 * 1024 * 1024;
+const PROVIDERS = ['claude', 'codex', 'crush', 'opencode'];
+// Crush and OpenCode name the shell tool "bash" and pass its output as one string.
+const TEXT_PROVIDERS = ['crush', 'opencode'];
 const scriptPath = fileURLToPath(import.meta.url);
-const usage = 'Usage: node hook.mjs hook --provider claude|codex --mode filter|observe|off [--level strict|standard|similar] [--state-dir PATH]\n       node hook.mjs read STORE-KEY ARTIFACT-ID [--state-dir PATH] [--offset N] [--limit N]\nRequires Node 22+. Recovery defaults to 4000 characters, maximum 20000.\n';
+const usage = 'Usage: node hook.mjs hook --provider claude|codex|crush|opencode --mode filter|observe|off [--level strict|standard|similar] [--state-dir PATH]\n       node hook.mjs read STORE-KEY ARTIFACT-ID [--state-dir PATH] [--offset N] [--limit N]\nRequires Node 22+. Recovery defaults to 4000 characters, maximum 20000.\n';
 const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -32,7 +35,7 @@ function argumentsFor(args) {
     if (!value || value.startsWith('--') || value.includes('\0')) throw new Error('Missing or invalid option value');
     result[flag.slice(2)] = value;
   }
-  if (command === 'hook' && (!['claude', 'codex'].includes(result.provider) || !['filter', 'observe', 'off'].includes(result.mode))) throw new Error('Provider and mode are required');
+  if (command === 'hook' && (!PROVIDERS.includes(result.provider) || !['filter', 'observe', 'off'].includes(result.mode))) throw new Error('Provider and mode are required');
   if (command === 'hook') {
     result.level ??= 'standard';
     if (!['strict', 'standard', 'similar'].includes(result.level)) throw new Error('Level must be strict, standard or similar');
@@ -93,7 +96,9 @@ async function inputEvent() {
 async function hook(options) {
   if (options.mode === 'off') return {};
   const event = await inputEvent();
-  if (!record(event) || event.hook_event_name !== 'PostToolUse' || event.tool_name !== 'Bash') return {};
+  const text = TEXT_PROVIDERS.includes(options.provider);
+  if (!record(event) || event.hook_event_name !== 'PostToolUse') return {};
+  if (text ? typeof event.tool_name !== 'string' || event.tool_name.toLowerCase() !== 'bash' || typeof event.tool_response !== 'string' : event.tool_name !== 'Bash') return {};
   if (typeof event.session_id !== 'string' || !event.session_id.trim() || event.session_id.length > 512 || /[\u0000-\u001f\u007f]/.test(event.session_id)) return {};
   if (typeof event.cwd !== 'string' || !isAbsolute(event.cwd) || event.cwd.includes('\0')) return {};
   const cwd = await realpath(event.cwd);
@@ -105,6 +110,7 @@ async function hook(options) {
   const outcome = await filter.apply({ toolName: 'Bash', toolInput: event.tool_input, response: event.tool_response,
     sessionId: event.session_id, toolUseId: typeof event.tool_use_id === 'string' ? event.tool_use_id : '', cwd });
   if (outcome.decision.status !== 'filtered') return {};
+  if (text) return { updated_output: outcome.response };
   if (options.provider === 'claude') return { hookSpecificOutput: { hookEventName: 'PostToolUse', updatedToolOutput: outcome.response } };
   return { continue: false, stopReason: typeof outcome.response === 'string' ? outcome.response : JSON.stringify(outcome.response) };
 }
