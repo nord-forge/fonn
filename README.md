@@ -260,7 +260,7 @@ Output-reduction benchmarks motivated this experiment. They do not promise 60% s
 
 ## Documentation site
 
-The docs are published at **https://fonn.nord-forge.dev**. The [site source](site) is an Astro Starlight site with the docs, the guides from `docs/`, and an interactive filter visualiser. It is a separate npm project with its own lockfile. Preview it locally with `npm ci --ignore-scripts --prefix site` and then `npm run docs:dev`, which serves http://127.0.0.1:4321/. `npm run docs:build` writes `site/dist`. See [the site README](site/README.md) for the build and Vercel settings.
+The docs are published at **https://fonn.nord-forge.dev**. The [site source](site) is an Astro Starlight site with the docs, the guides from `docs/`, and an interactive filter visualiser. It is a separate npm project with its own lockfile. Preview it locally with `npm ci --ignore-scripts --prefix site` and then `npm run docs:dev`, which serves http://127.0.0.1:4321/. `npm run docs:build` writes `site/dist`, and the maintainer publishes it with `npm run docs:deploy`. See [the site README](site/README.md) for the build and Vercel settings.
 
 ## References
 

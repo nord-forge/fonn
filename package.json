@@ -24,6 +24,7 @@
     "build": "node scripts/build.mjs",
     "docs:build": "npm run build --workspace @nord-forge/fonn-core && npm --prefix site run build",
     "docs:dev": "npm run build --workspace @nord-forge/fonn-core && npm --prefix site run dev",
+    "docs:deploy": "node scripts/docs-deploy.mjs",
     "typecheck": "npm run build --workspace @nord-forge/fonn-core && npm run typecheck --workspaces --if-present && tsc --noEmit",
     "test": "npm run test --workspaces --if-present && node --test tests/packaging/*.test.mjs",
     "check": "npm run build && npm run typecheck && npm test",

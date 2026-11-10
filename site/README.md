@@ -51,4 +51,15 @@ Sample character counts describe those samples only. They are not token, cost or
 | Build command | `npm run docs:build` |
 | Output directory | `site/dist` |
 
-The site is published at https://fonn.nord-forge.dev from the Vercel project `fonn`. Vercel's GitHub integration deploys `main` to production and builds preview deployments for pull requests. The repository's own CI only builds the site and never deploys. The site needs no environment variables and no provider credentials. `site` in `astro.config.mjs` holds the production address, which Astro also uses for the sitemap.
+The site is published at https://fonn.nord-forge.dev from the Vercel project `fonn`. Deploys are manual and prebuilt: the site is built on the maintainer's machine and Vercel only receives the finished output. `vercel.json` sets `git.deploymentEnabled` to `false`, so pushes and pull requests do not build on Vercel, and the repository's CI only builds the site.
+
+To deploy, from a clean checkout of `main` with the Vercel CLI signed in (`vercel login`):
+
+```sh
+npm run docs:deploy               # production
+npm run docs:deploy -- --preview  # a preview deployment
+```
+
+`scripts/docs-deploy.mjs` refuses to run with uncommitted changes and warns when the checkout is not an up-to-date `main`. It runs `vercel pull`, `vercel build` and `vercel deploy --prebuilt`, with the project's IDs passed as environment variables, so the folder is never linked. Vercel's files go in the ignored `.vercel/` folder.
+
+The site needs no environment variables and no provider credentials. `site` in `astro.config.mjs` holds the production address, which Astro also uses for the sitemap.
