@@ -155,10 +155,11 @@ export interface ResolvedSettings {
 export interface SettingInputs {
   flags?: ProjectSettings;
   files?: Pick<ProjectSettingsFiles, 'shared' | 'local'>;
-  global: { profile: string; filterLevel: FilterLevel };
+  /** Global settings that are actually saved; the profile is always known. */
+  global: { profile: string } & Omit<ProjectSettings, 'profile'>;
 }
 
-const BUILT_IN = { filterMode: 'filter', subagents: 'auto' } as const;
+const BUILT_IN = { filterLevel: 'standard', filterMode: 'filter', subagents: 'auto' } as const;
 
 /** Applies the precedence order and records where each value came from. */
 export function resolveSettings({ flags = {}, files, global }: SettingInputs): ResolvedSettings {
@@ -166,6 +167,7 @@ export function resolveSettings({ flags = {}, files, global }: SettingInputs): R
     ['flag', flags],
     ['local', files?.local.settings ?? {}],
     ['shared', files?.shared.settings ?? {}],
+    ['global', global],
   ];
   function pick<K extends SettingKey>(key: K, fallback: ResolvedSetting<NonNullable<ProjectSettings[K]>>) {
     for (const [source, values] of layers) {
@@ -176,7 +178,7 @@ export function resolveSettings({ flags = {}, files, global }: SettingInputs): R
   }
   return {
     profile: pick('profile', { value: global.profile, source: 'global' }),
-    filterLevel: pick('filterLevel', { value: global.filterLevel, source: 'global' }),
+    filterLevel: pick('filterLevel', { value: BUILT_IN.filterLevel, source: 'default' }),
     filterMode: pick('filterMode', { value: BUILT_IN.filterMode, source: 'default' }),
     subagents: pick('subagents', { value: BUILT_IN.subagents, source: 'default' }),
   };

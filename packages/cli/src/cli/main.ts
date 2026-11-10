@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import type { ArtifactSlice, FilterLevel, FilterMode, PermissionRequest, ProfileName, ProfileProvider, RunRecord, RunTaskOptions, TaskProfile } from '@nord-forge/fonn-core/contracts';
@@ -136,16 +136,17 @@ const configHelp = `Fonn config — project settings for launches and runs
 Usage:
   fonn config [show] [--cwd <dir>] [--json]
   fonn config get <key> [--cwd <dir>] [--json]
-  fonn config set <key> <value> [--local|--shared] [--cwd <dir>]
-  fonn config unset <key> [--local|--shared] [--cwd <dir>]
+  fonn config set <key> <value> [--local|--shared|--global] [--cwd <dir>]
+  fonn config unset <key> [--local|--shared|--global] [--cwd <dir>]
 
 Keys: profile, filterLevel (strict|standard|similar), filterMode (filter|observe|off), subagents (auto|off).
 --local (default) writes .fonn/settings.local.json, which is personal and should stay out of Git.
 --shared writes .fonn.json at the project root, meant to be committed for the team.
+--global saves the value for all projects in ~/.config/fonn/profiles.json.
 Precedence: command-line flag, personal file, shared file, global default, built-in default.
 The project is the nearest folder with one of these files, otherwise the Git root.
-Launches print which values came from project files. Global defaults stay in
-fonn --default, fonn --default-filter-level and fonn profiles default.
+Launches print which values came from project files. fonn --default,
+fonn --default-filter-level and fonn profiles default remain shortcuts for global values.
 `;
 
 const resumeHelp = `Fonn resume — reopen a saved native launch
@@ -173,7 +174,7 @@ function parse(args: string[], allowed: string[]): Parsed {
     const flag = value.slice(2);
     if (!allowed.includes(flag)) throw new Error(`Unknown option ${value}. Use --help for usage.`);
     if (flags.has(flag)) throw new Error(`Option ${value} was supplied more than once.`);
-    if (flag === 'json' || flag === 'shared' || flag === 'local') { flags.set(flag, true); continue; }
+    if (flag === 'json' || flag === 'shared' || flag === 'local' || flag === 'global') { flags.set(flag, true); continue; }
     const argument = args[++index];
     if (!argument || argument.startsWith('--')) throw new Error(`Option ${value} requires a value.`);
     flags.set(flag, argument);
@@ -248,7 +249,7 @@ async function choicesFor(parsed: Parsed, cwd: string, configDirectory: string, 
 
   const files = await readProjectSettings(await findProjectRoot(cwd));
   const store = createProfileStore(configDirectory);
-  const resolved = resolveSettings({ flags, files, global: { profile: (await store.get()).name, filterLevel: await store.getDefaultFilterLevel() } });
+  const resolved = resolveSettings({ flags, files, global: await store.getGlobalSettings() });
   const notices: string[] = [];
   const fileFor = (source: string) => source === 'shared' ? SHARED_SETTINGS_FILE : LOCAL_SETTINGS_FILE;
 
@@ -347,13 +348,13 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
     if (command === 'config') {
       if (args.length === 2 && args[1] === '--help') { stdout(configHelp); return 0; }
       const action = ['show', 'get', 'set', 'unset'].includes(args[1] ?? '') ? args[1]! : 'show';
-      const parsed = parse(args.slice(action === args[1] ? 2 : 1), ['cwd', 'json', 'local', 'shared']);
-      if (parsed.flags.has('local') && parsed.flags.has('shared')) throw new Error('Choose --local or --shared, not both.');
+      const parsed = parse(args.slice(action === args[1] ? 2 : 1), ['cwd', 'json', 'local', 'shared', 'global']);
+      if (['local', 'shared', 'global'].filter((flag) => parsed.flags.has(flag)).length > 1) throw new Error('Choose one of --local, --shared or --global.');
       const configDirectory = getDefaultConfigDirectory(env);
       const root = await findProjectRoot(resolve(stringFlag(parsed, 'cwd') ?? process.cwd()));
       const files = await readProjectSettings(root);
       const store = createProfileStore(configDirectory);
-      const global = { profile: (await store.get()).name, filterLevel: await store.getDefaultFilterLevel() };
+      const global = await store.getGlobalSettings();
 
       if (action === 'show' || action === 'get') {
         argumentCount(parsed, action === 'get' ? 1 : 0, action === 'get' ? 'config get <key>' : 'config [show]');
@@ -365,17 +366,30 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
           return 0;
         }
         if (parsed.flags.has('json')) { json({ root, files, effective }); return 0; }
-        const lines = [`Project: ${terminalText(root)}`,
-          `Shared:  ${SHARED_SETTINGS_FILE} ${files.shared.exists ? 'present' : 'not present'}`,
-          `Personal: ${LOCAL_SETTINGS_FILE} ${files.local.exists ? 'present' : 'not present'}`, ''];
+        const lines = [`Project:  ${terminalText(root)}`,
+          `Shared:   ${SHARED_SETTINGS_FILE} ${files.shared.exists ? 'present' : 'not present'}`,
+          `Personal: ${LOCAL_SETTINGS_FILE} ${files.local.exists ? 'present' : 'not present'}`,
+          `Global:   ${terminalText(join(configDirectory, 'profiles.json'))}`, ''];
         for (const key of SETTING_KEYS) lines.push(`${key.padEnd(12)} ${String(effective[key].value).padEnd(22)} ${describeSource(effective[key].source)}`);
         stdout(lines.join('\n') + '\n');
         return 0;
       }
 
-      const scope: SettingScope = parsed.flags.has('shared') ? 'shared' : 'local';
       argumentCount(parsed, action === 'set' ? 2 : 1, action === 'set' ? 'config set <key> <value>' : 'config unset <key>');
       const key = settingKey(parsed.positionals[0]);
+      if (parsed.flags.has('global')) {
+        if (action === 'set') {
+          const candidate = projectSettingsSchema.safeParse({ [key]: parsed.positionals[1] });
+          if (!candidate.success) throw new Error(`Invalid value for ${key}: ${parsed.positionals[1]}.`);
+          await store.setGlobalSetting(key, parsed.positionals[1]!);
+          stdout(`Set ${key} to ${parsed.positionals[1]} for all projects.\n`);
+        } else {
+          await store.unsetGlobalSetting(key);
+          stdout(key === 'profile' ? 'Reset the global profile to opus-medium.\n' : `Removed the global ${key}; the built-in default applies.\n`);
+        }
+        return 0;
+      }
+      const scope: SettingScope = parsed.flags.has('shared') ? 'shared' : 'local';
       const next: ProjectSettings = { ...files[scope].settings };
       if (action === 'set') {
         const candidate = projectSettingsSchema.safeParse({ [key]: parsed.positionals[1] });

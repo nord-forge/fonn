@@ -196,11 +196,12 @@ The profiles also work with Claude SDK tasks, which require an explicit API key 
 
 ## Project settings
 
-Keep defaults per repository in `.fonn.json` (shared, committed) or `.fonn/settings.local.json` (personal). Flags still win, and launches print any value that came from these files.
+Set defaults for all projects, for one repository shared with the team in `.fonn.json`, or for one repository just for you in `.fonn/settings.local.json`. Flags still win, and launches print any value that came from project files.
 
 ```sh
-fonn config set filterLevel similar               # personal
-fonn config set profile sonnet-medium --shared    # for the team
+fonn config set filterMode observe --global       # all projects
+fonn config set profile sonnet-medium --shared    # this repository, for the team
+fonn config set filterLevel similar               # this repository, just you
 fonn config                                       # effective settings and their sources
 ```
 

@@ -462,3 +462,40 @@ test('project settings drive launches and fonn config edits them', async () => {
     await rm(project, { recursive: true, force: true });
   }
 });
+
+test('global settings apply everywhere unless a project or flag overrides them', async () => {
+  const configDirectory = await mkdtemp(join(await realpath(tmpdir()), 'fonn-cli-global-'));
+  const elsewhere = await mkdtemp(join(await realpath(tmpdir()), 'fonn-cli-elsewhere-'));
+  const project = await mkdtemp(join(await realpath(tmpdir()), 'fonn-cli-global-project-'));
+  try {
+    const env = { FONN_CONFIG_DIR: configDirectory };
+    const launches: Array<Parameters<CliDependencies['launchClaude']>[0]> = [];
+    const h = () => harness({ env, launchClaude: async (options) => { launches.push(options); return 0; } });
+
+    assert.equal(await h().run(['config', 'set', 'filterMode', 'observe', '--global']), 0);
+    assert.equal(await h().run(['config', 'set', 'subagents', 'off', '--global']), 0);
+    assert.equal(await h().run(['config', 'set', 'filterLevel', 'similar', '--global']), 0);
+    assert.equal(await h().run(['claude', '--cwd', elsewhere]), 0);
+    assert.deepEqual([launches.at(-1)?.filterMode, launches.at(-1)?.subagents, launches.at(-1)?.filterLevel], ['observe', 'off', 'similar']);
+
+    const show = h();
+    assert.equal(await show.run(['config', '--cwd', elsewhere]), 0);
+    assert.match(show.out(), /filterMode\s+observe\s+global default/);
+
+    // A project file beats the global value; a flag beats both.
+    assert.equal(await h().run(['config', 'set', 'filterMode', 'filter', '--shared', '--cwd', project]), 0);
+    assert.equal(await h().run(['claude', '--cwd', project]), 0);
+    assert.equal(launches.at(-1)?.filterMode, 'filter');
+    assert.equal(await h().run(['claude', '--cwd', project, '--filter', 'off']), 0);
+    assert.equal(launches.at(-1)?.filterMode, 'off');
+
+    assert.equal(await h().run(['config', 'unset', 'filterMode', '--global']), 0);
+    const after = h();
+    assert.equal(await after.run(['config', 'get', 'filterMode', '--cwd', elsewhere, '--json']), 0);
+    assert.deepEqual(JSON.parse(after.out()), { key: 'filterMode', value: 'filter', source: 'default' });
+    assert.equal(await h().run(['config', 'set', 'profile', 'no-such-profile', '--global']), 1);
+    assert.equal(await h().run(['config', 'set', 'subagents', 'off', '--global', '--shared']), 1);
+  } finally {
+    for (const directory of [configDirectory, elsewhere, project]) await rm(directory, { recursive: true, force: true });
+  }
+});
