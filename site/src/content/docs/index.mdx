@@ -6,7 +6,7 @@ hero:
   title: Less noise in the context window. Nothing lost.
   tagline: Fonn opens the native Claude Code or Codex CLI with your saved model profile. It trims recognized noisy shell output before the model reads it, and keeps every original on disk so the agent can read it back.
   actions:
-    - text: Install from source
+    - text: Install
       link: /start/install/
       icon: right-arrow
     - text: See the filter work
@@ -34,15 +34,13 @@ import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 ## Quick start
 
 ```sh
-git clone https://github.com/nord-forge/fonn.git
-cd fonn
-npm ci --ignore-scripts
-npm run build
-node packages/cli/dist/cli/main.js claude --cwd /absolute/path/to/project
+brew tap nord-forge/fonn https://github.com/nord-forge/fonn
+brew install --cask nord-forge/fonn/fonn
+cd /path/to/your/project && fonn
 ```
 
 <CardGrid>
-  <LinkCard title="Install" description="Source checkout, standalone filters, and the upcoming Homebrew cask." href="/start/install/" />
+  <LinkCard title="Install" description="Homebrew, a source checkout, or just the standalone filters." href="/start/install/" />
   <LinkCard title="How the filter decides" description="Step through every check with real samples or your own output." href="/how-it-works/" />
 </CardGrid>
 

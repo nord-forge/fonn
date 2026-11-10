@@ -44,7 +44,9 @@ Install and authenticate Claude Code or Codex separately for the corresponding n
 
 You do not need a separate Homebrew publisher account. Your GitHub account and permission to publish releases in `nord-forge/fonn` are enough for this repository-hosted tap. There is no central Homebrew submission required to distribute through your own tap; see the official [tap guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap).
 
-**Installation is unavailable until the first GitHub release archive and matching checked-in cask are published.** The public source repository alone, a locally prepared archive, or a workflow artifact does not make the cask's download URL available. No release or tag has been published as part of this preparation.
+Fonn [0.1.0](https://github.com/nord-forge/fonn/releases/tag/v0.1.0) was published on 2026-11-10, and `Casks/fonn.rb` points at its archive. Each later version needs its own release archive and matching cask, published together: the source repository alone, a locally prepared archive, or a workflow artifact does not make a cask's download URL available.
+
+After a release, keep `Casks/fonn.rb` pinned to the published archive's checksum. Editing the README, `package.json` or the lockfile changes what `npm run release:prepare` produces, but that only matters for the next version. Do not copy a regenerated cask into the repository until that version is being released.
 
 The following is a manual maintainer procedure for a future separately authorized publication. Source-repository authorization does not authorize a release or tag. Before any remote mutation, check repository policy and automation side effects. Keep version, release asset name, URL, and SHA-256 synchronized; do not publish placeholder checksums.
 

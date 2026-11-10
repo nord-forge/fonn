@@ -12,16 +12,18 @@ The routes are ordered from easiest to most hands-on. Every route needs Node 22 
 <Tabs syncKey="install">
   <TabItem label="Homebrew">
 
-<Badge text="Awaiting first release" variant="caution" />
+<Badge text="Available now" variant="success" />
 
-The cask is prepared but not usable yet. It works once the first [GitHub release](https://github.com/nord-forge/fonn/releases) archive and matching cask are published. Until then, install from source.
+Install the CLI with Homebrew on macOS. The tap is this repository, so the full tap URL is needed:
 
 ```sh
 brew tap nord-forge/fonn https://github.com/nord-forge/fonn
 brew install --cask nord-forge/fonn/fonn
 ```
 
-The cask installs the CLI only. It depends on Homebrew Node and fetches locked runtime dependencies on your machine without `sudo`. See [distribution](/reference/distribution/).
+Then run `fonn --help`. The cask installs the CLI only. It depends on Homebrew Node and fetches locked runtime dependencies on your machine without `sudo`. Update later with `brew upgrade --cask nord-forge/fonn/fonn`. See [distribution](/reference/distribution/).
+
+If you already have a shell alias named `fonn`, for example from a source checkout, it takes priority over the installed command. Check with `type -a fonn`.
 
   </TabItem>
   <TabItem label="Source checkout">
