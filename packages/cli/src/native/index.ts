@@ -78,7 +78,7 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
   entrypoint = path.resolve(entrypoint);
   const launchId = randomUUID();
   const location = await launchDirectory(options.stateDirectory, launchId, true);
-  const record: LaunchRecord = { schemaVersion: 1, launchId, cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, filterLevel: level, subagents, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
+  const record: LaunchRecord = { schemaVersion: 1, launchId, cwd, profile: profile.name, profileSnapshot: profile, filterMode: mode, filterLevel: level, ...(options.filterRules?.length ? { filterRules: options.filterRules } : {}), subagents, createdAt: new Date().toISOString(), hookEntrypoint: entrypoint };
   const metadata = path.join(location.directory, 'launch.json');
   await atomicJson(metadata, record);
   const settingsPath = path.join(location.directory, 'settings.json');
@@ -156,7 +156,7 @@ export async function runNativeHook(event: unknown, stateDirectory: string, laun
   };
   const store = createArtifactStore(path.join(location.directory, 'artifacts'));
   const filter = createOutputFilter({
-    store, mode: location.record.filterMode, level: location.record.filterLevel ?? 'strict',
+    store, mode: location.record.filterMode, level: location.record.filterLevel ?? 'strict', rules: location.record.filterRules ?? [],
     recoveryHint: (artifactId) => 'Recover the original tool response with: ' + [process.execPath, location.record.hookEntrypoint, 'native-output', launchId, artifactId, '--state-dir', location.root].map(shellQuote).join(' '),
   });
   const outcome = await filter.apply(observation);

@@ -1,5 +1,5 @@
 import type { FilterDecision, OutputFilter, OutputFilterOptions, ToolObservation } from '../contracts.js';
-import { reduceRecognizedOutput, repeatedLineNote, similarLinesNote } from './adapters.js';
+import { reduceRecognizedOutput, repeatedLineNote, ruleNote, similarLinesNote } from './adapters.js';
 export { createArtifactStore } from './artifact-store.js';
 
 export function createOutputFilter(options: OutputFilterOptions): OutputFilter {
@@ -30,7 +30,7 @@ export function createOutputFilter(options: OutputFilterOptions): OutputFilter {
         return finish(response);
       }
       if (stdout === undefined || record?.interrupted || record?.isImage || record?.type === 'image' || record?.is_error || record?.content) return finish(response);
-      if (['[fonn: full original tool response archived as ', '[fonn: identical diagnostic occurred ', repeatedLineNote, similarLinesNote].some((note) => stdout.includes(note))) {
+      if (['[fonn: full original tool response archived as ', '[fonn: identical diagnostic occurred ', repeatedLineNote, similarLinesNote, ruleNote].some((note) => stdout.includes(note))) {
         decision.reason = 'already_filtered';
         return finish(response);
       }
@@ -39,7 +39,7 @@ export function createOutputFilter(options: OutputFilterOptions): OutputFilter {
         return finish(response);
       }
       try {
-        const reduction = reduceRecognizedOutput(observation.toolInput, stdout, { level: options.level ?? 'standard' });
+        const reduction = reduceRecognizedOutput(observation.toolInput, stdout, { level: options.level ?? 'standard', rules: options.rules ?? [] });
         if (!reduction) {
           decision.reason = 'unrecognized_format';
           return finish(response);

@@ -21,7 +21,7 @@ The project is the nearest folder, from where you run Fonn upwards, that has one
 | `filterMode` | `filter`, `observe`, `off` | Whether filtering acts, only records, or is off |
 | `subagents` | `auto`, `off` | Native subagent guidance |
 
-Anything else is rejected, including unknown keys, so a typo never goes unnoticed. Paths, commands and credentials can never be set in these files.
+Each file can also hold `rules`, a list of filter rules. They only apply after you approve them with `fonn config approve-rules`; see [your own rules](filtering.md#your-own-rules). Anything else is rejected, including unknown keys, so a typo never goes unnoticed. Paths, commands and credentials can never be set in these files.
 
 ```json
 {

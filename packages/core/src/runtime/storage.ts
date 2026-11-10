@@ -1,3 +1,4 @@
+import { mergedFilterRulesSchema } from '../rules.js';
 import { constants } from 'node:fs';
 import { chmod, lstat, mkdir, open, readdir, realpath, rename, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -16,7 +17,7 @@ const profileSchema = taskProfileSchema;
 export const runRecordSchema = z.object({
   schemaVersion: z.literal(1), taskId: taskIdSchema, sessionId: z.string().min(1).optional(), parentTaskId: taskIdSchema.optional(),
   startedAt: z.iso.datetime(), finishedAt: z.iso.datetime(), status: z.enum(['succeeded', 'failed', 'cancelled', 'budget_exceeded']),
-  profile: profileSchema, cwd: z.string().min(1), budgetUsd: z.number().finite().positive(), maxTurns: z.number().int().positive(), filterMode: z.enum(['filter', 'observe', 'off']), filterLevel: z.enum(['strict', 'standard', 'similar']).optional(),
+  profile: profileSchema, cwd: z.string().min(1), budgetUsd: z.number().finite().positive(), maxTurns: z.number().int().positive(), filterMode: z.enum(['filter', 'observe', 'off']), filterLevel: z.enum(['strict', 'standard', 'similar']).optional(), filterRules: mergedFilterRulesSchema.optional(),
   result: taskResultSchema.optional(), usage: usageSchema,
   filters: z.array(z.object({ mode: z.enum(['filter', 'observe', 'off']), status: z.enum(['filtered', 'observed', 'unchanged']), adapter: z.string().optional(), artifactId: z.string().optional(), originalCharacters: token, proposedCharacters: token, deliveredCharacters: token, removedLines: token, reason: z.string() }).strict()),
   error: z.string().optional(),

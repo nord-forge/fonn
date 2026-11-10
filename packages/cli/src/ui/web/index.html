@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>Fonn · Overview</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/app.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="mobile-header">
+      <a class="brand" href="#/global" aria-label="Fonn overview"><span class="brand-mark" aria-hidden="true">f</span>fonn <span class="brand-label">local</span></a>
+      <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="sidebar">Menu</button>
+    </header>
+    <aside class="sidebar" id="sidebar">
+      <a class="brand desktop-brand" href="#/global" aria-label="Fonn overview"><span class="brand-mark" aria-hidden="true">f</span>fonn <span class="brand-label">local</span></a>
+      <nav aria-label="Main navigation">
+        <h2 class="nav-heading">Global</h2>
+        <ul class="nav-list">
+          <li><a href="#/global"><span class="nav-symbol" aria-hidden="true">◈</span>Overview</a></li>
+          <li><a href="#/global/profiles"><span class="nav-symbol" aria-hidden="true">▤</span>Profiles</a></li>
+          <li><a href="#/global/rules"><span class="nav-symbol" aria-hidden="true">≡</span>Rules</a></li>
+          <li><a href="#/test"><span class="nav-symbol" aria-hidden="true">▷</span>Test bench</a></li>
+          <li><a href="#/global/activity"><span class="nav-symbol" aria-hidden="true">◷</span>Activity</a></li>
+        </ul>
+        <div class="nav-section-heading"><h2 class="nav-heading">Projects</h2><span id="project-count" class="nav-count"></span></div>
+        <div id="project-navigation"><p class="nav-note" role="status">Loading projects…</p></div>
+      </nav>
+      <div class="sidebar-footer"><span class="status-dot" aria-hidden="true"></span>Local access, this machine only</div>
+    </aside>
+    <div class="workspace">
+      <div id="session-message" class="session-message" role="alert" hidden></div>
+      <main id="main" tabindex="-1" aria-label="Fonn management"><p role="status">Loading Fonn…</p></main>
+      <footer class="page-footer">Fonn <span aria-hidden="true">·</span> Your CLI, a little clearer.</footer>
+    </div>
+    <noscript><p class="notice">Enable JavaScript to view your local Fonn records.</p></noscript>
+  </body>
+</html>

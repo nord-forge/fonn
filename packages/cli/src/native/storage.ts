@@ -5,6 +5,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { FilterLevel, FilterMode, ProfileName } from '@nord-forge/fonn-core/contracts';
 import { profileNameSchema, taskProfileSchema } from '@nord-forge/fonn-core/profiles';
+import { mergedFilterRulesSchema } from '@nord-forge/fonn-core/settings';
 import { getDefaultStateDirectory } from '@nord-forge/fonn-core/state';
 
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -18,6 +19,8 @@ const launchSchema = z.object({
   filterMode: z.enum(['filter', 'observe', 'off']),
   // Absent on launches saved before filter levels; those replay as strict.
   filterLevel: z.enum(['strict', 'standard', 'similar']).optional(),
+  // The filter rules a launch started with; resume and the hook reuse them.
+  filterRules: mergedFilterRulesSchema.optional(),
   subagents: z.enum(['auto', 'off']).optional(),
   createdAt: z.string(),
   hookEntrypoint: z.string(),
@@ -33,6 +36,8 @@ export interface NativeLaunchOptions {
   filterMode?: FilterMode;
   /** Defaults to standard. */
   filterLevel?: FilterLevel;
+  /** User filter rules; validated again with the launch record. */
+  filterRules?: Array<{ name: string; command: string; remove: string[] }>;
   subagents?: 'auto' | 'off';
   stateDirectory?: string;
   args?: string[];

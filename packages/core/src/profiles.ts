@@ -4,6 +4,7 @@ import { chmod, lstat, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { isAbsolute, join, parse, resolve } from 'node:path';
 import { z } from 'zod';
+import { filterRulesSchema } from './rules.js';
 import type { FilterLevel, ProfileName, ProfileProvider, TaskProfile } from './contracts.js';
 
 export const profiles: Readonly<Record<ProfileName, TaskProfile>> = Object.freeze({
@@ -57,6 +58,11 @@ const configSchema = z.object({
   /** Saved filter mode and subagent preference; unset means the built-in default. */
   defaultFilterMode: z.enum(['filter', 'observe', 'off']).optional(),
   defaultSubagents: z.enum(['auto', 'off']).optional(),
+  /** Global filter rules; validated in full by settings.ts before saving. */
+  // Validated in full, so a hand-edited rule cannot break launches later.
+  rules: filterRulesSchema.optional(),
+  /** Project root to the fingerprint of the project filter rules the user approved. */
+  approvedProjectRules: z.record(z.string().min(1), z.string().regex(/^[0-9a-f]{64}$/)).optional(),
   profiles: z.array(taskProfileSchema).max(100),
 }).strict().superRefine((config, context) => {
   const names = new Set<string>();
@@ -147,6 +153,7 @@ export interface GlobalSettings {
   filterLevel?: FilterLevel;
   filterMode?: 'filter' | 'observe' | 'off';
   subagents?: 'auto' | 'off';
+  rules?: Array<{ name: string; command: string; remove: string[] }>;
 }
 
 export function createProfileStore(directory = getDefaultConfigDirectory()) {
@@ -257,6 +264,30 @@ export function createProfileStore(directory = getDefaultConfigDirectory()) {
         ...(config.defaultFilterLevel === undefined ? {} : { filterLevel: config.defaultFilterLevel }),
         ...(config.defaultFilterMode === undefined ? {} : { filterMode: config.defaultFilterMode }),
         ...(config.defaultSubagents === undefined ? {} : { subagents: config.defaultSubagents }),
+        ...(config.rules === undefined ? {} : { rules: config.rules.map((rule) => ({ ...rule, remove: [...rule.remove] })) }),
+      });
+    },
+    /** True when the user approved exactly these project rules for this project. */
+    async projectRulesApproved(projectRoot: string, fingerprint: string | undefined): Promise<boolean> {
+      if (!fingerprint) return true;
+      const config = await readConfig(root);
+      return config.approvedProjectRules?.[resolve(projectRoot)] === fingerprint;
+    },
+    /** Approves a project's current rules, or withdraws the approval with null. */
+    async approveProjectRules(projectRoot: string, fingerprint: string | null): Promise<void> {
+      await mutate((config) => {
+        const approved = { ...config.approvedProjectRules };
+        if (fingerprint) approved[resolve(projectRoot)] = fingerprint;
+        else delete approved[resolve(projectRoot)];
+        if (Object.keys(approved).length) config.approvedProjectRules = approved;
+        else delete config.approvedProjectRules;
+      });
+    },
+    /** Replaces the global filter rules. Callers validate them with filterRulesSchema first. */
+    async setGlobalRules(rules: Array<{ name: string; command: string; remove: string[] }>): Promise<void> {
+      await mutate((config) => {
+        if (rules.length) config.rules = rules.map((rule) => ({ name: rule.name, command: rule.command, remove: [...rule.remove] }));
+        else delete config.rules;
       });
     },
     /** Saves one global setting. The profile must exist. */
