@@ -180,6 +180,20 @@ fonn                   # Launch your saved default
 
 Explicit `fonn codex`, `fonn claude`, or `fonn --profile <name>` override the default for that launch. Selecting the current agent keeps its custom default profile; switching agents selects `opus-medium` or `codex:sol-medium`. Use `fonn profiles default <name>` to choose a specific custom default instead.
 
+## Fable 5.2 and Mythos 5.2
+
+Use the built-in medium-effort profiles with Claude Code 2.1.321 or newer:
+
+```sh
+fonn claude --profile claude:fable-medium
+fonn claude --profile claude:mythos-medium
+fonn profiles default claude:fable-medium  # Optional: select it for future launches
+```
+
+Fonn also accepts `--model fable` or `--model mythos` when creating/editing a custom profile; these Fonn short names are saved as `claude-fable-5-2` and `claude-mythos-5-2` so launch and resume use the same version. For example: `fonn profiles create fable-high --model fable --effort high`. Existing custom names such as `fable-medium` keep their meaning; new built-ins use the `claude:` namespace.
+
+The profiles also work with Claude SDK tasks, which require an explicit API key and separate API billing. Existing defaults stay unchanged. Anthropic controls account access and billing; Mythos requires an eligible verified account. Model choice does not disable filtering or native subagent hooks. SDK explorer/reviewer workers keep their fixed read-only Sonnet/Opus configuration. See [model profiles and access](docs/profiles.md#fable-and-mythos) and Anthropic's [Fable](https://platform.claude.com/docs/en/models/fable-5-2/overview), [Mythos](https://platform.claude.com/docs/en/models/mythos-5-2/overview) and [Claude Code model configuration](https://code.claude.com/docs/en/model-config) documentation.
+
 ## Custom profiles
 
 Save a provider, model and effort choice, then use it for the matching native CLI. Claude profiles also work with SDK tasks:

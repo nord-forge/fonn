@@ -42,7 +42,7 @@ test('help, profiles and version run offline and do not import/execute the SDK',
   assert.match(resumeHelp.out(), /never guesses with --last/);
   const p = harness();
   assert.equal(await p.run(['profiles', '--json']), 0);
-  assert.equal(JSON.parse(p.out()).length, 4);
+  assert.equal(JSON.parse(p.out()).length, 6);
   const v = harness();
   assert.equal(await v.run(['--version']), 0);
   assert.match(v.out(), /^0\.1\.0\n$/);
@@ -57,6 +57,12 @@ test('profile commands persist custom choices, manage the default and reject inv
     return h.out();
   };
   try {
+    for (const family of ['fable', 'mythos']) {
+      assert.equal(JSON.parse(await invoke(['show', `claude:${family}-medium`, '--json'])).model, `claude-${family}-5-2`);
+      const profile = JSON.parse(await invoke(['create', `${family}-high`, '--model', family, '--effort', 'high', '--json']));
+      assert.equal(profile.model, `claude-${family}-5-2`);
+      await invoke(['delete', profile.name]);
+    }
     const custom = { name: 'quick', model: 'haiku', effort: 'low' };
     assert.deepEqual(JSON.parse(await invoke(['create', 'quick', '--model', 'haiku', '--effort', 'low', '--json'])), custom);
     assert.deepEqual(JSON.parse(await invoke(['show', 'quick', '--json'])), custom);
@@ -64,7 +70,7 @@ test('profile commands persist custom choices, manage the default and reject inv
     assert.equal(JSON.parse(await invoke(['default', 'quick', '--json'])).name, 'quick');
     assert.equal(JSON.parse(await invoke(['default', '--json'])).name, 'quick');
     assert.match(await invoke(['list']), /quick \[claude\]: haiku, effort max \(default\)/);
-    assert.equal(JSON.parse(await invoke(['list', '--json'])).length, 5);
+    assert.equal(JSON.parse(await invoke(['list', '--json'])).length, 7);
     const fresh = harness({ env });
     assert.equal(await fresh.run(['run', 'Use configured default']), 0);
     assert.equal(fresh.options[0]?.profile, 'quick');
@@ -111,7 +117,7 @@ test('profile commands persist custom choices, manage the default and reject inv
     await invoke(['default', 'opus-medium']);
     assert.deepEqual(JSON.parse(await invoke(['delete', 'quick', '--json'])), { deleted: 'quick' });
     await invoke(['delete', 'my-sol']);
-    assert.equal(JSON.parse(await invoke(['--json'])).length, 4);
+    assert.equal(JSON.parse(await invoke(['--json'])).length, 6);
   } finally { await rm(configDirectory, { recursive: true, force: true }); }
 });
 
@@ -206,6 +212,15 @@ test('native provider routing preserves passthrough and follows explicit or defa
   } });
   assert.equal(await h.run(['claude', '--cwd', '/tmp/project', '--profile', 'opus-high', '--filter', 'observe', '--state-dir', '/tmp/state', '--', '--resume', 'session-id']), 7);
   assert.equal(called, true);
+  for (const family of ['fable', 'mythos']) {
+    const profile = `claude:${family}-medium`;
+    const native = harness({ launchClaude: async options => { assert.equal(options.profile, profile); return 0; } });
+    assert.equal(await native.run(['--profile', profile]), 0);
+    assert.equal(await native.run(['claude', '--profile', profile]), 0);
+    const sdk = harness();
+    assert.equal(await sdk.run(['run', 'Offline model routing', '--profile', profile]), 0);
+    assert.equal(sdk.options[0]?.profile, profile);
+  }
   // Leading launcher options and no arguments use native Claude by default.
   assert.equal(await h.run(['--cwd', '/tmp/project', '--profile', 'opus-high', '--filter', 'observe', '--state-dir', '/tmp/state', '--', '--resume', 'session-id']), 7);
   const configDirectory = await mkdtemp(join(await realpath(tmpdir()), 'fonn-cli-native-'));

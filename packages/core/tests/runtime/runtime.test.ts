@@ -382,6 +382,19 @@ test('task-start profile snapshot is immutable and resume validates profile and 
     const resumed = await runtime.runTask({ ...f.options, resumeTaskId: first.taskId });
     assert.equal(resumed.profile.name, 'opus-high');
 
+    for (const family of ['fable', 'mythos']) {
+      const familySession = randomUUID();
+      const familyRuntime = createRuntime({ getApiKey: () => secret, query: async function* ({ options: sdk }) {
+        assert.equal(sdk.model, `claude-${family}-5-2`); assert.equal(sdk.effort, 'medium');
+        assert.equal(sdk.permissionMode, 'default');
+        assert.deepEqual(sdk.agents?.explorer.tools, ['Read', 'Grep', 'Glob']);
+        yield result(1, { session_id: familySession });
+      } });
+      const first = await familyRuntime.runTask({ ...f.options, profile: `claude:${family}-medium` });
+      assert.equal(first.status, 'succeeded');
+      const replay = await familyRuntime.runTask({ ...f.options, resumeTaskId: first.taskId });
+      assert.deepEqual(replay.profile, first.profile);
+    }
     const store = createProfileStore(f.options.configDirectory);
     await store.create({ name: 'careful', model: 'sonnet', effort: 'low' });
     await store.setDefault('careful');

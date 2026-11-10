@@ -47,7 +47,7 @@ export async function collectPayload(root) {
       throw new Error(`Regenerate package-lock.json with npm install: ${name} must resolve to its local workspace, not an unpublished registry package.`);
     }
   }
-  for (const [dependency, pinned] of [['@anthropic-ai/claude-agent-sdk', '0.3.319'], ['zod', '4.1.12']]) {
+  for (const [dependency, pinned] of [['@anthropic-ai/claude-agent-sdk', '0.3.321'], ['zod', '4.1.12']]) {
     const versions = manifests.map(pkg => pkg.dependencies?.[dependency]).filter(Boolean);
     if (!versions.length || versions.some(value => value !== pinned)) throw new Error(`${dependency} must be pinned to ${pinned}.`);
   }

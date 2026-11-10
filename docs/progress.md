@@ -72,3 +72,10 @@ Build, typecheck and all 74 offline tests passed (three new cases), followed by 
 | Independent review | DONE | Reviewer / gpt-6.1-sol high | No concrete findings in permissions/trust, JSON contracts, filtering/recovery, flags, saved/legacy resume or docs. |
 
 Build and typecheck passed; all 74 offline tests passed after updating the existing lifecycle fixture for explicit child-ID isolation. No top-level tests were added. No paid model calls or real worker launches were made. Native delegation and concurrency/read-only preferences are model instructions, not hard enforcement. Filtering uses provider session-wide supported Bash hook paths for every model; unknown/unsupported output passes through. Live provider hook inheritance/delivery and model delegation decisions remain unmeasured. Codex hooks require normal manual review/trust. The launcher does not start headless worker CLIs, change permissions/sandbox policy, or widen tool allowlists after a rejected delegation. Existing SDK bounds are unchanged.
+
+
+## Fable 5.2 and Mythos 5.2 support
+
+Added `claude:fable-medium` and `claude:mythos-medium` built-ins without changing the default or shadowing existing custom names. The new Fonn short names `fable` and `mythos` normalize to exact 5.2 model IDs before saving/launching/replaying. Native 5.2 launches require Claude Code 2.1.321+ before writing state; other models retain the 2.1.319 baseline. Agent SDK is pinned to 0.3.321, including release validation and notices. Existing filtering, permission checks, native worker hooks, SDK worker models and resume snapshots are preserved.
+
+Build, typecheck and all 74 offline tests passed with no added top-level cases. Existing checks now cover alias persistence/provider rejection, legacy custom names, built-in/native/SDK routing, SDK replay, old native version rejection and filtering/exact recovery for synthetic Fable/Mythos workers. No paid model calls or account-access probes were made. Live entitlement, provider behavior and real token/cost changes remain unverified. Mythos access is controlled by Anthropic; selecting a preset does not grant access or change authentication/billing.

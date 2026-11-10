@@ -82,7 +82,11 @@ Usage:
   fonn help profiles | profiles --help
 
 Provider defaults to Claude when creating a profile.
-Claude models: opus, sonnet, haiku, or a Claude model ID.
+Claude models: opus, sonnet, haiku, fable, mythos, or a Claude model ID.
+Fonn pins fable/mythos to their 5.2 IDs when saving a profile.
+Built-ins: claude:fable-medium and claude:mythos-medium (medium effort).
+Fable/Mythos 5.2 needs Claude Code 2.1.321+ and upstream model access.
+Mythos requires an eligible verified account; Fonn does not grant access.
 Codex models: gpt-* or o-series model IDs, for example gpt-6.1-sol.
 Provider/model pairs are validated for syntax; model availability is not verified.
 Effort: low | medium | high | xhigh | max. Model support is not verified.

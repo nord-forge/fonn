@@ -36,7 +36,8 @@ function validateArguments(args: string[], resuming: boolean): void {
   }
 }
 
-async function verifyClaude(executable: string): Promise<void> {
+async function verifyClaude(executable: string, model: string): Promise<void> {
+  const minimumPatch = /^claude-(?:fable|mythos)-5-2(?:$|[-._])/.test(model) ? 321 : 319;
   let stdout: string;
   try {
     ({ stdout } = await executeFile(executable, ['--version'], { timeout: 10_000, encoding: 'utf8' }));
@@ -45,8 +46,10 @@ async function verifyClaude(executable: string): Promise<void> {
   }
   const match = /^(\d+)\.(\d+)\.(\d+)\b/.exec(stdout.trim());
   const version = match?.slice(1).map(Number);
-  if (!version || version[0] < 2 || (version[0] === 2 && version[1] < 1) || (version[0] === 2 && version[1] === 1 && version[2] < 319)) {
-    throw new Error('Native filtering requires Claude Code 2.1.319 or newer, the version validated for this application.');
+  if (!version || version[0] < 2 || (version[0] === 2 && version[1] < 1) || (version[0] === 2 && version[1] === 1 && version[2] < minimumPatch)) {
+    throw new Error(minimumPatch === 321
+      ? 'Fable/Mythos 5.2 requires Claude Code 2.1.321 or newer. Update Claude Code and confirm your account has model access.'
+      : 'Native filtering requires Claude Code 2.1.319 or newer, the version validated for this application.');
   }
 }
 
@@ -61,7 +64,7 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
   const cwd = await realpath(options.cwd);
   if (!(await lstat(cwd)).isDirectory()) throw new Error('The target working directory is not a directory.');
   const executable = options.executable ?? 'claude';
-  await verifyClaude(executable);
+  await verifyClaude(executable, profile.model);
   const compiled = fileURLToPath(new URL('../cli/main.js', import.meta.url));
   const developmentBuild = fileURLToPath(new URL('../../dist/cli/main.js', import.meta.url));
   let entrypoint = options.hookEntrypoint;
