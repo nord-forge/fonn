@@ -11,7 +11,9 @@ fonn chat --model kimi-k3 --base-url https://api.moonshot.ai/v1 --api-key-env MO
 
 ## Why a separate agent
 
-General agents send a large first request: their instructions plus every tool and integration they know. In testing, Codex's first request came to about 72,000 tokens, and a 27B local model needed about half an hour to read it before answering. Fonn's agent sends a short system prompt and six tools, a few thousand tokens in all, so a local model starts answering quickly.
+General agents send a large first request: their instructions plus every tool and integration they know. In testing, Codex's first request came to about 72,000 tokens, and a 27B local model needed about half an hour to read it before answering. Fonn's agent sends a short system prompt and six tools, under 1,000 tokens in all, so a local model starts answering quickly.
+
+In testing with Qwen3.8-27B (UD-IQ3_XXS) on Ollama, the same task, listing a folder and counting its files, used about 950 tokens of context with `fonn chat` against about 73,000 with Codex. A noisy command that printed 400 nearly identical lines reached the model as 357 characters instead of 25,892, and the model still described it correctly.
 
 ## Tools
 

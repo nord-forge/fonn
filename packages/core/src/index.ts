@@ -11,3 +11,4 @@ export { handoffSchema, taskResultJsonSchema, taskResultSchema } from './schema.
 export { createArtifactStore, createOutputFilter } from './filtering/index.js';
 export { buildSdkOptions, createRuntime, getDefaultStateDirectory, getTaskArtifactDirectory, listRuns, readRun, runTask } from './runtime/index.js';
 export type { QueryFactory, RuntimeDependencies } from './runtime/index.js';
+export * from './agent/index.js';
