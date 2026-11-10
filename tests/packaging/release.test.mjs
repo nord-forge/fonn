@@ -21,7 +21,7 @@ async function fixture(t) {
   await put(directory, 'package.json', manifest);
   const packages = { '': manifest };
   for (const name of ['core', 'cli']) {
-    const pkg = { name: `@nord-forge/fonn-${name}`, version: '0.1.0', type: 'module', dependencies: name === 'core' ? { '@anthropic-ai/claude-agent-sdk': '0.3.321', zod: '4.1.12' } : { '@nord-forge/fonn-core': '0.1.0' } };
+    const pkg = { name: `@nord-forge/fonn-${name}`, version: '0.1.0', type: 'module', dependencies: name === 'core' ? { '@anthropic-ai/claude-agent-sdk': '0.3.321', zod: '4.6.7' } : { '@nord-forge/fonn-core': '0.1.0' } };
     await put(directory, `packages/${name}/package.json`, pkg);
     packages[`packages/${name}`] = pkg;
     packages[`node_modules/${pkg.name}`] = { resolved: `packages/${name}`, link: true };
@@ -59,7 +59,7 @@ test('release archive is deterministic, checksummed, confined, and requires vali
   for (const version of ['v0.1.0', '../0.1.0', '0.01.0', '0.1', '', undefined]) assert.throws(() => validateVersion(version), /Invalid release version/);
   await put(directory, 'packages/core/package.json', { name: '@nord-forge/fonn-core', version: '0.2.0' });
   await assert.rejects(prepareRelease({ root: directory }), /version 0.1.0/);
-  await put(directory, 'packages/core/package.json', { name: '@nord-forge/fonn-core', version: '0.1.0', dependencies: { '@anthropic-ai/claude-agent-sdk': '0.3.321', zod: '4.1.12' } });
+  await put(directory, 'packages/core/package.json', { name: '@nord-forge/fonn-core', version: '0.1.0', dependencies: { '@anthropic-ai/claude-agent-sdk': '0.3.321', zod: '4.6.7' } });
   const outside = await mkdtemp(join(tmpdir(), 'fonn-external-'));
   t.after(() => rm(outside, { recursive: true, force: true }));
   await put(outside, 'private-config.json', 'PRIVATE');
