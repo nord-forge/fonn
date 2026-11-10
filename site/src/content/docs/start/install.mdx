@@ -7,9 +7,23 @@ sidebar:
 
 import { Tabs, TabItem, Badge, Aside } from '@astrojs/starlight/components';
 
-Pick a route. Every route needs Node 22 or later. Claude Code or Codex must already be installed and signed in on its own.
+The routes are ordered from easiest to most hands-on. Every route needs Node 22 or later, and Claude Code or Codex must already be installed and signed in on its own.
 
 <Tabs syncKey="install">
+  <TabItem label="Homebrew">
+
+<Badge text="Awaiting first release" variant="caution" />
+
+The cask is prepared but not usable yet. It works once the first [GitHub release](https://github.com/nord-forge/fonn/releases) archive and matching cask are published. Until then, install from source.
+
+```sh
+brew tap nord-forge/fonn https://github.com/nord-forge/fonn
+brew install --cask nord-forge/fonn/fonn
+```
+
+The cask installs the CLI only. It depends on Homebrew Node and fetches locked runtime dependencies on your machine without `sudo`. See [distribution](/reference/distribution/).
+
+  </TabItem>
   <TabItem label="Source checkout">
 
 <Badge text="Available now" variant="success" />
@@ -57,20 +71,6 @@ Read scripts/fonn-filter/*.mjs and its LICENSE. Configure this local filter for 
 ```
 
 The hook accepts `--level strict|standard|similar`; see [filter levels](/filtering/levels/). The [local filtering guide](/reference/local-filtering/) has complete hook examples and shows how to pin downloads to one reviewed commit.
-
-  </TabItem>
-  <TabItem label="Homebrew">
-
-<Badge text="Awaiting first release" variant="caution" />
-
-The cask is prepared but not usable yet. It works once the first [GitHub release](https://github.com/nord-forge/fonn/releases) archive and matching cask are published. Until then, install from source.
-
-```sh
-brew tap nord-forge/fonn https://github.com/nord-forge/fonn
-brew install --cask nord-forge/fonn/fonn
-```
-
-The cask installs the CLI only. It depends on Homebrew Node and fetches locked runtime dependencies on your machine without `sudo`. See [distribution](/reference/distribution/).
 
   </TabItem>
 </Tabs>
