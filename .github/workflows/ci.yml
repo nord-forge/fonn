@@ -9,19 +9,26 @@ permissions:
 
 jobs:
   check:
-    name: Check (${{ matrix.os }}, Node 24)
+    name: Check (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        # Node 24 is the main target and its two jobs are required for main.
+        # Node 26 is what Homebrew installs today; Node 22 is the oldest
+        # version Fonn supports (engines: >=22).
         os: [ubuntu-latest, macos-latest]
+        node: [24, 26]
+        include:
+          - os: ubuntu-latest
+            node: 22
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: npm
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts
