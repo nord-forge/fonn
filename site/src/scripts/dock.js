@@ -125,8 +125,12 @@ function buildFooter(github) {
     themes.append(label);
   }
 
-  const star = createElement('a', 'dock-star', 'Star on GitHub');
+  // A star icon with "Star" keeps this on one row with the theme switch,
+  // even on a 360px screen. Screen readers hear the full label.
+  const star = createElement('a', 'dock-star');
   star.href = github;
+  star.setAttribute('aria-label', 'Star on GitHub');
+  star.innerHTML = '<svg aria-hidden="true" viewBox="0 0 16 16" width="15" height="15"><path fill="currentColor" d="M8 .25a.75.75 0 0 1 .67.42l1.88 3.8 4.2.61a.75.75 0 0 1 .41 1.28l-3.04 2.96.72 4.18a.75.75 0 0 1-1.09.8L8 12.33l-3.75 1.97a.75.75 0 0 1-1.09-.8l.72-4.18L.84 6.36a.75.75 0 0 1 .41-1.28l4.2-.61L7.33.67A.75.75 0 0 1 8 .25Z"/></svg><span>Star</span>';
   footer.append(themes, star);
   return footer;
 }
