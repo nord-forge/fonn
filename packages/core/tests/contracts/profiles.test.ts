@@ -12,7 +12,7 @@ test('profile CRUD persists defaults, preserves aliases and returns frozen snaps
     const store = createProfileStore(directory);
     assert.equal((await store.get()).name, 'opus-medium');
     assert.deepEqual((await store.list()).profiles, Object.values(profiles));
-    assert.equal((await store.list()).profiles.length, 6);
+    assert.equal((await store.list()).profiles.length, Object.keys(profiles).length);
     assert.deepEqual(getProfile('opus-medium'), { name: 'opus-medium', model: 'claude-opus-5-5', effort: 'medium' });
     for (const family of ['fable', 'mythos']) {
       assert.deepEqual(getProfile(`claude:${family}-medium`), { name: `claude:${family}-medium`, model: `claude-${family}-5-2`, effort: 'medium' });
@@ -201,4 +201,14 @@ test('symlink paths and nonregular files are rejected; concurrent mutations cann
     await assert.rejects(store.setDefault('opus-high'), /busy/);
     assert.equal(await readFile(lock, 'utf8'), 'owner from an interrupted writer');
   } finally { await rm(temporary, { recursive: true, force: true }); }
+});
+
+test('built-in Codex profiles cover the visible Codex catalog models', async () => {
+  const { profiles, taskProfileSchema } = await import('../../src/profiles.js');
+  const codex = Object.values(profiles).filter((profile) => profile.provider === 'codex');
+  assert.deepEqual(codex.map((profile) => profile.model).sort(), ['gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-6-astra', 'gpt-6-luna', 'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6.1-terra']);
+  for (const profile of codex) {
+    assert.ok(taskProfileSchema.safeParse(profile).success, profile.name);
+    assert.ok(profile.name.length <= 48 && profile.name.startsWith('codex:'), profile.name);
+  }
 });
