@@ -8,7 +8,7 @@ cask "fonn" do
   homepage "https://github.com/nord-forge/fonn"
 
   depends_on formula: "node"
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   installer script: {
     executable: "#{Formula["node"].opt_bin}/node",
