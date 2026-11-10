@@ -124,12 +124,12 @@ Use only the filter with the Claude Code or Codex you already have. There is no 
 
    ```sh
    mkdir -p scripts/fonn-filter
-   for file in hook.mjs index.mjs adapters.mjs artifact-store.mjs LICENSE; do
-     curl -fL "https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/$file" \
-       -o "scripts/fonn-filter/$file"
-   done
+   curl -fsSL https://codeload.github.com/nord-forge/fonn/tar.gz/main \
+     | tar -xz -C scripts/fonn-filter --strip-components=3 fonn-main/standalone/filtering
    node scripts/fonn-filter/hook.mjs --help
    ```
+
+   GitHub serves the repository as one small archive, and `tar` keeps only the filter folder.
 
 2. Ask your agent to set up the hook. This prompt keeps your existing hooks and permissions, and leaves Codex hook trust to you.
 
@@ -158,20 +158,18 @@ Run open models such as Qwen, Gemma or Kimi with [Ollama](https://ollama.com) an
    ollama pull qwen3.8:27b
    ```
 
-2. Download the filter into your project, including the OpenCode plugin.
+2. Download the filter into your project. For OpenCode, use `.opencode/plugins` as the folder instead, so the plugin and the filter sit together.
 
    ```sh
    mkdir -p scripts/fonn-filter
-   for file in hook.mjs index.mjs adapters.mjs artifact-store.mjs opencode-plugin.js LICENSE; do
-     curl -fL "https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/$file" \
-       -o "scripts/fonn-filter/$file"
-   done
+   curl -fsSL https://codeload.github.com/nord-forge/fonn/tar.gz/main \
+     | tar -xz -C scripts/fonn-filter --strip-components=3 fonn-main/standalone/filtering
    ```
 
 3. Connect it to your agent. Each one takes a few lines of configuration:
 
    - **Crush**: a `PostToolUse` hook that runs `hook.mjs --provider crush`.
-   - **OpenCode**: copy all the filter files into `.opencode/plugins/` with `cp scripts/fonn-filter/* .opencode/plugins/`, so the plugin finds `hook.mjs` beside it. Copying only the plugin skips filtering without any error, unless `FONN_FILTER_HOOK` points at `hook.mjs`.
+   - **OpenCode**: nothing more to copy when you downloaded into `.opencode/plugins`. The plugin finds `hook.mjs` beside it. A plugin on its own skips filtering without any error, unless `FONN_FILTER_HOOK` points at `hook.mjs`.
    - **Claude Code**: point it at Ollama's Anthropic API and use the normal Claude hook from [Filter only](#filter-only).
 
 </Steps>

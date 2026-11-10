@@ -6,18 +6,17 @@ The filter behaves as it does for Claude and Codex. It shortens recognized noisy
 
 ## Download the files
 
-Download the same five files as in the [local setup guide](local-filtering.md), plus the OpenCode plugin if you use OpenCode. From your project's root:
+Download the filter folder from your project's root. It holds the same files as in the [local setup guide](local-filtering.md), plus the OpenCode plugin:
 
 ```sh
 mkdir -p scripts/fonn-filter
-for file in hook.mjs index.mjs adapters.mjs artifact-store.mjs opencode-plugin.js LICENSE; do
-  curl -fL "https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/$file" -o "scripts/fonn-filter/$file"
-done
+curl -fsSL https://codeload.github.com/nord-forge/fonn/tar.gz/main \
+  | tar -xz -C scripts/fonn-filter --strip-components=3 fonn-main/standalone/filtering
 node scripts/fonn-filter/hook.mjs --help
 command -v node
 ```
 
-For a repeatable download, replace `main` with a reviewed commit SHA. Read the files before you enable them. Add `.fonn/` to your `.gitignore`, because archived originals can hold private output.
+To pin a reviewed commit, replace `main` in the URL and `fonn-main` in the path with that commit's full SHA, for example `fonn-<sha>`. Read the files before you enable them. Add `.fonn/` to your `.gitignore`, because archived originals can hold private output.
 
 ## Crush
 
@@ -57,11 +56,12 @@ Keep your other hooks. When several hooks set `updated_output`, Crush uses the l
 
 OpenCode loads plugins from `.opencode/plugins/` in a project or `~/.config/opencode/plugins/` for every project. `opencode-plugin.js` uses the `tool.execute.after` hook of the plugin API in OpenCode v1.19.5. For the `bash` tool it runs `hook.mjs` with `--provider opencode` and sets `output.output` to the shortened text. On any error, or after 5 seconds, it leaves the output untouched.
 
-The simplest setup puts all the files in the plugin folder. OpenCode only loads `.js` and `.ts` files from there, so the `.mjs` modules and the license sit beside the plugin without being loaded:
+The simplest setup puts all the files in the plugin folder. OpenCode only loads `.js` and `.ts` files from there, so the `.mjs` modules and the license sit beside the plugin without being loaded. Download straight into it:
 
 ```sh
 mkdir -p .opencode/plugins
-cp scripts/fonn-filter/* .opencode/plugins/
+curl -fsSL https://codeload.github.com/nord-forge/fonn/tar.gz/main \
+  | tar -xz -C .opencode/plugins --strip-components=3 fonn-main/standalone/filtering
 ```
 
 The plugin then finds `hook.mjs` next to itself. To keep one copy elsewhere, copy only `opencode-plugin.js` into a plugin folder and point it at the hook when you start OpenCode:
