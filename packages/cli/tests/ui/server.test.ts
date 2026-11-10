@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
-import { mkdir, mkdtemp, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -217,12 +217,25 @@ test('fonn ui change endpoints save through the stores and refuse invalid values
   assert.equal(badRule.status, 400);
   assert.match(badRule.body.error, /remove/);
 
-  const written = await change('PUT', '/api/project/settings', { root, scope: 'shared', settings: { filterMode: 'observe' } });
+  // Saves send the file's version from the last read, like the page does.
+  const save = async (scope: 'shared' | 'local', settings: unknown) => {
+    const current = (await change('GET', `/api/project?root=${encodeURIComponent(root)}`)).body;
+    return change('PUT', '/api/project/settings', { root, scope, version: current[scope].version, settings });
+  };
+  // A file that changed since the page loaded is not overwritten.
+  const loaded = (await change('GET', `/api/project?root=${encodeURIComponent(root)}`)).body;
+  await writeFile(path.join(root, '.fonn.json'), JSON.stringify({ filterLevel: 'similar' }));
+  const stale = await change('PUT', '/api/project/settings', { root, scope: 'shared', version: loaded.shared.version, settings: { filterMode: 'observe' } });
+  assert.equal(stale.status, 409);
+  assert.match(await readFile(path.join(root, '.fonn.json'), 'utf8'), /similar/);
+  assert.equal((await change('PUT', '/api/project/settings', { root, scope: 'shared', settings: { filterMode: 'observe' } })).status, 400);
+
+  const written = await save('shared', { filterMode: 'observe' });
   assert.equal(written.status, 200);
   assert.deepEqual(written.body.shared.settings, { filterMode: 'observe' });
   assert.equal(written.body.effective.filterMode.source, 'shared');
   assert.deepEqual(written.body.effective.rules, [{ ...rule, source: 'global' }]);
-  assert.equal((await change('PUT', '/api/project/settings', { root, scope: 'shared', settings: { filterMode: 'loud' } })).status, 400);
+  assert.equal((await save('shared', { filterMode: 'loud' })).status, 400);
   // Rules committed by someone else stay unapproved until the user approves them.
   const theirs = { name: 'theirs', command: 'npm audit', remove: ['found'] };
   await writeFile(path.join(root, '.fonn.json'), JSON.stringify({ rules: [theirs] }));
@@ -230,19 +243,19 @@ test('fonn ui change endpoints save through the stores and refuse invalid values
   assert.equal(detail.rulesApproval.approved, false);
   assert.deepEqual(detail.effective.unapprovedRules.map((rule: { name: string }) => rule.name), ['theirs']);
   // Saving the personal file in the UI does not approve them.
-  detail = (await change('PUT', '/api/project/settings', { root, scope: 'local', settings: { rules: [{ name: 'mine', command: 'make', remove: ['noise'] }] } })).body;
+  detail = (await save('local', { rules: [{ name: 'mine', command: 'make', remove: ['noise'] }] })).body;
   assert.equal(detail.rulesApproval.approved, false);
   assert.equal(detail.effective.rules.filter((rule: { source: string }) => rule.source !== 'global').length, 0);
   assert.equal((await change('PUT', '/api/project/rules-approval', { root, fingerprint: 'f'.repeat(64) })).status, 409);
   detail = (await change('PUT', '/api/project/rules-approval', { root, fingerprint: detail.rulesApproval.fingerprint })).body;
   assert.deepEqual(detail.effective.rules.filter((rule: { source: string }) => rule.source !== 'global').map((rule: { name: string }) => rule.name).sort(), ['mine', 'theirs']);
   // Once approved, the user's own edits keep the approval.
-  detail = (await change('PUT', '/api/project/settings', { root, scope: 'local', settings: {} })).body;
+  detail = (await save('local', {})).body;
   assert.equal(detail.rulesApproval.approved, true);
   detail = (await change('PUT', '/api/project/rules-approval', { root, fingerprint: null })).body;
   assert.equal(detail.rulesApproval.approved, false);
 
-  const removed = await change('PUT', '/api/project/settings', { root, scope: 'shared', settings: {} });
+  const removed = await save('shared', {});
   assert.equal(removed.body.shared.exists, false);
 
   const created = await change('POST', '/api/profiles', { name: 'my-review', provider: 'claude', model: 'claude-opus-5-5', effort: 'low' });

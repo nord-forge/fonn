@@ -163,14 +163,26 @@ async function readBody(request: IncomingMessage, limit: number): Promise<unknow
   }
 }
 
-/** Throws away the rest of a refused body, so the client can read the response. */
-function drain(request: IncomingMessage): void {
-  let length = 0;
-  request.on('data', (chunk: Buffer) => {
-    length += chunk.length;
-    if (length > MAX_DRAIN_BYTES) request.destroy();
+/**
+ * Throws away the rest of a refused body before answering. Closing the
+ * connection while the client is still sending makes it fail with a broken
+ * pipe instead of reading the 413. Past MAX_DRAIN_BYTES the request is dropped.
+ */
+function drain(request: IncomingMessage): Promise<void> {
+  return new Promise((resolve) => {
+    if (request.readableEnded) return resolve();
+    let length = 0;
+    request.on('data', (chunk: Buffer) => {
+      length += chunk.length;
+      if (length > MAX_DRAIN_BYTES) {
+        request.destroy();
+        resolve();
+      }
+    });
+    request.once('end', () => resolve());
+    request.once('close', () => resolve());
+    request.resume();
   });
-  request.resume();
 }
 
 async function serveApi(handler: Handler | undefined, request: IncomingMessage, response: ServerResponse, limit: number): Promise<void> {
@@ -180,7 +192,7 @@ async function serveApi(handler: Handler | undefined, request: IncomingMessage, 
     sendJson(response, 200, await handler(body));
   } catch (error) {
     if (error instanceof ApiFailure) {
-      if (error.status === 413) drain(request);
+      if (error.status === 413) await drain(request);
       return sendError(response, error.status, error.message, error.status === 413 ? { Connection: 'close' } : undefined);
     }
     // Unexpected failures can carry paths or record contents, so the details stay local.

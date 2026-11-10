@@ -39,7 +39,7 @@ function settingsFile(title, file, scope, project, profiles, onSave, signal) {
     const rules = editor.read();
     if (rules.length || file.settings.rules !== undefined) settings.rules = rules;
     saving(form, status, async () => {
-      const updated = await send('PUT', 'project/settings', { root: project.root, scope, settings });
+      const updated = await send('PUT', 'project/settings', { root: project.root, scope, version: file.version, settings });
       if (!signal.aborted) onSave(updated, scope);
     });
   });

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 // The data behind each fonn ui endpoint. Every function takes the config
 // and state directories explicitly, so tests can point them at temporary
 // folders. Reads never write to disk. Changes go through the same validated,
@@ -307,26 +308,34 @@ async function readSettingsInfo(file: string): Promise<SettingsFileInfo & { pars
   try {
     info = await lstat(file);
   } catch (error) {
-    if (isMissing(error)) return { path: file, exists: false, settings: {}, parsed: {} };
-    return { path: file, exists: true, settings: {}, error: 'The file could not be read.' };
+    if (isMissing(error)) return { path: file, exists: false, version: MISSING_VERSION, settings: {}, parsed: {} };
+    return { path: file, exists: true, version: UNREADABLE_VERSION, settings: {}, error: 'The file could not be read.' };
   }
-  if (info.isSymbolicLink() || !info.isFile()) return { path: file, exists: true, settings: {}, error: 'Settings must be a regular file, not a symlink or folder.' };
-  if (info.size > MAX_SETTINGS_BYTES) return { path: file, exists: true, settings: {}, error: 'The file is larger than 16 KiB.' };
+  if (info.isSymbolicLink() || !info.isFile()) return { path: file, exists: true, version: UNREADABLE_VERSION, settings: {}, error: 'Settings must be a regular file, not a symlink or folder.' };
+  if (info.size > MAX_SETTINGS_BYTES) return { path: file, exists: true, version: UNREADABLE_VERSION, settings: {}, error: 'The file is larger than 16 KiB.' };
   let value: unknown;
+  let version = UNREADABLE_VERSION;
   try {
     const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try { value = JSON.parse(await handle.readFile('utf8')); }
-    finally { await handle.close(); }
+    try {
+      const text = await handle.readFile('utf8');
+      version = createHash('sha256').update(text).digest('hex');
+      value = JSON.parse(text);
+    } finally { await handle.close(); }
   } catch {
-    return { path: file, exists: true, settings: {}, error: 'The file is not valid JSON.' };
+    return { path: file, exists: true, version, settings: {}, error: 'The file is not valid JSON.' };
   }
   const parsed = projectSettingsSchema.safeParse(value);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((issue) => issue.path.join('.') || issue.message).join(', ');
-    return { path: file, exists: true, settings: {}, error: `Invalid settings: ${issues}. Allowed keys: profile, filterLevel, filterMode, subagents, rules.` };
+    return { path: file, exists: true, version, settings: {}, error: `Invalid settings: ${issues}. Allowed keys: profile, filterLevel, filterMode, subagents, rules.` };
   }
-  return { path: file, exists: true, settings: { ...parsed.data }, parsed: parsed.data };
+  return { path: file, exists: true, version, settings: { ...parsed.data }, parsed: parsed.data };
 }
+
+// A file's version is a hash of its contents, so a save can tell that it changed.
+const MISSING_VERSION = 'missing';
+const UNREADABLE_VERSION = 'unreadable';
 
 type SettingsInfo = Awaited<ReturnType<typeof readSettingsInfo>>;
 
@@ -546,6 +555,8 @@ export async function putGlobalRules(directories: UiDirectories, body: unknown):
 const projectSettingsChangeSchema = z.object({
   root: z.string(),
   scope: z.enum(['shared', 'local']),
+  /** The file's version when the page loaded. */
+  version: z.string().min(1).max(64),
   settings: projectSettingsSchema,
 }).strict();
 
@@ -568,6 +579,11 @@ export async function putProjectSettings(directories: UiDirectories, body: unkno
   // approves rules someone else committed.
   const beforeShared = await readSettingsInfo(path.join(root, SHARED_SETTINGS_FILE));
   const beforeLocal = await readSettingsInfo(path.join(root, LOCAL_SETTINGS_FILE));
+  // Refuse to overwrite a file that changed since the page loaded, for
+  // example after a pull, a branch switch or an agent's edit.
+  if ((change.scope === 'shared' ? beforeShared : beforeLocal).version !== change.version) {
+    throw new ApiFailure(409, `${change.scope === 'shared' ? SHARED_SETTINGS_FILE : LOCAL_SETTINGS_FILE} changed since this page loaded. Reload the page to see the new contents, then make your change again.`);
+  }
   const before = await rulesApproval(directories, root, beforeShared, beforeLocal);
   const keepApproved = before !== null && (before.fingerprint === null || before.approved);
   // The rules this save should produce. Approval only carries over when the

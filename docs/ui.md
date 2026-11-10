@@ -30,6 +30,8 @@ A rule removes lines that contain some text, for commands that start with a give
 
 Rules from project files only apply after you approve them, because anyone who can commit to the repository can write them. The project page lists rules waiting for approval with an "Approve these rules" button. If the rules change after you approve them, new launches skip them until you approve again. Running and resumed launches keep the rules they started with. Saving your own changes on the project page keeps an approval you already gave, but never approves rules someone else committed.
 
+A project file that changed on disk after the page loaded, for example after a `git pull`, is never overwritten. Saving says so instead, and reloading the page shows the new contents.
+
 Deleting a launch that has no recorded finish asks you to confirm, because it may still be running.
 
 ## Privacy and security

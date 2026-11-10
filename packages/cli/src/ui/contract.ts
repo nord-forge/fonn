@@ -145,6 +145,8 @@ export interface ProjectsResponse {
 export interface SettingsFileInfo {
   path: string;
   exists: boolean;
+  /** A hash of the file's contents, 'missing' or 'unreadable'. Saves send it back. */
+  version: string;
   settings: Partial<Record<'profile' | 'filterLevel' | 'filterMode' | 'subagents', string>> & { rules?: FilterRule[] };
   /** Set when the file exists but is invalid; the message is safe to show. */
   error?: string;
@@ -282,6 +284,8 @@ export interface RulesChange {
 export interface ProjectSettingsChange {
   root: string;
   scope: 'shared' | 'local';
+  /** SettingsFileInfo.version from when the page loaded. A file that changed since: 409. */
+  version: string;
   settings: { profile?: string; filterLevel?: FilterLevel; filterMode?: FilterMode; subagents?: Subagents; rules?: FilterRule[] };
 }
 /**
