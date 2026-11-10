@@ -1,5 +1,7 @@
 // Progressive enhancement shared by both pages: tabs, copy buttons and the
 // "on this page" highlight. Without JavaScript every panel stays readable.
+import './dock.js';
+
 const live = document.getElementById('live');
 const announce = (message) => {
   if (!live) return;
