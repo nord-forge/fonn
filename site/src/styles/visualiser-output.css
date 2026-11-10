@@ -1,0 +1,190 @@
+/*
+ * Visualiser output lines, archive and recovery panel, and the checks list.
+ */
+
+.lines {
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: var(--radius);
+  padding: 10px 0;
+  max-height: 520px;
+  overflow-y: auto;
+  font: 0.85rem/1.6 var(--mono);
+}
+
+@media (min-width: 1200px) {
+  .lines {
+    max-height: 640px;
+  }
+}
+
+/* Lines wrap with a small hanging indent, so a wrapped line is easy to tell apart. */
+.line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0 14px 0 calc(14px + 2ch);
+  text-indent: -2ch;
+  min-height: 1.6em;
+  border-left: 3px solid transparent;
+}
+
+.lines.decided .line.removed {
+  background: rgb(242 155 143 / 12%);
+  border-left-color: #f29b8f;
+  color: #f4b7ae;
+  text-decoration: line-through;
+  text-decoration-color: rgb(244 183 174 / 60%);
+}
+
+.lines.decided .line.added {
+  background: rgb(127 211 169 / 14%);
+  border-left-color: #7fd3a9;
+  color: #b9f0d4;
+}
+
+.lines.decided .line.would.removed {
+  text-decoration: none;
+  background: rgb(240 194 122 / 10%);
+  border-left-color: #f0c27a;
+  color: #f6dcae;
+}
+
+.lines.decided .line.would.added {
+  background: transparent;
+  border-left: 3px dashed #f0c27a;
+  color: #f0c27a;
+  opacity: 0.8;
+}
+
+.line.added {
+  display: none;
+}
+
+.lines.decided .line.added {
+  display: block;
+}
+
+.lines.hide-removed.decided .line.removed:not(.would) {
+  min-height: 0;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.line.run-summary {
+  display: none;
+  color: #f4b7ae;
+  font-style: italic;
+  border-left-color: #f29b8f;
+  background: rgb(242 155 143 / 8%);
+}
+
+.line.run-summary::before {
+  content: "− ";
+}
+
+.lines.hide-removed.decided .line.run-summary {
+  display: block;
+}
+
+.line.more {
+  color: var(--code-muted);
+  font-style: italic;
+}
+
+.is-animated .lines.decided .line {
+  transition: background 0.3s var(--d), color 0.3s var(--d), border-color 0.3s var(--d), opacity 0.35s var(--d), height 0.35s var(--d);
+}
+
+.is-animated .lines.decided .line.removed {
+  animation: strike 0.5s var(--d) both;
+}
+
+@keyframes strike {
+  from {
+    background: rgb(124 196 255 / 30%);
+  }
+}
+
+.archive-empty p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.archive-body > p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  max-width: 80ch;
+}
+
+.slice-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.slice-controls label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.slice-controls .field {
+  width: 120px;
+}
+
+.slice-controls input[type="range"] {
+  flex: 1 1 200px;
+  min-width: 0;
+  accent-color: var(--accent);
+  min-height: 32px;
+}
+
+.output.slice {
+  max-height: 260px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.viz-docs {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+.viz-docs section {
+  padding: 24px 0;
+  border-top: 1px solid var(--border);
+}
+
+.checks {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+@media (min-width: 720px) {
+  .checks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.checks div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.checks dt {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.checks dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.93rem;
+}

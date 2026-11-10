@@ -30,7 +30,7 @@ Sample character counts describe those samples only. They are not token, cost or
 | --- | --- |
 | `src/index.html` | Docs page with `{{placeholder}}` slots filled at build time |
 | `src/how-it-works.html` | Visualiser page |
-| `src/styles.css` | Shared styles, light and dark |
+| `src/styles/` | Stylesheet parts, one topic per file. `main.css` lists them in order and the build joins them into one `styles.css` |
 | `src/app.js` | Tabs, copy buttons and the section highlight |
 | `src/hero.js` | WebGL hero effect on the docs page |
 | `src/visualiser.js` | Visualiser logic |

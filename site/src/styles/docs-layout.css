@@ -1,0 +1,171 @@
+/*
+ * Docs page layout: the "on this page" sidebar, sections, notes, steps and footer.
+ */
+
+.docs {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 8px 16px 64px;
+  display: grid;
+  gap: 32px;
+}
+
+@media (min-width: 960px) {
+  .docs {
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 56px;
+  }
+}
+
+.toc {
+  font-size: 0.92rem;
+}
+
+.toc-title {
+  margin: 0 0 8px;
+  font: 600 0.75rem/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.toc a {
+  display: block;
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.toc a:hover {
+  color: var(--text);
+  background: var(--bg-2);
+}
+
+.toc a[aria-current] {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+@media (min-width: 960px) {
+  .toc {
+    position: sticky;
+    top: 84px;
+    align-self: start;
+  }
+
+  .toc ul {
+    flex-direction: column;
+    border-left: 1px solid var(--border);
+    padding-left: 8px;
+  }
+}
+
+.content {
+  min-width: 0;
+  max-width: 780px;
+}
+
+.content > section {
+  padding: 28px 0;
+  border-top: 1px solid var(--border);
+}
+
+.content > section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.content p,
+.content li {
+  max-width: 70ch;
+}
+
+.features {
+  padding-left: 1.1rem;
+}
+
+.features li {
+  margin: 6px 0;
+}
+
+.note {
+  color: var(--muted);
+  font-size: 0.93rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.inline-cta {
+  font-weight: 600;
+}
+
+.inline-cta::after {
+  content: " →";
+}
+
+.steps {
+  list-style: none;
+  counter-reset: step;
+  padding: 0;
+  margin: 0 0 24px;
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 720px) {
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.steps li {
+  counter-increment: step;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.steps h3 {
+  margin: 0 0 4px;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.steps h3::before {
+  content: counter(step, decimal-leading-zero);
+  font: 600 0.8rem var(--mono);
+  color: var(--accent);
+}
+
+.steps p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 24px 16px 40px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.footer p {
+  margin: 4px 0;
+}

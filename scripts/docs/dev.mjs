@@ -20,7 +20,7 @@ function build() {
 if (!build()) process.exit(1);
 
 let timer;
-watch(path.join(root, 'site/src'), () => {
+watch(path.join(root, 'site/src'), { recursive: true }, () => {
   clearTimeout(timer);
   timer = setTimeout(build, 120);
 });

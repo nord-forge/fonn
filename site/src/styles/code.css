@@ -1,0 +1,64 @@
+/*
+ * Command and output blocks, and their copy buttons.
+ */
+
+pre {
+  margin: 12px 0;
+}
+
+.cmd,
+.output {
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  overflow: auto;
+  font: 0.86rem/1.6 var(--mono);
+  tab-size: 2;
+}
+
+.cmd.prompt {
+  white-space: pre-wrap;
+}
+
+.output.tall {
+  max-height: 340px;
+}
+
+.cmd-wrap {
+  position: relative;
+}
+
+.cmd-wrap .cmd {
+  padding-right: 84px;
+}
+
+.copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid #2a4560;
+  background: #132a41;
+  color: #d7e6f4;
+  font: 600 0.78rem var(--sans);
+}
+
+.copy:hover {
+  background: #1b3957;
+}
+
+.copy[data-state="ok"] {
+  border-color: #2f8f63;
+  background: #12392a;
+  color: #b9f0d4;
+}
+
+.copy[data-state="error"] {
+  border-color: #b3483b;
+  background: #3d1a16;
+  color: #ffd3cc;
+}

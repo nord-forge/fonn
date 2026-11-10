@@ -252,6 +252,16 @@ function renderLines(stdout, preview, status, delay) {
   const shown = rows.slice(0, MAX_LINES);
   const fragment = document.createDocumentFragment();
   for (const [index, row] of shown.entries()) {
+    // Each run of removed lines gets one summary row, shown when "show removed" is off.
+    if (row.kind === 'removed' && shown[index - 1]?.kind !== 'removed' && status === 'filtered') {
+      let count = 0;
+      while (shown[index + count]?.kind === 'removed') count++;
+      const summary = document.createElement('div');
+      summary.className = 'line run-summary';
+      summary.style.setProperty('--d', `${Math.min(index * 6, 420)}ms`);
+      summary.textContent = `${fmt(count)} ${count === 1 ? 'line' : 'lines'} removed`;
+      fragment.append(summary);
+    }
     const line = document.createElement('div');
     line.className = `line ${row.kind}`;
     if (row.kind !== 'kept' && status === 'observed') line.classList.add('would');
@@ -309,7 +319,11 @@ function start() {
   root.querySelectorAll('input[name="mode"]').forEach((input) => input.addEventListener('change', () => run({ animate: true })));
   els.replay.addEventListener('click', () => run({ animate: true }));
   root.querySelectorAll('input[name="level"]').forEach((input) => input.addEventListener('change', () => run({ animate: true })));
-  els.showRemoved.addEventListener('change', () => els.lines.classList.toggle('hide-removed', !els.showRemoved.checked));
+  // Phones start with removed lines collapsed: wrapped 80-column rows are hard to read there.
+  els.showRemoved.checked = !window.matchMedia('(max-width: 719px)').matches;
+  const applyShowRemoved = () => els.lines.classList.toggle('hide-removed', !els.showRemoved.checked);
+  applyShowRemoved();
+  els.showRemoved.addEventListener('change', applyShowRemoved);
   els.offset.addEventListener('input', renderArchive);
   els.limit.addEventListener('input', renderArchive);
   els.offsetRange.addEventListener('input', () => { els.offset.value = els.offsetRange.value; renderArchive(); });

@@ -107,7 +107,22 @@ const replacements = {
   'repeated-stats': `${number(results.get('repeated').decision.originalCharacters)} characters in, ${number(results.get('repeated').decision.deliveredCharacters)} delivered, ${number(results.get('repeated').decision.removedLines)} duplicate lines removed. Sample only.`,
 };
 
-const entries = await readdir(source);
+// Stylesheet parts live in site/src/styles. main.css lists them with @import,
+// and the build inlines them in that order into one styles.css.
+async function bundleStyles() {
+  const directory = path.join(source, 'styles');
+  const main = await readFile(path.join(directory, 'main.css'), 'utf8');
+  const parts = [];
+  for (const [, name] of main.matchAll(/^@import "([a-z-]+\.css)";$/gm)) {
+    parts.push(`/* ${name} */\n${(await readFile(path.join(directory, name), 'utf8')).trim()}\n`);
+  }
+  const listed = new Set([...main.matchAll(/^@import "([a-z-]+\.css)";$/gm)].map((m) => m[1]));
+  const unlisted = (await readdir(directory)).filter((file) => file.endsWith('.css') && file !== 'main.css' && !listed.has(file));
+  if (unlisted.length) throw new Error(`Stylesheet parts missing from styles/main.css: ${unlisted.join(', ')}`);
+  return parts.join('\n');
+}
+
+const entries = (await readdir(source, { withFileTypes: true })).filter((entry) => entry.isFile()).map((entry) => entry.name);
 const pages = entries.filter((file) => file.endsWith('.html'));
 const rendered = new Map();
 for (const page of pages) {
@@ -121,7 +136,7 @@ for (const page of pages) {
 // Small structural checks instead of a test suite: in-page and cross-page
 // anchors, plus every local asset the pages reference, must exist.
 const idsOf = (html) => new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
-const assets = new Set([...entries, 'filter/index.js', 'filter/adapters.js', 'filter/artifact-store.js']);
+const assets = new Set([...entries, 'styles.css', 'filter/index.js', 'filter/adapters.js', 'filter/artifact-store.js']);
 const problems = [];
 for (const [page, html] of rendered) {
   for (const [, target] of html.matchAll(/(?:src|href)="(?!https?:|mailto:)([^"]*)"/g)) {
@@ -140,6 +155,7 @@ for (const file of entries) {
   if (file.endsWith('.html') || file.startsWith('.')) continue;
   await copyFile(path.join(source, file), path.join(output, file));
 }
+await writeFile(path.join(output, 'styles.css'), await bundleStyles());
 
 // The visualiser imports the real compiled filter. Archiving uses Node file
 // APIs, so the browser gets a stub store and the page supplies its own.

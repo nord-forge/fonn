@@ -1,0 +1,101 @@
+/*
+ * Tabs, status pills and the before and after demo panels.
+ */
+
+.tablist {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: 600 0.92rem var(--sans);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--accent-strong);
+  border-bottom-color: var(--accent);
+}
+
+.tabs-ready .tab-heading {
+  margin-top: 4px;
+}
+
+[data-tabs]:not(.tabs-ready) > [data-tab-label] + [data-tab-label] {
+  margin-top: 28px;
+}
+
+.pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font: 600 0.72rem/1.5 var(--sans);
+  vertical-align: middle;
+}
+
+.pill.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.pill.soon {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.compare {
+  display: grid;
+  gap: 4px;
+}
+
+.compare > div {
+  min-width: 0;
+}
+
+.compare-label {
+  margin: 8px 0 0;
+  font: 600 0.78rem var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.stats {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* Long output lines wrap instead of scrolling sideways, so the demo reads at any width. */
+.demo .output {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+}
+
+.demo .output.tall {
+  max-height: 300px;
+}
+
+.demo.tabs-ready .tab-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

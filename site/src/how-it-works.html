@@ -102,26 +102,26 @@
           <div class="lines" id="lines" tabindex="0" aria-label="Delivered output with removed lines marked"></div>
           <p class="hint">Counts are characters in this observation. They are not tokens or dollars.</p>
         </article>
-      </div>
 
-      <article class="card card-archive" aria-labelledby="archive-title" id="archive">
-        <header class="card-head">
-          <h2 id="archive-title"><span class="step-no">4</span> Archive and bounded recovery</h2>
-          <span class="count" id="archive-id"></span>
-        </header>
-        <div id="archive-empty" class="archive-empty"><p>Nothing archived. The model received the original output, so there is nothing to recover.</p></div>
-        <div id="archive-body" class="archive-body" hidden>
-          <p>The full original is kept in the local state directory. The footer tells the agent how to read it back, one bounded slice at a time.</p>
-          <div class="slice-controls">
-            <label>Offset <input type="number" id="offset" min="0" value="0" class="field mono"></label>
-            <label>Limit <input type="number" id="limit" min="1" max="20000" value="4000" class="field mono"></label>
-            <input type="range" id="offset-range" min="0" value="0" aria-label="Offset">
+        <article class="card card-archive" aria-labelledby="archive-title" id="archive">
+          <header class="card-head">
+            <h2 id="archive-title"><span class="step-no">4</span> Archive and bounded recovery</h2>
+            <span class="count" id="archive-id"></span>
+          </header>
+          <div id="archive-empty" class="archive-empty"><p>Nothing archived. The model received the original output, so there is nothing to recover.</p></div>
+          <div id="archive-body" class="archive-body" hidden>
+            <p>The full original is kept in the local state directory. The footer tells the agent how to read it back, one bounded slice at a time.</p>
+            <div class="slice-controls">
+              <label>Offset <input type="number" id="offset" min="0" value="0" class="field mono"></label>
+              <label>Limit <input type="number" id="limit" min="1" max="20000" value="4000" class="field mono"></label>
+              <input type="range" id="offset-range" min="0" value="0" aria-label="Offset">
+            </div>
+            <pre class="cmd"><code id="recover-cmd"></code></pre>
+            <p class="count" id="slice-info"></p>
+            <pre class="output slice" tabindex="0"><code id="slice"></code></pre>
           </div>
-          <pre class="cmd"><code id="recover-cmd"></code></pre>
-          <p class="count" id="slice-info"></p>
-          <pre class="output slice" tabindex="0"><code id="slice"></code></pre>
-        </div>
-      </article>
+        </article>
+      </div>
     </section>
     <div class="sr-only" aria-live="polite" id="live"></div>
 
