@@ -91,29 +91,73 @@ export async function saving(form, status, action) {
   }
 }
 
-export function confirmAction(label, explanation, action) {
-  const node = el('div', 'confirm-action');
-  const prompt = el('div', 'confirm-panel');
-  prompt.hidden = true;
+// One shared modal dialog for confirmations. A native <dialog> traps focus,
+// closes on Escape and leaves the page layout alone.
+let confirmation;
+function confirmationDialog() {
+  if (confirmation) return confirmation;
+  const dialog = el('dialog', 'confirm-dialog');
+  const title = el('h2', 'confirm-title');
+  title.id = 'confirm-title';
+  const message = el('p', 'confirm-message');
+  message.id = 'confirm-message';
+  dialog.setAttribute('aria-labelledby', title.id);
+  dialog.setAttribute('aria-describedby', message.id);
   const status = feedback();
-  const open = button(label, () => {
-    prompt.hidden = false;
-    open.hidden = true;
-    yes.focus();
-  }, 'danger');
-  const yes = button('Yes, delete', () => saving(node, status, async () => {
-    await action();
-  }), 'danger');
-  const cancel = button('Cancel', () => {
-    prompt.hidden = true;
-    open.hidden = false;
-    status.show();
-    open.focus();
+  const cancel = button('Cancel', () => dialog.close());
+  const confirm = button('Delete', () => {}, 'danger');
+  const actions = el('div', 'form-actions confirm-actions');
+  actions.append(cancel, confirm);
+  dialog.append(title, message, status.node, actions);
+  document.body.append(dialog);
+  confirmation = { dialog, title, message, status, cancel, confirm, busy: false, current: undefined };
+  // Escape while a change is being saved would hide its outcome.
+  dialog.addEventListener('cancel', (event) => { if (confirmation.busy) event.preventDefault(); });
+  dialog.addEventListener('close', () => {
+    const returnFocus = confirmation.current?.returnFocus;
+    confirmation.current = undefined;
+    // The browser restores its own focus after this event; go after it.
+    setTimeout(() => { if (returnFocus?.isConnected) returnFocus.focus(); }, 0);
   });
-  const actions = el('div', 'form-actions');
-  actions.append(yes, cancel);
-  prompt.append(el('p', '', explanation), actions);
-  node.append(open, prompt, status.node);
-  describeControls(node, status.node);
-  return node;
+  confirm.addEventListener('click', async () => {
+    const current = confirmation.current;
+    if (!current || confirmation.busy) return;
+    confirmation.busy = true;
+    confirm.disabled = true;
+    cancel.disabled = true;
+    status.show('Working…');
+    try {
+      await current.action();
+      if (confirmation.current === current) dialog.close();
+    } catch (error) {
+      status.show(error.message, true);
+    } finally {
+      confirmation.busy = false;
+      confirm.disabled = false;
+      cancel.disabled = false;
+    }
+  });
+  return confirmation;
+}
+
+/**
+ * Asks before a destructive change. `action` runs on confirm; when it throws,
+ * the dialog stays open with the message. Focus returns to `returnFocus`.
+ */
+export function confirmDialog({ title, message, confirmLabel = 'Delete', action, returnFocus }) {
+  const dialog = confirmationDialog();
+  dialog.current = { action, returnFocus: returnFocus ?? document.activeElement };
+  dialog.title.textContent = title;
+  dialog.message.textContent = message;
+  dialog.confirm.textContent = confirmLabel;
+  dialog.status.show();
+  if (!dialog.dialog.open) dialog.dialog.showModal();
+  // Cancel is the safe default for a destructive choice.
+  dialog.cancel.focus();
+}
+
+/** A button that opens the confirmation dialog. */
+export function confirmAction(label, explanation, action, { title = label, confirmLabel = 'Delete' } = {}) {
+  const trigger = button(label, () => confirmDialog({ title, message: explanation, confirmLabel, action, returnFocus: trigger }), 'danger');
+  return trigger;
 }

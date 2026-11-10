@@ -162,6 +162,15 @@ function profileForm({ profile, start, models, onSave, cancel }) {
   return form;
 }
 
+// Per-browser convenience only; the page works the same without storage.
+const OPEN_KEY = 'fonn-ui:built-in-profiles-open';
+function readOpen() {
+  try { return localStorage.getItem(OPEN_KEY) === 'true'; } catch { return false; }
+}
+function writeOpen(open) {
+  try { localStorage.setItem(OPEN_KEY, String(open)); } catch { /* storage unavailable */ }
+}
+
 export async function profilesView(target, signal) {
   target.append(pageHeader('Global / Profiles', 'Profiles', 'A profile picks the agent, model and effort for a launch. Fonn uses the default unless a project setting or a flag picks another.'));
   const content = el('div', 'profiles');
@@ -212,9 +221,9 @@ export async function profilesView(target, signal) {
             form.querySelector('input:checked')?.focus();
           }));
           if (!profile.isDefault) {
-            actions.append(confirmAction('Delete', `Delete ${profile.name}? Launches that already used it keep their saved copy.`, async () => {
+            actions.append(confirmAction('Delete', 'Launches that already used it keep their saved copy.', async () => {
               render(await send('DELETE', `profiles/${encodeURIComponent(profile.name)}`), `Deleted ${profile.name}.`);
-            }));
+            }, { title: `Delete ${profile.name}?` }));
           }
         }
         actions.append(rowStatus.node);
@@ -248,19 +257,29 @@ export async function profilesView(target, signal) {
         form.querySelector(start ? '.form-field input' : 'input[name="agent"]:checked')?.focus();
       }
 
-      // Built-ins, grouped by agent.
-      const builtIn = card('Built-in profiles', 'Ready to use and always available. They cannot be changed, so copy one to make your own version.');
+      // Built-ins, grouped by agent, in a section that starts collapsed and
+      // remembers being opened.
+      const builtIn = el('section', 'card');
+      const details = el('details', 'collapsible');
+      details.open = readOpen();
+      const builtInHeading = el('summary');
+      const count = resource.profiles.filter((profile) => profile.builtIn).length;
+      builtInHeading.append(el('h2', '', 'Built-in profiles'), el('span', 'collapsible-count', `${count}`));
+      details.append(builtInHeading, el('p', 'section-description', 'Ready to use and always available. They cannot be changed, so copy one to make your own version.'));
       for (const [key, label] of AGENTS) {
         const group = resource.profiles.filter((profile) => profile.builtIn && profile.provider === key);
         if (!group.length) continue;
         const groupList = el('ul', 'profile-list');
         groupList.append(...group.map(row));
-        builtIn.append(el('h3', 'profile-group', label), groupList);
+        details.append(el('h3', 'profile-group', label), groupList);
       }
+      details.addEventListener('toggle', () => writeOpen(details.open));
+      builtIn.append(details);
 
       content.replaceChildren(defaults, own, builtIn);
       if (message) status.show(message);
       const focus = focusName && content.querySelector(`[data-profile="${CSS.escape(focusName)}"] .profile-name`);
+      if (focus) focus.closest('details')?.setAttribute('open', '');
       if (focus) { focus.tabIndex = -1; focus.focus(); }
     }
 
