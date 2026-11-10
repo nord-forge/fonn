@@ -205,7 +205,7 @@ test('symlink paths and nonregular files are rejected; concurrent mutations cann
 
 test('model sources are Codex only, take open model names and only name a Codex provider', () => {
   const base = { name: 'open', provider: 'codex' as const, effort: 'medium' as const };
-  for (const [source, model] of [['ollama', 'qwen3-coder:30b'], ['lmstudio', 'openai/gpt-oss-20b'], ['provider:mistral', 'devstral-small-2'], ['provider:open_router', 'deepseek/deepseek-chat']]) {
+  for (const [source, model] of [['ollama', 'qwen3-coder:30b'], ['ollama', 'hf.co/unsloth/Qwen3.8-27B-GGUF:UD-IQ3_XXS'], ['lmstudio', 'openai/gpt-oss-20b'], ['provider:mistral', 'devstral-small-2'], ['provider:open_router', 'deepseek/deepseek-chat']]) {
     assert.ok(taskProfileSchema.safeParse({ ...base, source, model }).success, `${source} ${model}`);
   }
   assert.equal(taskProfileSchema.safeParse({ ...base, model: 'qwen3-coder:30b' }).success, false, 'an open model needs a source');
