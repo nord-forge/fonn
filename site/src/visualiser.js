@@ -304,10 +304,36 @@ function debounce(fn, ms) {
   return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
 }
 
+// Keeps the sticky offsets in step with the real top bar and controls heights,
+// and marks the controls as stuck so they can show a shadow.
+function setupStickyControls() {
+  const controls = root.querySelector('.viz-controls');
+  const topbar = document.querySelector('.topbar');
+  const style = document.documentElement.style;
+  let observer;
+  const sentinel = document.createElement('div');
+  sentinel.setAttribute('aria-hidden', 'true');
+  controls.before(sentinel);
+  const measure = () => {
+    const topbarHeight = Math.round(topbar.getBoundingClientRect().height);
+    style.setProperty('--topbar-height', `${topbarHeight}px`);
+    style.setProperty('--controls-height', `${Math.round(controls.getBoundingClientRect().height)}px`);
+    observer?.disconnect();
+    observer = new IntersectionObserver(([entry]) => {
+      controls.classList.toggle('is-stuck', !entry.isIntersecting && entry.boundingClientRect.top < topbarHeight);
+    }, { rootMargin: `-${topbarHeight + 1}px 0px 0px 0px` });
+    observer.observe(sentinel);
+  };
+  new ResizeObserver(measure).observe(controls);
+  new ResizeObserver(measure).observe(topbar);
+  measure();
+}
+
 function start() {
   buildSampleChips();
   buildPipeline();
   root.hidden = false;
+  setupStickyControls();
   const rerun = debounce(() => run({ animate: false }), 220);
   const onEdit = () => {
     edited = true;

@@ -39,9 +39,10 @@
     align-items: start;
   }
 
+  /* Sits just below the sticky controls. */
   .card-pipeline {
     position: sticky;
-    top: 84px;
+    top: calc(var(--topbar-height, 65px) + var(--controls-height, 110px) + 16px);
   }
 }
 

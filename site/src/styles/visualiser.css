@@ -44,24 +44,45 @@
   padding-bottom: 24px;
 }
 
-/* Samples get a full row; mode, level and Replay share the row below. */
+/*
+ * The controls stick below the top bar while the visualiser is on screen.
+ * --topbar-height and --controls-height are measured by visualiser.js.
+ * Labels sit beside their buttons so the panel stays two short rows.
+ */
 .viz-controls {
+  position: sticky;
+  top: var(--topbar-height, 65px);
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
-  gap: 16px 28px;
-  padding: 16px;
+  align-items: center;
+  gap: 10px 28px;
+  padding: 12px 16px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
+  transition: box-shadow 0.2s ease;
+}
+
+.viz-controls.is-stuck {
+  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
 }
 
 .viz-controls .chips {
   flex: 1 1 100%;
 }
 
+.viz-options {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 28px;
+}
+
 #replay {
   margin-left: auto;
+  min-height: 36px;
 }
 
 fieldset {
@@ -69,6 +90,13 @@ fieldset {
   padding: 0;
   margin: 0;
   min-width: 0;
+}
+
+/* Floating the legend puts the label on the same line as its buttons. */
+.viz-controls legend {
+  float: left;
+  margin: 0 12px 0 0;
+  line-height: 36px;
 }
 
 legend {
@@ -134,24 +162,60 @@ legend {
   max-width: 90ch;
 }
 
+/* Phones: labels are hidden visually but still announced, and each row scrolls sideways. */
 @media (max-width: 719px) {
   .viz-controls {
-    padding: 12px;
-    gap: 14px 20px;
+    padding: 8px 0;
+    gap: 6px 0;
+    border-radius: 12px;
   }
 
-  /* Eleven samples would wrap into a tall block, so they scroll sideways instead. */
-  .viz-controls .chips .chip-row {
+  .viz-controls legend {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .viz-controls .chip-row {
     flex-wrap: nowrap;
     overflow-x: auto;
-    padding-bottom: 6px;
-    margin-inline: -12px;
-    padding-inline: 12px;
-    scrollbar-width: thin;
+    padding: 0 12px 4px;
+    scrollbar-width: none;
+  }
+
+  /* A soft fade on the right edge hints that the rows scroll. */
+  .viz-controls .chips .chip-row,
+  .viz-options {
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+
+  .viz-controls .chips {
+    flex: 1 1 100%;
+  }
+
+  /* Mode, level and Replay share the second row and scroll together. */
+  .viz-options {
+    flex-wrap: nowrap;
+    gap: 16px;
+    overflow-x: auto;
+    padding: 0 12px 4px;
+    scrollbar-width: none;
+  }
+
+  .viz-options .chip-row {
+    padding: 0;
+    overflow: visible;
+  }
+
+  .viz-options .segmented,
+  #replay {
+    flex: none;
   }
 
   #replay {
-    margin-left: 0;
-    width: 100%;
+    padding: 0 14px;
   }
 }
