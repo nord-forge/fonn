@@ -9,6 +9,8 @@ import { defineConfig } from 'astro/config';
 const artifactStoreStub = fileURLToPath(new URL('./src/scripts/artifact-store-stub.js', import.meta.url));
 
 export default defineConfig({
+  // Production address; also enables the sitemap.
+  site: 'https://fonn.nord-forge.dev',
   outDir: './dist',
   integrations: [
     starlight({
