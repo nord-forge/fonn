@@ -54,7 +54,7 @@ async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
   // A broken launch folder must be skipped rather than failing the listing.
   await mkdir(path.join(state, 'native', randomUUID()), { mode: 0o700 });
 
-  const server = await startUiServer({ port: 0, configDirectory: config, stateDirectory: state });
+  const server = await startUiServer({ port: 0, configDirectory: config, stateDirectory: state, folderPicker: null });
   t.after(() => server.close());
   return { server, project, outsider, repository, launch, launchId, artifactId: artifact.id, characters: artifact.characters };
 }
@@ -308,4 +308,29 @@ test('fonn ui change endpoints save through the stores and refuse invalid values
   await stat(running);
   assert.deepEqual((await change('DELETE', `/api/launches/${runningId}?confirm=running`)).body, { deleted: runningId });
   await assert.rejects(stat(running), { code: 'ENOENT' });
+});
+
+test('fonn ui opens one system folder dialog at a time and returns the chosen path', async (t) => {
+  const base = await mkdtemp(path.join(await realpath(os.tmpdir()), 'fonn-ui-picker-'));
+  t.after(() => rm(base, { recursive: true, force: true }));
+  let finish: (value: string | null) => void = () => {};
+  const server = await startUiServer({
+    port: 0, configDirectory: path.join(base, 'config'), stateDirectory: path.join(base, 'state'),
+    folderPicker: () => new Promise((resolve) => { finish = resolve; }),
+  });
+  t.after(() => server.close());
+  const change = changer(server);
+  assert.deepEqual((await change('GET', '/api/pick-folder')).body, { supported: true });
+  const first = change('POST', '/api/pick-folder', {});
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal((await change('POST', '/api/pick-folder', {})).status, 409, 'a second dialog waits for the first');
+  finish('/Users/someone/code/app');
+  assert.deepEqual((await first).body, { path: '/Users/someone/code/app' });
+  // Opening the dialog is a change, so it needs the same guards.
+  assert.equal((await change('POST', '/api/pick-folder', {}, { 'X-Fonn-Request': '' })).status, 403);
+
+  const none = await startUiServer({ port: 0, configDirectory: path.join(base, 'config'), stateDirectory: path.join(base, 'state'), folderPicker: null });
+  t.after(() => none.close());
+  assert.deepEqual((await changer(none)('GET', '/api/pick-folder')).body, { supported: false });
+  assert.equal((await changer(none)('POST', '/api/pick-folder', {})).status, 404);
 });

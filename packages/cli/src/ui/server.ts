@@ -6,6 +6,8 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { FolderPicked, FolderPickerInfo } from './contract.js';
+import { pickerCommand, systemFolderPicker, type FolderPicker } from './folder-picker.js';
 import { uiAssets } from './assets.generated.js';
 import {
   ApiFailure, DEFAULT_SLICE, deleteLaunch, deleteProfile, getArtifact, getGlobalSettings, getInstruction, getLaunch, getLaunches,
@@ -27,6 +29,14 @@ export interface UiServerOptions extends UiDirectories {
   port?: number;
   /** Tests may pass a fixed token. A random 32-byte token is used otherwise. */
   token?: string;
+  /** Tests pass their own picker, or null for none. Otherwise the system dialog is used where one exists. */
+  folderPicker?: FolderPicker | null;
+}
+
+/** One folder dialog at a time; a second request while it is open gets a 409. */
+interface PickerState {
+  picker: Promise<FolderPicker | null>;
+  open: boolean;
 }
 
 export interface UiServer {
@@ -99,9 +109,20 @@ function pathSegment(value: string): string {
 }
 
 /** The handlers for one API path, keyed by method. Undefined for unknown paths. */
-function route(directories: UiDirectories, url: URL): Methods | undefined {
+function route(directories: UiDirectories, url: URL, folders: PickerState): Methods | undefined {
   const root = url.searchParams.get('root');
   switch (url.pathname) {
+    case '/api/pick-folder': return {
+      GET: async (): Promise<FolderPickerInfo> => ({ supported: (await folders.picker) !== null }),
+      POST: async (): Promise<FolderPicked> => {
+        const picker = await folders.picker;
+        if (!picker) throw new ApiFailure(404, 'No folder picker is available on this system. Type the path instead.');
+        if (folders.open) throw new ApiFailure(409, 'A folder picker is already open. Finish or cancel it first.');
+        folders.open = true;
+        try { return { path: await picker() }; }
+        finally { folders.open = false; }
+      },
+    };
     case '/api/overview': return { GET: () => getOverview(directories) };
     case '/api/profiles': return { GET: () => getProfiles(directories), POST: (body) => postProfile(directories, body) };
     case '/api/settings/global': return { GET: () => getGlobalSettings(directories), PUT: (body) => putGlobalSetting(directories, body) };
@@ -215,6 +236,12 @@ function serveAsset(url: URL, response: ServerResponse): void {
 export async function startUiServer(options: UiServerOptions): Promise<UiServer> {
   const token = options.token ?? randomBytes(32).toString('base64url');
   const directories: UiDirectories = { configDirectory: options.configDirectory, stateDirectory: options.stateDirectory };
+  const folders: PickerState = {
+    picker: options.folderPicker !== undefined
+      ? Promise.resolve(options.folderPicker)
+      : pickerCommand().then((command) => (command ? systemFolderPicker(command) : null)),
+    open: false,
+  };
   let port = 0;
   // Cookies are not separated by port, so each server gets its own name.
   const cookieName = () => `fonn_ui_${port}`;
@@ -227,7 +254,7 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServer>
     if (origin !== undefined && origin !== `http://${host}`) return sendError(response, 403, 'Forbidden.');
     if (!request.url?.startsWith('/')) return sendError(response, 400, 'Bad request.');
     const url = new URL(request.url, `http://${host}`);
-    const methods = url.pathname.startsWith('/api/') ? route(directories, url) : undefined;
+    const methods = url.pathname.startsWith('/api/') ? route(directories, url, folders) : undefined;
     const allowed = allowedMethods(methods);
     const method = request.method ?? '';
     if (!allowed.includes(method)) return sendError(response, 405, 'Method not allowed.', { Allow: allowed.join(', ') });

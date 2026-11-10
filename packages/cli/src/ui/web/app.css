@@ -374,3 +374,9 @@ label { display: block; font-size: 0.8125rem; font-weight: 600; overflow-wrap: a
 .known-projects li:first-child { border-top: 0; }
 .known-project-name { font-weight: 600; }
 .known-project-meta { margin: 4px 0 0; color: var(--muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
+
+/* Agent groups inside the built-in profiles */
+.collapsible-group { margin-top: 18px; }
+.collapsible-group > summary { padding: 4px 0; }
+.collapsible-group > summary .profile-group { margin: 0; }
+.collapsible-group > .profile-list { margin-top: 4px; }

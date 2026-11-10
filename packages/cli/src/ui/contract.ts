@@ -358,3 +358,17 @@ export interface FilterTestResult {
 export interface LaunchDeleted {
   deleted: string;
 }
+
+/**
+ * GET /api/pick-folder: whether this system has a folder dialog.
+ * POST /api/pick-folder (body {}): shows the system's folder dialog and
+ * returns the chosen absolute path, or null when cancelled. 404 without a
+ * dialog, 409 while one is already open. Nothing is read from the folder; the
+ * interface then opens it with GET /api/project as if it had been typed.
+ */
+export interface FolderPickerInfo {
+  supported: boolean;
+}
+export interface FolderPicked {
+  path: string | null;
+}

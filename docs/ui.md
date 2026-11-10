@@ -18,7 +18,7 @@ Press Ctrl+C in the terminal to stop it. Everything you change in the interface 
 | Profiles | The default profile at the top, then your own profiles and the built-in ones by agent. Create a profile, or copy a built-in one to change its model or effort. A Codex profile can run on OpenAI, a local model through Ollama or LM Studio, or another provider from your Codex config. Edit or delete your own, and use any profile as the default |
 | Rules | Your global filter rules: add, edit, delete and save them |
 | Test bench | Paste a command and its output and see exactly what the model would receive with a project's settings and rules, or with a rule you are still editing. Nothing is saved or archived |
-| Open a project | Open any Git repository or Fonn project by its path, or pick one of the projects Fonn already knows |
+| Open a project | Open any Git repository or Fonn project by its path, pick the folder in your system's folder dialog, or choose one of the projects Fonn already knows |
 | Projects | Effective settings with their sources, editors for the shared `.fonn.json` and the personal `.fonn/settings.local.json` (settings and rules), project rule approval, instruction files such as `CLAUDE.md` and `AGENTS.md`, and that project's activity |
 | Activity | Recent native launches, titled by project, agent and profile, and SDK runs, each with filter totals |
 | Launch detail | Each filter decision. "View original" loads the archived original in bounded slices and shows it as command output, with "Show raw JSON" for the exact stored response. You can delete the launch's records and archived originals to free space |
@@ -45,5 +45,7 @@ The interface reads and changes your Fonn settings and records, and shows archiv
 - Request bodies are limited to 64 KB, or 512 KB for the test bench.
 - Credentials and environment variables are never sent to the browser. Archived originals are only sent in slices of at most 20,000 characters.
 - Projects are limited to those in your launch or run records, Git repository roots, and folders with a Fonn settings file. Only a fixed list of instruction files can be read from them, and symlinks are refused.
+
+Browsers never tell a web page the full path of a folder you choose, so "Choose folder" asks the local server to show the system dialog: macOS's own folder chooser, or zenity or kdialog on Linux when one is installed. Fonn only receives the path you choose and reads nothing else from that folder until you open it. Without a dialog, the button is hidden and you type the path.
 
 After a restart, an old browser tab shows "This session has ended". Run `fonn ui` again and open the new link.
