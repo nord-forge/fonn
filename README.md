@@ -80,7 +80,7 @@ Filtering only reduces recognized noisy shell output and runs of identical lines
 
 ## Local setup
 
-Use Node 22 or later; CI uses Node 24. From the repository root:
+Use Node 22 or later. CI tests Node 22, 24 and 26 (Node 24 on both macOS and Linux is required for merging). From the repository root:
 
 ```sh
 npm ci
