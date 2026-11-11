@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -37,7 +37,7 @@
     "test": "node ../../scripts/build-ui-assets.mjs && tsx --test tests/**/*.test.ts tests/**/*.test.mjs"
   },
   "dependencies": {
-    "@nord-forge/fonn-core": "0.2.0",
+    "@nord-forge/fonn-core": "0.2.1",
     "zod": "4.6.7"
   }
 }
