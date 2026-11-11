@@ -3,7 +3,7 @@
 // the entry that runs `fonn hook --agent <agent>` and leaves the rest alone.
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { constants, lstatSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { constants, existsSync, lstatSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { access, lstat, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -375,6 +375,22 @@ function sameIdentity(a: FileIdentity, b: FileIdentity): boolean {
 /** The file identity each plan was made against. Plans rebuilt elsewhere are checked from apply time on. */
 const planIdentities = new WeakMap<HookPlan, FileIdentity>();
 
+/**
+ * The Git working folder a hook command runs from, if any. A hook installed
+ * from a source checkout runs that folder's current build in every session,
+ * including unfinished changes, so Fonn says so.
+ */
+export function sourceCheckout(argv: readonly string[]): string | undefined {
+  const script = argv.find(word => word.endsWith('.js'));
+  if (!script || !path.isAbsolute(script)) return undefined;
+  for (let folder = path.dirname(script); ; folder = path.dirname(folder)) {
+    if (existsSync(path.join(folder, '.git'))) return folder;
+    if (path.dirname(folder) === folder) return undefined;
+  }
+}
+
+const CHECKOUT_NOTE = (folder: string) => `This hook runs the current build of the source checkout at ${folder}, in every session and project. Building, switching branches or unfinished changes there affect all of them. For everyday use, install it from a copy that stays on a release or on main.`;
+
 async function commandFor(agent: HookAgent, options: HookRuntimeOptions) {
   const base = await baseCommand(options);
   const argv = [...base.argv, ...hookArguments(agent)];
@@ -435,6 +451,8 @@ async function statusFor(agent: HookAgent, options: HookRuntimeOptions): Promise
         : 'The Fonn hook points at another Fonn installation. Run fonn hooks install to update it.');
     }
     if (status.current && wanted.versionedNode) notes.push('Its Node path changes when Node is updated. Run fonn hooks install again after a Node update.');
+    const checkout = status.current ? sourceCheckout(wanted.argv) : undefined;
+    if (checkout) notes.push(CHECKOUT_NOTE(checkout));
     if (lookalikeCount(agent, text, paths.configPath, bash)) notes.push('A hook that looks like Fonn\'s but is not managed by Fonn stays as it is.');
     if (agent === 'codex') {
       notes.push(CODEX_TRUST);
@@ -475,6 +493,8 @@ export async function planHook(agent: HookAgent, action: HookPlan['action'], opt
     if (script && await brokenCommand([script])) throw new Error('Build fonn first with `npm run build` so the hook entrypoint exists.');
   }
   const plan = planFor(agent, action, paths, before, wanted, found.symlink, options.bash ?? 'bash');
+  const checkout = action === 'install' && plan.changes ? sourceCheckout(wanted.argv) : undefined;
+  if (checkout) plan.summary.push(CHECKOUT_NOTE(checkout));
   planIdentities.set(plan, found);
   return plan;
 }

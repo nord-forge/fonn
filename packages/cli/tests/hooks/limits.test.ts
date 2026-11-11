@@ -65,3 +65,19 @@ test('previews hide secrets past the quoting depth and under secret header keys'
   assert.doesNotMatch(shown, /syntheticAuthSecret|syntheticKey/);
   assert.match(shown, /"mode": "browser"/, 'ordinary values stay visible');
 });
+
+test('a hook from a source checkout says it follows that folder\'s current build', async t => {
+  const f = await hookFixture(t, 'checkout');
+  const { hookStatus } = await import('../../src/hooks/index.js');
+  const { applyHookPlan: apply } = await import('../../src/hooks/index.js');
+  // Without a Git folder above the entrypoint there is no note.
+  const plain = await planHook('claude', 'install', f.options);
+  assert.ok(plain.summary.every(line => !/source checkout/.test(line)));
+  // The fixture's install folder becomes a Git working folder.
+  await mkdir(path.join(f.main, '..', '..', '..', '..', '..', '.git'));
+  const plan = await planHook('claude', 'install', f.options);
+  assert.ok(plan.summary.some(line => /runs the current build of the source checkout/.test(line)), 'the install plan warns');
+  await apply(plan, f.options);
+  const claude = (await hookStatus(f.options)).find(status => status.agent === 'claude')!;
+  assert.match(claude.note ?? '', /install it from a copy that stays on a release or on main/);
+});

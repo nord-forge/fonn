@@ -64,7 +64,7 @@ Update later with `brew upgrade --cask nord-forge/fonn/fonn`. See [distribution]
 
 </Steps>
 
-Update with `git pull`, then `npm ci --ignore-scripts && npm run build`. After moving the checkout, run `fonn hooks install` again so the hooks point at the new place.
+Update with `git pull`, then `npm ci --ignore-scripts && npm run build`. After moving the checkout, run `fonn hooks install` again so the hooks point at the new place. A hook installed from a source checkout runs that folder's current build in every session and project, so building, switching branches or unfinished changes there affect all of them. Fonn says so when you install it and in `fonn hooks`. If you work on Fonn itself, install the hook from a second clone that stays on `main`, or from Homebrew once 0.2.0 is out.
 
   </TabItem>
 </Tabs>
