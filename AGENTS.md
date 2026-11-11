@@ -32,7 +32,7 @@ Tests must use fixtures and mocked SDK messages. Normal checks must never make p
 
 ## Distribution and collaboration
 
-The public repository and Homebrew tap are the same `nord-forge/fonn` repository. Keep the explicit two-argument tap URL in instructions. The CLI release archive excludes `node_modules`, upstream SDK code/binaries, credentials, and local state; the cask installs locked runtime dependencies on the user's machine with Homebrew Node and no `sudo`. Fonn 0.1.0 is released, and `Casks/fonn.rb` must stay pinned to that published archive's checksum until the next version is released. Do not regenerate it for README, manifest or lockfile edits. Read `docs/distribution.md` before changing packaging.
+The public repository and Homebrew tap are the same `nord-forge/fonn` repository. Keep the explicit two-argument tap URL in instructions. The CLI release archive excludes `node_modules`, upstream SDK code/binaries, credentials, and local state; the cask installs locked runtime dependencies on the user's machine with Homebrew Node and no `sudo`. Fonn 0.2.0 is released, and `Casks/fonn.rb` must stay pinned to that published archive's checksum until the next version is released. Do not regenerate it for README, manifest or lockfile edits. Read `docs/distribution.md` before changing packaging.
 
 Project code is MIT licensed; upstream SDK code remains under its own terms. Do not relabel dependencies as MIT or imply Anthropic endorsement.
 

@@ -32,10 +32,6 @@ Homebrew runs on macOS.
 
 </Steps>
 
-<Aside type="caution" title="Hooks arrive in 0.2.0">
-Homebrew installs the released version, 0.1.0, which does not have `fonn hooks` or `fonn ui` yet. Until 0.2.0 is out, use a source checkout for the steps below.
-</Aside>
-
 Update later with `brew upgrade --cask nord-forge/fonn/fonn`. See [distribution](/reference/distribution/) for what the cask installs.
 
   </TabItem>
@@ -64,7 +60,7 @@ Update later with `brew upgrade --cask nord-forge/fonn/fonn`. See [distribution]
 
 </Steps>
 
-Update with `git pull`, then `npm ci --ignore-scripts && npm run build`. After moving the checkout, run `fonn hooks install` again so the hooks point at the new place. A hook installed from a source checkout runs that folder's current build in every session and project, so building, switching branches or unfinished changes there affect all of them. Fonn says so when you install it and in `fonn hooks`. If you work on Fonn itself, install the hook from a second clone that stays on `main`, or from Homebrew once 0.2.0 is out.
+Update with `git pull`, then `npm ci --ignore-scripts && npm run build`. After moving the checkout, run `fonn hooks install` again so the hooks point at the new place. A hook installed from a source checkout runs that folder's current build in every session and project, so building, switching branches or unfinished changes there affect all of them. Fonn says so when you install it and in `fonn hooks`. If you work on Fonn itself, install the hook from Homebrew, or from a second clone that stays on `main`.
 
   </TabItem>
 </Tabs>
@@ -224,7 +220,7 @@ Run open models such as Qwen, Gemma or Kimi with [Ollama](https://ollama.com) an
 </Steps>
 
 <Aside type="tip" title="Or use Fonn's own agent">
-`fonn chat --model qwen3.8:27b` is a small coding agent for open models with the filter built in. Its first request is under 1,000 tokens, so local models answer much sooner than in agents with large prompts. It asks before every command and file change. It is in the [source checkout](#1-install-fonn) until 0.2.0; see [fonn chat](/reference/agent/).
+`fonn chat --model qwen3.8:27b` is a small coding agent for open models with the filter built in. Its first request is under 1,000 tokens, so local models answer much sooner than in agents with large prompts. It asks before every command and file change. See [fonn chat](/reference/agent/).
 </Aside>
 
 <LinkCard title="Use the filter with Ollama and other agents" description="Exact configuration for Crush, OpenCode and Claude Code with Ollama, model tips and which agents cannot use the filter yet." href="/reference/other-agents/" />

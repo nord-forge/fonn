@@ -39,7 +39,7 @@ brew tap nord-forge/fonn https://github.com/nord-forge/fonn
 brew install --cask nord-forge/fonn/fonn
 ```
 
-The explicit tap URL is this repository; there is no separate `homebrew-*` repository. The cask uses Homebrew's Node and installs locked runtime dependencies on your machine, without `sudo` and without a bundled SDK. Homebrew currently installs [0.1.0](https://github.com/nord-forge/fonn/releases/tag/v0.1.0), which does not have `fonn hooks` or `fonn ui` yet. Until 0.2.0 is released, use a source checkout:
+The explicit tap URL is this repository; there is no separate `homebrew-*` repository. The cask uses Homebrew's Node and installs locked runtime dependencies on your machine, without `sudo` and without a bundled SDK. To run the newest code from a source checkout instead:
 
 ```sh
 git clone https://github.com/nord-forge/fonn.git
