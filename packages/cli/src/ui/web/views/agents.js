@@ -38,6 +38,11 @@ function planPreview(plan) {
   return preview;
 }
 
+/** "~/.codex/hooks.json" instead of the full home folder. The full path stays in the tooltip. */
+export function shortPath(file) {
+  return String(file).replace(/^(?:\/Users|\/home)\/[^/]+(?=\/)/, '~');
+}
+
 function agentCard(initial, signal, announcement) {
   const section = card(initial.label);
   section.classList.add('agent-card');
@@ -46,25 +51,26 @@ function agentCard(initial, signal, announcement) {
   function render(status) {
     const heading = el('div', 'card-heading');
     heading.append(el('h2', '', status.label), badge(...hookStatusBadge(status)));
-    const config = el('p', 'path one-line-path', `\u200e${status.configPath}\u200e`);
+    const config = el('p', 'path agent-path', shortPath(status.configPath));
     config.title = status.configPath;
     section.replaceChildren(heading, config);
     if (status.note) section.append(el('p', 'section-description', status.note));
     if (status.error) section.append(warning(status.error));
-    if (status.agent === 'codex' && status.installed) {
-      section.append(el('p', 'notice', "Review and trust this hook in Codex's /hooks before using it."));
-    }
-    const actions = el('div', 'form-actions');
+    const actions = el('div', 'form-actions agent-actions');
     const message = feedback();
-    const install = button(status.installed && !status.current ? 'Update' : 'Install', () => review('install', install), 'primary');
-    install.disabled = Boolean(status.error) || (status.installed && status.current);
-    install.setAttribute('aria-label', `${install.textContent} ${status.label} hook`);
-    actions.append(install);
-    if (status.installed) {
-      const remove = button('Remove', () => review('uninstall', remove), 'danger');
-      remove.disabled = Boolean(status.error);
-      remove.setAttribute('aria-label', `Remove ${status.label} hook`);
-      actions.append(remove);
+    if (!status.error) {
+      // An up-to-date hook only needs Remove. Install or Update is the main action otherwise.
+      if (!status.current) {
+        const label = status.installed ? 'Update' : 'Install';
+        const install = button(label, () => review('install', install), 'primary');
+        install.setAttribute('aria-label', `${label} ${status.label} hook`);
+        actions.append(install);
+      }
+      if (status.installed) {
+        const remove = button('Remove', () => review('uninstall', remove), 'quiet-danger');
+        remove.setAttribute('aria-label', `Remove ${status.label} hook`);
+        actions.append(remove);
+      }
     }
     section.append(actions, message.node);
 

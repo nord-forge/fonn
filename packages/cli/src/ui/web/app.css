@@ -436,6 +436,11 @@ label { display: block; font-size: 0.8125rem; font-weight: 600; overflow-wrap: a
 /* Global agent hooks */
 .agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 18px; }
 .agent-grid .card { margin: 0; min-width: 0; }
+.agent-card { display: flex; flex-direction: column; }
+.agent-card .agent-path { margin-top: 4px; color: var(--muted); }
+.agent-card .agent-actions { margin-top: auto; padding-top: 18px; }
+.quiet-danger { border-color: var(--border); background: transparent; color: var(--stop); }
+.quiet-danger:hover { border-color: var(--stop); background: var(--stop-soft); color: var(--stop); }
 .agent-grid + .card { margin-top: 24px; }
 .agent-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .confirm-dialog:has(.hook-plan) { width: min(48rem, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
