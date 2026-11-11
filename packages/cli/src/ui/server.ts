@@ -12,7 +12,7 @@ import { uiAssets } from './assets.generated.js';
 import {
   getHooks, getHookPlan, postHookApply, type UiHooks,
   ApiFailure, DEFAULT_SLICE, deleteLaunch, deleteProfile, getArtifact, getGlobalSettings, getInstruction, getLaunch, getLaunches,
-  getOverview, getProfiles, getProject, getProjects, getRuns, postFilterTest, postRecordsCleanup, postProfile, putGlobalRules, putGlobalSetting,
+  deleteRememberedProject, getOverview, getSession, getProfiles, getProject, getProjects, getRuns, postFilterTest, postRecordsCleanup, postProfile, putGlobalRules, putGlobalSetting,
   putProfile, putProjectSettings, putRulesApproval, type UiDirectories,
 } from './api.js';
 
@@ -126,12 +126,14 @@ function route(directories: UiDirectories, url: URL, folders: PickerState, hooks
         finally { folders.open = false; }
       },
     };
+    case '/api/session': return { GET: async () => getSession() };
     case '/api/hooks': return { GET: async () => getHooks(directories, await hooks()) };
     case '/api/overview': return { GET: () => getOverview(directories) };
     case '/api/profiles': return { GET: () => getProfiles(directories), POST: (body) => postProfile(directories, body) };
     case '/api/settings/global': return { GET: () => getGlobalSettings(directories), PUT: (body) => putGlobalSetting(directories, body) };
     case '/api/settings/global/rules': return { PUT: (body) => putGlobalRules(directories, body) };
     case '/api/projects': return { GET: () => getProjects(directories) };
+    case '/api/projects/remembered': return { DELETE: () => deleteRememberedProject(directories, root) };
     case '/api/project': return { GET: () => getProject(directories, root) };
     case '/api/project/settings': return { PUT: (body) => putProjectSettings(directories, body) };
     case '/api/project/rules-approval': return { PUT: (body) => putRulesApproval(directories, body) };

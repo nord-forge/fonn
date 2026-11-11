@@ -1,6 +1,8 @@
 // Generated from packages/core/dist/filtering/index.js by scripts/build-standalone-filter.mjs; do not edit.
 import { reduceRecognizedOutput, repeatedLineNote, ruleNote, similarLinesNote } from './adapters.mjs';
 export { createArtifactStore } from './artifact-store.mjs';
+/** The line reduction alone, without size limits, archiving or footer. fonn ui previews rules with it. */
+export { reduceRecognizedOutput } from './adapters.mjs';
 export function createOutputFilter(options) {
     const minimumCharacters = options.minimumCharacters ?? 2_000;
     const minimumSavings = options.minimumSavingsCharacters ?? 256;

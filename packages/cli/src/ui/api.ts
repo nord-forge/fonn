@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 // The data behind each fonn ui endpoint. Every function takes the config
 // and state directories explicitly, so tests can point them at temporary
 // folders. Reads never write to disk. Changes go through the same validated,
@@ -10,13 +11,14 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { ArtifactStore, FilterRule, RunRecord } from '@nord-forge/fonn-core/contracts';
-import { createOutputFilter } from '@nord-forge/fonn-core/filtering';
+import { createOutputFilter, reduceRecognizedOutput } from '@nord-forge/fonn-core/filtering';
 import { createProfileStore, effortSchema, modelSourceSchema, modelTextSchema, profiles as builtInProfiles, providerSchema } from '@nord-forge/fonn-core/profiles';
 import { filterRulesSchema, findProjectRoot, LOCAL_SETTINGS_FILE, projectSettingsSchema, resolveSettings, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, projectRulesFingerprint } from '@nord-forge/fonn-core/settings';
 import { readRun } from '@nord-forge/fonn-core/state';
 import { HOOK_AGENTS, HOOK_AGENT_LABELS, type HookAgent, type HookOptions, type HookPlan, type HookStatus } from '../hooks/contract.js';
 import { delegationGuidance } from '../native/delegation.js';
 import { readNativeOutput } from '../native/index.js';
+import { forgetProject, readKnownProjects, rememberProject } from './known-projects.js';
 import { readStoredLaunch, type StoredLaunchRecord } from '../native/storage.js';
 import type {
   ArtifactSliceResponse, DecisionSummary, EffectiveSettings, FilterTotals, GlobalSettingsResponse, InstructionContent,
@@ -221,7 +223,7 @@ async function collectProjects(directories: UiDirectories, cache: RootCache): Pr
   const touch = (root: string, time: string) => {
     let project = projects.get(root);
     if (!project) {
-      project = { root, name: path.basename(root) || root, launches: 0, runs: 0, lastUsed: null, hasSharedSettings: false, hasLocalSettings: false };
+      project = { root, name: path.basename(root) || root, launches: 0, runs: 0, lastUsed: null, hasSharedSettings: false, hasLocalSettings: false, savedAt: null };
       projects.set(root, project);
     }
     if (project.lastUsed === null || time > project.lastUsed) project.lastUsed = time;
@@ -229,12 +231,21 @@ async function collectProjects(directories: UiDirectories, cache: RootCache): Pr
   };
   for (const launch of launches) touch(launch.projectRoot, launch.record.createdAt).launches++;
   for (const run of runs) touch(await projectRootOf(cache, run.cwd), run.startedAt).runs++;
+  // Projects you set up here before any agent worked in them. They only count
+  // while they still look like a project, so the list cannot point anywhere else.
+  for (const known of await readKnownProjects(directories.configDirectory)) {
+    const existing = projects.get(known.root);
+    if (existing) { existing.savedAt = known.savedAt; continue; }
+    if (!await looksLikeProject(known.root)) continue;
+    projects.set(known.root, { root: known.root, name: path.basename(known.root) || known.root, launches: 0, runs: 0, lastUsed: null, hasSharedSettings: false, hasLocalSettings: false, savedAt: known.savedAt });
+  }
   const list = [...projects.values()];
   await Promise.all(list.map(async (project) => {
     project.hasSharedSettings = await isRegularFile(path.join(project.root, SHARED_SETTINGS_FILE));
     project.hasLocalSettings = await isRegularFile(path.join(project.root, LOCAL_SETTINGS_FILE));
   }));
-  return list.sort((a, b) => (b.lastUsed ?? '').localeCompare(a.lastUsed ?? '') || a.root.localeCompare(b.root));
+  const recent = (project: ProjectSummary) => [project.lastUsed ?? '', project.savedAt ?? ''].sort().at(-1)!;
+  return list.sort((a, b) => recent(b).localeCompare(recent(a)) || a.root.localeCompare(b.root));
 }
 
 /** A folder that is plainly a project: a Git repository root or one with a Fonn settings file. */
@@ -262,6 +273,11 @@ async function knownRoot(directories: UiDirectories, cache: RootCache, root: str
 async function packageVersion(): Promise<string> {
   const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string };
   return manifest.version;
+}
+
+/** GET /api/session: the home folder, which the browser shows as ~ in paths. */
+export function getSession(): { home: string } {
+  return { home: homedir() };
 }
 
 export async function getOverview(directories: UiDirectories): Promise<Overview> {
@@ -617,7 +633,19 @@ export async function putProjectSettings(directories: UiDirectories, body: unkno
   if (change.scope === 'local' && Object.keys(change.settings).length > 0 && await notIgnoredByGit(root, written)) {
     detail.warning = `${LOCAL_SETTINGS_FILE} is not ignored by Git. Add .fonn/ to .gitignore to keep personal settings out of commits.`;
   }
+  // Remember it, so it stays on the Projects page before any agent works in it.
+  // The save already succeeded, so a failure here only costs that convenience.
+  await rememberProject(directories.configDirectory, root).catch(() => undefined);
   return detail;
+}
+
+/** DELETE /api/projects/remembered?root=: Fonn forgets a project you saved settings for. Nothing in the project changes. */
+export async function deleteRememberedProject(directories: UiDirectories, root: string | null): Promise<ProjectsResponse> {
+  if (!root || root.includes('\0') || !path.isAbsolute(root)) throw new ApiFailure(400, 'The root must be an absolute path.');
+  if (!await forgetProject(directories.configDirectory, root).catch(() => { throw new ApiFailure(400, 'Fonn could not update its list of projects.'); })) {
+    throw new ApiFailure(404, 'Fonn does not remember that project.');
+  }
+  return getProjects(directories);
 }
 
 const rulesApprovalChangeSchema = z.object({ root: z.string(), fingerprint: z.string().regex(/^[0-9a-f]{64}$/).nullable() }).strict();
@@ -664,6 +692,8 @@ const filterTestSchema = z.object({
   mode: z.enum(['filter', 'observe', 'off']).optional(),
   level: z.enum(['strict', 'standard', 'similar']).optional(),
   rules: filterRulesSchema.optional(),
+  /** The rule builder's preview: show what the rules remove even from output too short for Fonn to shorten. */
+  anySize: z.boolean().optional(),
 }).strict();
 
 /** The settings a test runs with: a project's effective values, otherwise the global ones. */
@@ -697,6 +727,20 @@ export async function postFilterTest(directories: UiDirectories, body: unknown):
       throw new Error('The test bench stores nothing.');
     },
   };
+  if (input.anySize) {
+    // The rule builder's preview: what the rules and adapters remove, at any size, without archiving or a footer.
+    // Real sessions still only shorten output over the size limits, which the builder says.
+    const reduction = mode === 'filter' ? reduceRecognizedOutput({ command: input.command }, input.stdout, { level, rules }) : undefined;
+    const delivered = reduction?.text ?? input.stdout;
+    const changed = delivered !== input.stdout;
+    return {
+      mode,
+      level,
+      rules,
+      decision: { status: changed ? 'filtered' : 'unchanged', reason: changed ? 'safe_reduction' : 'no_safe_reduction', adapter: reduction?.adapter ?? null, artifactId: null, originalCharacters: input.stdout.length, deliveredCharacters: delivered.length, removedLines: reduction?.removedLines ?? 0 },
+      delivered,
+    };
+  }
   const filter = createOutputFilter({ store, mode, level, rules, recoveryHint: (id) => `fonn native-output <launch-id> ${id}` });
   const response = { stdout: input.stdout, stderr: '', interrupted: false, isImage: false };
   const outcome = await filter.apply({ toolName: 'Bash', toolInput: { command: input.command }, response, sessionId: 'fonn-ui-test', toolUseId: 'fonn-ui-test', cwd: '/' });

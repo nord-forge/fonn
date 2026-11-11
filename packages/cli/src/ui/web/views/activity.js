@@ -1,5 +1,5 @@
 import { get, launchRoute, projectRoute, send } from '../api.js';
-import { badge, button, card, date, el, empty, fields, link, loadSection, pageHeader, totals } from '../components.js';
+import { badge, button, card, date, displayPath, el, empty, fields, link, loadSection, pageHeader, totals } from '../components.js';
 import { confirmDialog, feedback, field, select } from '../forms.js';
 
 const size = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -57,7 +57,7 @@ function launchCard(launch) {
   const meta = el('p', 'record-meta', `${date(launch.createdAt)} · `);
   meta.append(el('span', 'mono', launch.launchId));
   item.append(header, meta);
-  item.append(link(launch.projectRoot, projectRoute(launch.projectRoot), 'path record-path'));
+  item.append(link(displayPath(launch.projectRoot), projectRoute(launch.projectRoot), 'path record-path'));
   item.append(fields([
     ['Model', launch.model ?? 'Agent default'], ['Filter mode', launch.filterMode],
     ['Filter level', launch.filterLevel], ['Subagents', launch.subagents],
@@ -70,9 +70,9 @@ function runCard(run) {
   const header = el('div', 'record-heading');
   header.append(el('h3', 'mono', run.taskId), badge(run.status, run.status === 'succeeded' ? 'ok' : 'warn'));
   item.append(header, el('p', 'record-meta', `${run.profile} · ${date(run.startedAt)}`));
-  item.append(link(run.projectRoot, projectRoute(run.projectRoot), 'path record-path'));
+  item.append(link(displayPath(run.projectRoot), projectRoute(run.projectRoot), 'path record-path'));
   item.append(fields([
-    ['Finished', date(run.finishedAt)], ['Working folder', run.cwd], ['Filter mode', run.filterMode],
+    ['Finished', date(run.finishedAt)], ['Working folder', displayPath(run.cwd)], ['Filter mode', run.filterMode],
     ['Filter level', run.filterLevel ?? 'Not recorded'],
     ['Estimated API cost (USD)', new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(run.estimatedCostUsd)],
   ]), totals(run.totals, true));

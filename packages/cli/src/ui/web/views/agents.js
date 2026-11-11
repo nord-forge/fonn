@@ -1,5 +1,5 @@
 import { get, send } from '../api.js';
-import { badge, button, card, el, loadSection, pageHeader, warning } from '../components.js';
+import { badge, button, card, displayPath, el, link, loadSection, pageHeader, warning } from '../components.js';
 import { confirmDialog, feedback } from '../forms.js';
 import { hookDiff } from '../hook-diff.js';
 
@@ -12,8 +12,8 @@ export function hookStatusBadge(status) {
 function planPreview(plan) {
   const preview = el('div', 'hook-plan');
   const summary = el('ul', 'hook-summary');
-  for (const sentence of plan.summary) summary.append(el('li', '', sentence));
-  preview.append(summary, el('p', 'path', plan.configPath));
+  for (const sentence of plan.summary) summary.append(el('li', '', displayPath(sentence)));
+  preview.append(summary, el('p', 'path', displayPath(plan.configPath)));
   const lines = hookDiff(plan.before, plan.after);
   if (lines.length) {
     const diff = el('pre', 'hook-diff');
@@ -46,25 +46,26 @@ function agentCard(initial, signal, announcement) {
   function render(status) {
     const heading = el('div', 'card-heading');
     heading.append(el('h2', '', status.label), badge(...hookStatusBadge(status)));
-    const config = el('p', 'path one-line-path', `\u200e${status.configPath}\u200e`);
-    config.title = status.configPath;
+    const config = el('p', 'path agent-path', displayPath(status.configPath));
+    config.title = displayPath(status.configPath);
     section.replaceChildren(heading, config);
-    if (status.note) section.append(el('p', 'section-description', status.note));
-    if (status.error) section.append(warning(status.error));
-    if (status.agent === 'codex' && status.installed) {
-      section.append(el('p', 'notice', "Review and trust this hook in Codex's /hooks before using it."));
-    }
-    const actions = el('div', 'form-actions');
+    if (status.note) section.append(el('p', 'section-description', displayPath(status.note)));
+    if (status.error) section.append(warning(displayPath(status.error)));
+    const actions = el('div', 'form-actions agent-actions');
     const message = feedback();
-    const install = button(status.installed && !status.current ? 'Update' : 'Install', () => review('install', install), 'primary');
-    install.disabled = Boolean(status.error) || (status.installed && status.current);
-    install.setAttribute('aria-label', `${install.textContent} ${status.label} hook`);
-    actions.append(install);
-    if (status.installed) {
-      const remove = button('Remove', () => review('uninstall', remove), 'danger');
-      remove.disabled = Boolean(status.error);
-      remove.setAttribute('aria-label', `Remove ${status.label} hook`);
-      actions.append(remove);
+    if (!status.error) {
+      // An up-to-date hook only needs Remove. Install or Update is the main action otherwise.
+      if (!status.current) {
+        const label = status.installed ? 'Update' : 'Install';
+        const install = button(label, () => review('install', install), 'primary');
+        install.setAttribute('aria-label', `${label} ${status.label} hook`);
+        actions.append(install);
+      }
+      if (status.installed) {
+        const remove = button('Remove', () => review('uninstall', remove), 'quiet-danger');
+        remove.setAttribute('aria-label', `Remove ${status.label} hook`);
+        actions.append(remove);
+      }
     }
     section.append(actions, message.node);
 
@@ -135,5 +136,6 @@ export async function agentsView(target, signal) {
   }, signal);
   const explanation = card('How it works');
   explanation.append(el('p', '', 'Hooks run inside your agent. Settings come from the project folder and your global settings. Project rules need your approval. Originals stay recoverable. If the hook fails, output passes through unchanged.'));
+  explanation.append(link('Add your own filter rules', '#/global/rules', 'section-link'));
   target.append(explanation);
 }

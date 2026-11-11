@@ -66,7 +66,7 @@ Desktop apps and editor extensions that run Claude Code or Codex underneath read
 
 ## Fonn UI
 
-`fonn ui` opens a local web interface. Its **Agents** page shows which agents have the hook and lets you install, update or remove it. You can also change global and project settings, write your own filter rules and try them on a test bench, approve project rules, manage profiles, and look through every hooked session and launch with what was shortened and the full originals. It listens on `127.0.0.1` only, behind a new private link each time. See [the Fonn UI guide](docs/ui.md).
+`fonn ui` opens a local web interface. Its **Agents** page shows which agents have the hook and lets you install, update or remove it. Its **Rules** page builds your own filter rules from real output: paste what a command printed and click the lines the model does not need. You can also try rules on a test bench, give a project its own settings and rules, approve project rules, manage profiles, and look through every hooked session and launch with what was shortened and the full originals. It listens on `127.0.0.1` only, behind a new private link each time. See [the Fonn UI guide](docs/ui.md).
 
 ## Use the filter without installing Fonn
 

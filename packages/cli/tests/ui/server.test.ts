@@ -91,6 +91,11 @@ test('fonn ui guards every request and exchanges the token for a cookie', async 
   assert.equal(post.headers['content-security-policy'], "default-src 'self'; frame-ancestors 'none'");
   assert.equal(post.headers['access-control-allow-origin'], undefined);
   assert.equal((await send(port, '/missing.js', { headers: auth })).status, 404);
+  // The home folder, which the page shows as ~, needs a session like every other API.
+  assert.equal((await send(port, '/api/session')).status, 401);
+  const session = await send(port, '/api/session', { headers: auth });
+  assert.equal(session.status, 200);
+  assert.equal(typeof JSON.parse(session.body).home, 'string');
 });
 
 test('fonn ui api reports synthetic state and refuses unknown roots and bad bounds', async (t) => {
@@ -294,6 +299,16 @@ test('fonn ui change endpoints save through the stores and refuse invalid values
   assert.equal(tested.body.decision.artifactId, null);
   assert.doesNotMatch(tested.body.delivered, /DEBUG noise from/);
   assert.match(tested.body.delivered, /step 0 passed/);
+  // Short output stays as it is, unless the rule builder asks for its preview at any size.
+  const short = 'Waiting for database (attempt 1/10)\nWaiting for database (attempt 2/10)\nError: connection failed (attempt 3/10)\nready';
+  const builderRule = { name: 'Database wait', command: 'npm run dev', remove: ['Waiting for database', 'connection failed'] };
+  const plain = await change('POST', '/api/filter/test', { command: 'npm run dev', stdout: short, mode: 'filter', level: 'strict', rules: [builderRule] });
+  assert.equal(plain.body.decision.status, 'unchanged');
+  assert.equal(plain.body.delivered, short);
+  const preview = await change('POST', '/api/filter/test', { command: 'npm run dev', stdout: short, mode: 'filter', level: 'strict', rules: [builderRule], anySize: true });
+  assert.doesNotMatch(preview.body.delivered, /Waiting for database/);
+  assert.match(preview.body.delivered, /Error: connection failed/);
+  assert.equal((await change('POST', '/api/filter/test', { command: 'npm run dev', stdout: short, anySize: 'yes' })).status, 400);
   assert.equal((await change('POST', '/api/filter/test', { command: 'x'.repeat(2001), stdout })).status, 400);
 
   assert.equal((await change('DELETE', '/api/launches/not-an-id')).status, 400);
@@ -310,6 +325,46 @@ test('fonn ui change endpoints save through the stores and refuse invalid values
   await stat(running);
   assert.deepEqual((await change('DELETE', `/api/launches/${runningId}?confirm=running`)).body, { deleted: runningId });
   await assert.rejects(stat(running), { code: 'ENOENT' });
+});
+
+test('a project you save settings for stays listed until you forget it, and only while it still looks like a project', async (t) => {
+  const { server, repository, outsider, config } = await fixture(t);
+  const change = changer(server);
+  const listed = async () => (await change('GET', '/api/projects')).body.projects as Array<{ root: string; savedAt: string | null; launches: number }>;
+  // No session has run in the repository yet, so it is not listed.
+  assert.ok(!(await listed()).some((project) => project.root === repository));
+  const opened = await change('GET', `/api/project?root=${encodeURIComponent(repository)}`);
+  const saved = await change('PUT', '/api/project/settings', { root: repository, scope: 'local', version: opened.body.local.version, settings: { filterLevel: 'strict' } });
+  assert.equal(saved.status, 200);
+  const remembered = (await listed()).find((project) => project.root === repository);
+  assert.ok(remembered?.savedAt);
+  assert.equal(remembered.launches, 0);
+  // The list holds paths only, in a private file in Fonn's config folder.
+  const file = path.join(config, 'projects.json');
+  assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).projects.map((project: { root: string }) => project.root), [repository]);
+  assert.equal((await stat(file)).mode & 0o777, 0o600);
+  // A remembered folder that no longer looks like a project drops out, and the list cannot add an outsider.
+  await writeFile(file, JSON.stringify({ format: 1, projects: [{ root: outsider, savedAt: '2026-01-01T00:00:00.000Z' }, { root: repository, savedAt: '2026-01-01T00:00:00.000Z' }] }));
+  const roots = (await listed()).map((project) => project.root);
+  assert.ok(roots.includes(repository));
+  assert.ok(!roots.includes(outsider));
+  assert.equal((await change('GET', `/api/project?root=${encodeURIComponent(outsider)}`)).status, 404);
+  // Forgetting changes only the list. The project's own settings file stays.
+  const forgotten = await change('DELETE', `/api/projects/remembered?root=${encodeURIComponent(repository)}`);
+  assert.equal(forgotten.status, 200);
+  assert.ok(!forgotten.body.projects.some((project: { root: string }) => project.root === repository));
+  assert.match(await readFile(path.join(repository, '.fonn', 'settings.local.json'), 'utf8'), /strict/);
+  assert.equal((await change('DELETE', `/api/projects/remembered?root=${encodeURIComponent(repository)}`)).status, 404);
+  assert.equal((await change('DELETE', '/api/projects/remembered?root=relative')).status, 400);
+  // A broken or symlinked list counts as empty and is never written through.
+  await writeFile(file, '{nope');
+  assert.ok(Array.isArray(await listed()));
+  await rm(file);
+  await symlink(path.join(outsider, 'secret.md'), file);
+  assert.equal((await change('GET', `/api/project?root=${encodeURIComponent(repository)}`)).status, 200);
+  const again = await change('GET', `/api/project?root=${encodeURIComponent(repository)}`);
+  assert.equal((await change('PUT', '/api/project/settings', { root: repository, scope: 'local', version: again.body.local.version, settings: {} })).status, 200);
+  assert.equal(await readFile(path.join(outsider, 'secret.md'), 'utf8'), 'not for the interface\n');
 });
 
 test('fonn ui opens one system folder dialog at a time and returns the chosen path', async (t) => {

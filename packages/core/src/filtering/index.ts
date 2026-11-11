@@ -1,6 +1,8 @@
 import type { FilterDecision, OutputFilter, OutputFilterOptions, ToolObservation } from '../contracts.js';
 import { reduceRecognizedOutput, repeatedLineNote, ruleNote, similarLinesNote } from './adapters.js';
 export { createArtifactStore } from './artifact-store.js';
+/** The line reduction alone, without size limits, archiving or footer. fonn ui previews rules with it. */
+export { reduceRecognizedOutput } from './adapters.js';
 
 export function createOutputFilter(options: OutputFilterOptions): OutputFilter {
   const minimumCharacters = options.minimumCharacters ?? 2_000;

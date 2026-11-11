@@ -1,4 +1,5 @@
-import { badge, button, el, empty, sourceLabel } from './components.js';
+import { send } from './api.js';
+import { badge, button, el, empty, number, sourceLabel } from './components.js';
 import { confirmAction, describeControls, field } from './forms.js';
 import { openTest } from './test-context.js';
 
@@ -31,6 +32,135 @@ export function rulesList(rules, sources = false) {
   return list;
 }
 
+const SAMPLE_LINES = 400;
+
+/**
+ * The text Fonn suggests for a line you mark: its first stretch of words
+ * without numbers, IDs or times, so "Waiting for database (attempt 3/10)"
+ * becomes "Waiting for database (attempt". Rules match plain text, never
+ * patterns, so one text covers every line that only differs in numbers.
+ */
+export function suggestText(line) {
+  const clean = String(line).replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').trim();
+  const parts = clean.split(/\b[0-9a-f]*\d[0-9a-f]*\b|\d+/i).map((part) => part.trim().replace(/^[^\w(]+|[^\w)]+$/g, '').trim());
+  // The first stretch with words, after any leading timestamp or counter.
+  const best = parts.find((part) => part.length >= 3 && /[a-z]{2}/i.test(part));
+  return (best ?? clean).slice(0, 200);
+}
+
+/** Lines of a sample, without the trailing empty line and without colour codes. */
+export function sampleLines(text) {
+  const lines = String(text).replace(/\u001b\[[0-9;]*[A-Za-z]/g, '').split(/\r?\n/);
+  if (lines.at(-1) === '') lines.pop();
+  return lines;
+}
+
+/**
+ * Paste what the command printed, click the lines to drop, and see what the
+ * model would get. Clicking a line adds or removes its text in the rule.
+ * The preview runs the real filter on the server, so lines Fonn always
+ * keeps, such as errors and warnings, show as kept.
+ */
+function sampleBuilder(entry, root, changed) {
+  const details = el('details', 'rule-sample');
+  details.append(el('summary', '', 'Build from sample output'));
+  const sample = field('Sample output', el('textarea'), 'Paste what the command printed. Then click each line the model does not need.');
+  sample.input.rows = 6;
+  sample.input.spellcheck = false;
+  const summary = el('p', 'section-description sample-summary');
+  summary.setAttribute('aria-live', 'polite');
+  const list = el('ol', 'sample-lines');
+  details.append(sample.node, summary, list);
+  let lines = [];
+  let kept = new Set();
+  let short = false;
+  let timer;
+  let controller;
+  const texts = () => entry.remove.input.value.split(/\r?\n/).filter((text) => text.trim());
+  const covered = (line, all = texts()) => all.some((text) => line.includes(text));
+  function setTexts(next) {
+    entry.remove.input.value = next.join('\n');
+    entry.remove.error();
+    changed();
+    refresh();
+  }
+  function toggle(line) {
+    const all = texts();
+    if (covered(line, all)) setTexts(all.filter((text) => !line.includes(text)));
+    else if (all.length < 20) setTexts([...all, suggestText(line)]);
+    else summary.textContent = 'A rule holds at most 20 texts. Remove one first.';
+  }
+  function draw() {
+    const all = texts();
+    list.replaceChildren();
+    let removed = 0;
+    let protectedCount = 0;
+    lines.slice(0, SAMPLE_LINES).forEach((line, index) => {
+      const item = el('li');
+      const hit = line.trim() !== '' && covered(line, all);
+      const stays = hit && kept.has(index);
+      if (hit && !stays) removed++;
+      if (stays) protectedCount++;
+      const choice = el('button', `sample-line${hit ? (stays ? ' is-kept' : ' is-removed') : ''}`, line || ' ');
+      choice.type = 'button';
+      choice.setAttribute('aria-pressed', String(hit));
+      choice.title = stays ? 'Fonn always keeps this line' : hit ? 'Removed. Click to keep it' : 'Click to remove lines like this';
+      choice.disabled = line.trim() === '';
+      choice.addEventListener('click', () => toggle(line));
+      item.append(choice);
+      if (stays) item.append(badge('Always kept', 'warn'));
+      list.append(item);
+    });
+    if (!lines.length) summary.textContent = '';
+    else {
+      const parts = [`Removes ${number(removed)} of ${number(lines.length)} lines.`];
+      if (protectedCount) parts.push(`${number(protectedCount)} ${protectedCount === 1 ? 'line stays because it reports' : 'lines stay because they report'} a problem.`);
+      if (removed && short) parts.push('Fonn only shortens output over 2,000 characters, so output as short as this sample reaches the model unchanged.');
+      if (lines.length > SAMPLE_LINES) parts.push(`Showing the first ${number(SAMPLE_LINES)}.`);
+      summary.textContent = parts.join(' ');
+    }
+  }
+  // Ask the real filter which marked lines stay. Debounced and cancelled, so typing stays quick.
+  function refresh() {
+    draw();
+    clearTimeout(timer);
+    controller?.abort();
+    const all = texts();
+    const command = entry.command.input.value.trim();
+    if (!lines.length || !all.length || !command) { kept = new Set(); return; }
+    timer = setTimeout(async () => {
+      controller = new AbortController();
+      try {
+        const rule = { name: entry.name.input.value.trim() || 'Sample', command, remove: all.filter((text) => text.length >= 3).slice(0, 20) };
+        if (!rule.remove.length) return;
+        const result = await send('POST', 'filter/test', { command, stdout: lines.join('\n'), root, mode: 'filter', level: 'strict', rules: [rule], anySize: true }, { signal: controller.signal });
+        const delivered = new Map();
+        for (const line of result.delivered.split('\n')) delivered.set(line, (delivered.get(line) ?? 0) + 1);
+        const next = new Set();
+        for (const line of lines) {
+          if (covered(line, all)) continue;
+          const count = delivered.get(line);
+          if (count) delivered.set(line, count - 1);
+        }
+        lines.forEach((line, index) => {
+          if (!covered(line, all)) return;
+          const count = delivered.get(line);
+          if (count) { next.add(index); delivered.set(line, count - 1); }
+        });
+        kept = next;
+        short = lines.join('\n').length < 2000;
+        draw();
+      } catch (error) {
+        if (error.name !== 'AbortError') summary.textContent = 'The preview could not run. The rule still saves as usual.';
+      }
+    }, 250);
+  }
+  sample.input.addEventListener('input', () => { lines = sampleLines(sample.input.value); refresh(); });
+  entry.remove.input.addEventListener('input', refresh);
+  entry.command.input.addEventListener('input', refresh);
+  return details;
+}
+
 // The caller owns the form and save action, so project settings and rules share one write.
 export function rulesEditor(initial = [], { root, status, changed = () => {} } = {}) {
   const node = el('div', 'rules-editor');
@@ -45,7 +175,7 @@ export function rulesEditor(initial = [], { root, status, changed = () => {} } =
     const entry = append({ name: '', command: '', remove: [] });
     entry.name.input.focus();
     changed();
-  });
+  }, 'secondary add-rule');
   add.setAttribute('aria-describedby', limit.id);
   function updateLimit() {
     add.disabled = entries.length >= 50;
@@ -64,6 +194,8 @@ export function rulesEditor(initial = [], { root, status, changed = () => {} } =
     command.input.value = rule.command;
     remove.input.value = rule.remove.join('\n');
     const entry = { card, name, command, remove };
+    const builder = sampleBuilder(entry, root, changed);
+    if (!rule.remove.length) builder.open = true;
     const actions = el('div', 'form-actions');
     actions.append(button('Try this rule', () => {
       const value = readEntry(entry);
@@ -78,7 +210,7 @@ export function rulesEditor(initial = [], { root, status, changed = () => {} } =
       add.focus();
       changed();
     }, { title: 'Remove this rule?', confirmLabel: 'Remove' }));
-    card.append(heading, name.node, command.node, remove.node, actions);
+    card.append(heading, name.node, command.node, builder, remove.node, actions);
     if (status) describeControls(card, status);
     card.addEventListener('input', () => {
       name.error(); command.error(); remove.error();
@@ -100,8 +232,9 @@ export function rulesEditor(initial = [], { root, status, changed = () => {} } =
     if (!valid) node.querySelector('[aria-invalid="true"]')?.focus();
     return valid;
   }
-  node.append(list, add, limit);
+  node.append(list, limit);
   initial.forEach(append);
-  return { node, read, validate };
+  // The caller puts Add rule next to its save button.
+  return { node, read, validate, add };
 }
 let editorSequence = 0;

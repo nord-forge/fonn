@@ -1,6 +1,6 @@
 import { get, send } from '../api.js';
 import { activitySections } from './activity.js';
-import { badge, button, card, code, el, empty, link, loadSection, number, pageHeader, settingKeys, sourceLabel, totals, warning } from '../components.js';
+import { badge, button, card, code, displayPath, el, empty, filterSettingKeys, launchSettingKeys, link, loadSection, number, pageHeader, settingKeys, sourceLabel, totals, warning } from '../components.js';
 
 import { describeControls, explanations, feedback, field, saving, select as select_, settingValues } from '../forms.js';
 import { rulesEditor, rulesList } from '../rules.js';
@@ -91,7 +91,7 @@ function scopeSwitch(scope, onChange) {
 function fileNote(file, scope) {
   const note = el('div', 'file-note');
   const description = el('p', 'section-description', SCOPES.find(([key]) => key === scope)[2]);
-  description.title = file.path;
+  description.title = displayPath(file.path);
   note.append(description);
   if (file.error) note.append(warning(`${file.error} Fix this file on disk before editing it here.`));
   return note;
@@ -104,12 +104,12 @@ export async function projectView(target, signal, root) {
   await loadSection(content, async () => {
     let [project, profiles] = await Promise.all([get('project', { query: { root }, signal }), get('profiles', { signal })]);
     if (signal.aborted) return;
-    const header = pageHeader('Projects', project.name, project.root);
+    const header = pageHeader('Projects', project.name, displayPath(project.root));
     const where = header.querySelector('.page-description');
     where.classList.add('path', 'one-line-path');
-    where.title = project.root;
+    where.title = displayPath(project.root);
     // The bidi marks keep a right-to-left ellipsis from moving the leading slash.
-    where.textContent = `\u200e${project.root}\u200e`;
+    where.textContent = `\u200e${displayPath(project.root)}\u200e`;
     target.querySelector('.page-header').replaceWith(header);
     document.title = `Fonn · ${project.name}`;
 
@@ -182,23 +182,34 @@ export async function projectView(target, signal, root) {
     }
 
     function overview() {
-      const summary = card('How Fonn runs here', 'What a new launch in this project uses, and where each value comes from.');
+      const summary = card('How Fonn runs here', 'What the Fonn hook and new launches use in this project, and where each value comes from.');
       if (!project.effective) {
         summary.append(warning('A settings file is invalid, so Fonn cannot tell what a launch would use. Open Settings to see which one.'));
         return [summary];
       }
-      const grid = el('dl', 'summary-grid');
-      for (const key of settingKeys) {
+      // The hook uses the filter settings, so they lead. Profile and subagents only matter when Fonn starts the agent.
+      const grid = el('dl', 'summary-grid summary-grid-filter');
+      for (const key of filterSettingKeys) {
         const item = el('div', 'summary-item');
         const value = el('dd');
         value.append(el('span', 'summary-value', project.effective[key].value), badge(sourceLabel(project.effective[key].source)));
         item.append(el('dt', '', LABELS[key]), value);
         grid.append(item);
       }
-      const applied = project.effective.rules.length;
+      const launchLine = el('p', 'summary-launch');
+      launchLine.append('When Fonn starts the agent, with fonn claude or fonn codex: ');
+      launchSettingKeys.forEach((key, index) => {
+        if (index) launchLine.append(', ');
+        launchLine.append(`${LABELS[key].toLowerCase()} `, el('code', '', project.effective[key].value), ` (${sourceLabel(project.effective[key].source)})`);
+      });
+      launchLine.append('.');
+      const applied = project.effective.rules;
+      const fromGlobal = applied.filter((rule) => rule.source === 'global').length;
+      const fromProject = applied.length - fromGlobal;
       const pending = project.effective.unapprovedRules.length;
       const rulesLine = el('p', 'summary-line');
-      rulesLine.append(`${applied === 0 ? 'No filter rules apply' : `${applied} filter ${applied === 1 ? 'rule applies' : 'rules apply'}`}${pending ? `, ${pending} waiting for approval` : ''}. `);
+      const where = applied.length ? `: ${[fromGlobal ? `${fromGlobal} global` : '', fromProject ? `${fromProject} from this project` : ''].filter(Boolean).join(', ')}` : '';
+      rulesLine.append(`${applied.length === 0 ? 'No filter rules apply' : `${applied.length} filter ${applied.length === 1 ? 'rule applies' : 'rules apply'}${where}`}${pending ? `. ${pending} waiting for your approval` : ''}. `);
       rulesLine.append(button('Manage rules', () => { select('rules', true); tabButtons[2].focus(); }, 'link-button'));
       const saved = project.totals.originalCharacters - project.totals.deliveredCharacters;
       const metrics = el('dl', 'summary-metrics');
@@ -208,8 +219,8 @@ export async function projectView(target, signal, root) {
         metrics.append(item);
       }
       const actions = el('div', 'form-actions');
-      actions.append(button('Change settings', () => { select('settings', true); tabButtons[1].focus(); }, 'primary'), link('Try the filter on this project', testRoute(project.root), 'section-link'));
-      summary.append(grid, rulesLine, metrics, el('p', 'field-hint', 'Characters, not tokens or cost.'), actions);
+      actions.append(button('Change settings', () => { select('settings', true); tabButtons[1].focus(); }, 'primary'), link('Try the filter on this project', testRoute(project.root), 'button-link'));
+      summary.append(grid, launchLine, rulesLine, metrics, el('p', 'field-hint', 'Characters, not tokens or cost.'), actions);
       return [summary];
     }
 
@@ -274,7 +285,7 @@ export async function projectView(target, signal, root) {
         const save = button(`Save ${scope === 'shared' ? 'shared' : 'personal'} rules`, () => {}, 'primary');
         save.type = 'submit';
         const actions = el('div', 'form-actions');
-        actions.append(save, status.node);
+        actions.append(editor.add, save, status.node);
         form.append(editor.node, actions);
         describeControls(form, status.node);
         form.addEventListener('submit', (event) => {

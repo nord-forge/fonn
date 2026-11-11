@@ -1,5 +1,5 @@
 import { get, send } from '../api.js';
-import { button, card, code, el, fields, loadSection, number, pageHeader } from '../components.js';
+import { button, card, code, displayPath, el, fields, loadSection, number, pageHeader } from '../components.js';
 import { describeControls, feedback, field, select, settingValues } from '../forms.js';
 import { rulesList } from '../rules.js';
 import { takeTestRule } from '../test-context.js';
@@ -15,7 +15,7 @@ export async function testView(target, signal, root) {
     const command = field('Command');
     command.input.placeholder = 'npm run dev';
     command.input.value = draft?.command ?? '';
-    const project = field('Project', select(projects.projects.map((entry) => [entry.root, `${entry.name} (${entry.root})`]), root ?? '', 'None / global'));
+    const project = field('Project', select(projects.projects.map((entry) => [entry.root, `${entry.name} (${displayPath(entry.root)})`]), root ?? '', 'None / global'));
     const mode = field('Mode override', select(settingValues.filterMode, '', 'Use saved mode'));
     const level = field('Level override', select(settingValues.filterLevel, '', 'Use saved level'));
     const rulePanel = el('section', 'test-rules');

@@ -1,5 +1,5 @@
 import { get, projectRoute, send } from '../api.js';
-import { button, card, date, el, empty, link, loadSection, pageHeader } from '../components.js';
+import { button, card, el, link, pageHeader } from '../components.js';
 import { describeControls, feedback, field } from '../forms.js';
 
 const absolute = (value) => value.startsWith('/') || value.startsWith('\\\\') || /^[a-z]:[\\/]/i.test(value);
@@ -71,25 +71,6 @@ export async function openProjectView(target, signal) {
     }
   });
 
-  const known = card('Projects Fonn knows', 'Folders where you launched Fonn or ran a task.');
-  target.append(section, known);
+  target.append(section, link('All projects', '#/projects', 'section-link'));
   path.input.focus();
-  await loadSection(known, async () => {
-    const data = await get('projects', { signal });
-    if (!data.projects.length) {
-      known.append(empty('None yet. Launch fonn in a project and it appears here.'));
-      return;
-    }
-    const list = el('ul', 'known-projects');
-    for (const project of data.projects) {
-      const item = el('li');
-      const anchor = link(project.name, projectRoute(project.root), 'known-project-name');
-      const meta = el('p', 'known-project-meta');
-      meta.append(el('span', 'path', project.root));
-      if (project.lastUsed) meta.append(` · last used ${date(project.lastUsed)}`);
-      item.append(anchor, meta);
-      list.append(item);
-    }
-    known.append(list);
-  }, signal);
 }
