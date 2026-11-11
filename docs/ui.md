@@ -45,6 +45,7 @@ The interface reads and changes your Fonn settings and records, and shows archiv
 - Other websites cannot read from it or change anything. The server checks the Host and Origin of every request, changes also need JSON and a header only the interface sends, and other pages cannot embed it.
 - Request bodies are limited to 64 KB, or 512 KB for the test bench.
 - Credentials and environment variables are never sent to the browser. Archived originals are only sent in slices of at most 20,000 characters.
+- Paths in your home folder show as `~`, such as `~/.codex/hooks.json`, so screenshots do not carry your user name. This only changes what is shown.
 - Projects are limited to those in your launch or run records, Git repository roots, and folders with a Fonn settings file. Only a fixed list of instruction files can be read from them, and symlinks are refused.
 
 Browsers never tell a web page the full path of a folder you choose, so "Choose folder" asks the local server to show the system dialog: macOS's own folder chooser, or zenity or kdialog on Linux when one is installed. Fonn only receives the path you choose and reads nothing else from that folder until you open it. Without a dialog, the button is hidden and you type the path.

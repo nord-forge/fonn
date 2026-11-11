@@ -1,5 +1,5 @@
 import { get, send } from '../api.js';
-import { badge, button, card, el, link, loadSection, pageHeader, warning } from '../components.js';
+import { badge, button, card, displayPath, el, link, loadSection, pageHeader, warning } from '../components.js';
 import { confirmDialog, feedback } from '../forms.js';
 import { hookDiff } from '../hook-diff.js';
 
@@ -12,8 +12,8 @@ export function hookStatusBadge(status) {
 function planPreview(plan) {
   const preview = el('div', 'hook-plan');
   const summary = el('ul', 'hook-summary');
-  for (const sentence of plan.summary) summary.append(el('li', '', sentence));
-  preview.append(summary, el('p', 'path', plan.configPath));
+  for (const sentence of plan.summary) summary.append(el('li', '', displayPath(sentence)));
+  preview.append(summary, el('p', 'path', displayPath(plan.configPath)));
   const lines = hookDiff(plan.before, plan.after);
   if (lines.length) {
     const diff = el('pre', 'hook-diff');
@@ -38,11 +38,6 @@ function planPreview(plan) {
   return preview;
 }
 
-/** "~/.codex/hooks.json" instead of the full home folder. The full path stays in the tooltip. */
-export function shortPath(file) {
-  return String(file).replace(/^(?:\/Users|\/home)\/[^/]+(?=\/)/, '~');
-}
-
 function agentCard(initial, signal, announcement) {
   const section = card(initial.label);
   section.classList.add('agent-card');
@@ -51,11 +46,11 @@ function agentCard(initial, signal, announcement) {
   function render(status) {
     const heading = el('div', 'card-heading');
     heading.append(el('h2', '', status.label), badge(...hookStatusBadge(status)));
-    const config = el('p', 'path agent-path', shortPath(status.configPath));
-    config.title = status.configPath;
+    const config = el('p', 'path agent-path', displayPath(status.configPath));
+    config.title = displayPath(status.configPath);
     section.replaceChildren(heading, config);
-    if (status.note) section.append(el('p', 'section-description', status.note));
-    if (status.error) section.append(warning(status.error));
+    if (status.note) section.append(el('p', 'section-description', displayPath(status.note)));
+    if (status.error) section.append(warning(displayPath(status.error)));
     const actions = el('div', 'form-actions agent-actions');
     const message = feedback();
     if (!status.error) {

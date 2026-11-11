@@ -1,5 +1,5 @@
 import { get, projectRoute, send } from '../api.js';
-import { button, card, date, el, empty, link, loadSection, pageHeader } from '../components.js';
+import { button, card, date, displayPath, el, empty, link, loadSection, pageHeader } from '../components.js';
 import { describeControls, feedback, field } from '../forms.js';
 
 const absolute = (value) => value.startsWith('/') || value.startsWith('\\\\') || /^[a-z]:[\\/]/i.test(value);
@@ -85,7 +85,7 @@ export async function openProjectView(target, signal) {
       const item = el('li');
       const anchor = link(project.name, projectRoute(project.root), 'known-project-name');
       const meta = el('p', 'known-project-meta');
-      meta.append(el('span', 'path', project.root));
+      meta.append(el('span', 'path', displayPath(project.root)));
       if (project.lastUsed) meta.append(` · last used ${date(project.lastUsed)}`);
       item.append(anchor, meta);
       list.append(item);

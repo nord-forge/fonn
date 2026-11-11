@@ -1,6 +1,6 @@
 import { get, send } from '../api.js';
 import { activitySections } from './activity.js';
-import { badge, button, card, code, el, empty, link, loadSection, number, pageHeader, settingKeys, sourceLabel, totals, warning } from '../components.js';
+import { badge, button, card, code, displayPath, el, empty, link, loadSection, number, pageHeader, settingKeys, sourceLabel, totals, warning } from '../components.js';
 
 import { describeControls, explanations, feedback, field, saving, select as select_, settingValues } from '../forms.js';
 import { rulesEditor, rulesList } from '../rules.js';
@@ -91,7 +91,7 @@ function scopeSwitch(scope, onChange) {
 function fileNote(file, scope) {
   const note = el('div', 'file-note');
   const description = el('p', 'section-description', SCOPES.find(([key]) => key === scope)[2]);
-  description.title = file.path;
+  description.title = displayPath(file.path);
   note.append(description);
   if (file.error) note.append(warning(`${file.error} Fix this file on disk before editing it here.`));
   return note;
@@ -104,12 +104,12 @@ export async function projectView(target, signal, root) {
   await loadSection(content, async () => {
     let [project, profiles] = await Promise.all([get('project', { query: { root }, signal }), get('profiles', { signal })]);
     if (signal.aborted) return;
-    const header = pageHeader('Projects', project.name, project.root);
+    const header = pageHeader('Projects', project.name, displayPath(project.root));
     const where = header.querySelector('.page-description');
     where.classList.add('path', 'one-line-path');
-    where.title = project.root;
+    where.title = displayPath(project.root);
     // The bidi marks keep a right-to-left ellipsis from moving the leading slash.
-    where.textContent = `\u200e${project.root}\u200e`;
+    where.textContent = `\u200e${displayPath(project.root)}\u200e`;
     target.querySelector('.page-header').replaceWith(header);
     document.title = `Fonn · ${project.name}`;
 

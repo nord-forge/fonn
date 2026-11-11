@@ -94,10 +94,15 @@ test('agent badges give errors and stale installs precedence over detection', as
   assert.equal(hookStatusBadge({ installed: true, current: false, detected: false })[0], 'Needs update');
   assert.equal(hookStatusBadge({ installed: false, detected: true })[0], 'Not installed');
   assert.equal(hookStatusBadge({ installed: false, detected: false })[0], 'Not detected');
-  const { shortPath } = await import('../../src/ui/web/views/agents.js');
-  assert.equal(shortPath('/Users/sam/.codex/hooks.json'), '~/.codex/hooks.json');
-  assert.equal(shortPath('/home/sam/.config/crush/crushrc'), '~/.config/crush/crushrc');
-  assert.equal(shortPath('/opt/config/hooks.json'), '/opt/config/hooks.json');
+  const { displayPath, setHome } = await import('../../src/ui/web/components.js');
+  assert.equal(displayPath('/Users/sam/.codex/hooks.json'), '/Users/sam/.codex/hooks.json');
+  setHome('/Users/sam');
+  assert.equal(displayPath('/Users/sam/.codex/hooks.json'), '~/.codex/hooks.json');
+  assert.equal(displayPath('The checkout at /Users/sam/code/fonn, in every project.'), 'The checkout at ~/code/fonn, in every project.');
+  assert.equal(displayPath('/Users/sam'), '~');
+  assert.equal(displayPath('/Users/samuel/code'), '/Users/samuel/code');
+  assert.equal(displayPath('/opt/config/hooks.json'), '/opt/config/hooks.json');
+  setHome('');
 });
 
 test('the hook diff marks skipped lines, so separate changes never look adjacent', async () => {

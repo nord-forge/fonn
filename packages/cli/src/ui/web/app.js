@@ -1,5 +1,5 @@
 import { get, projectRoute, SESSION_EXPIRED } from './api.js';
-import { button, el, link, number, pageHeader, warning } from './components.js';
+import { button, displayPath, el, link, number, pageHeader, setHome, warning } from './components.js';
 import { overviewView, profilesView, globalRulesView } from './views/global.js';
 import { agentsView } from './views/agents.js';
 import { activityView } from './views/activity.js';
@@ -62,9 +62,9 @@ async function loadProjects() {
     for (const project of data.projects) {
       const item = el('li');
       const anchor = link('', projectRoute(project.root));
-      anchor.title = project.root;
+      anchor.title = displayPath(project.root);
       // The bidi marks keep a right-to-left ellipsis from moving the leading slash.
-      anchor.append(el('span', 'project-name', project.name), el('span', 'project-path', `\u200e${project.root}\u200e`));
+      anchor.append(el('span', 'project-name', project.name), el('span', 'project-path', `\u200e${displayPath(project.root)}\u200e`));
       item.append(anchor);
       list.append(item);
     }
@@ -140,5 +140,8 @@ window.addEventListener('hashchange', () => render());
 if (!window.location.hash) {
   history.replaceState(null, '', `${window.location.pathname}${window.location.search}#/global/agents`);
 }
-render(false);
-loadProjects();
+// The home folder shows as ~ in paths. Without it, paths show in full.
+get('session').then((session) => setHome(session.home), () => {}).finally(() => {
+  render(false);
+  loadProjects();
+});

@@ -91,6 +91,11 @@ test('fonn ui guards every request and exchanges the token for a cookie', async 
   assert.equal(post.headers['content-security-policy'], "default-src 'self'; frame-ancestors 'none'");
   assert.equal(post.headers['access-control-allow-origin'], undefined);
   assert.equal((await send(port, '/missing.js', { headers: auth })).status, 404);
+  // The home folder, which the page shows as ~, needs a session like every other API.
+  assert.equal((await send(port, '/api/session')).status, 401);
+  const session = await send(port, '/api/session', { headers: auth });
+  assert.equal(session.status, 200);
+  assert.equal(typeof JSON.parse(session.body).home, 'string');
 });
 
 test('fonn ui api reports synthetic state and refuses unknown roots and bad bounds', async (t) => {

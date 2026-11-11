@@ -1,5 +1,5 @@
 import { get, send } from '../api.js';
-import { button, card, code, el, empty, fields, filterSettingKeys, launchSettingKeys, link, loadSection, number, pageHeader } from '../components.js';
+import { button, card, code, displayPath, el, empty, fields, filterSettingKeys, launchSettingKeys, link, loadSection, number, pageHeader } from '../components.js';
 
 import { describeControls, explanations, feedback, field, saving, select, settingValues } from '../forms.js';
 import { rulesEditor } from '../rules.js';
@@ -31,12 +31,12 @@ export async function overviewView(target, signal) {
       overview.append(metrics);
       environment.append(fields([
         ['Fonn version', data.version], ['Node version', data.node], ['Platform', data.platform],
-        ['Config folder', data.configDirectory], ['State folder', data.stateDirectory],
+        ['Config folder', displayPath(data.configDirectory)], ['State folder', displayPath(data.stateDirectory)],
       ]));
     }, signal),
     loadSection(settings, async () => {
       const [data, profiles] = await Promise.all([get('settings/global', { signal }), get('profiles', { signal })]);
-      settings.append(el('p', 'path file-path', data.file));
+      settings.append(el('p', 'path file-path', displayPath(data.file)));
       const settingForm = (key) => {
         const form = el('form', 'setting-row');
         const input = select(key === 'profile' ? profiles.profiles.map((profile) => profile.name) : settingValues[key], data.settings[key] ?? '', key === 'profile' ? undefined : 'Use built-in default');
@@ -98,7 +98,7 @@ export async function globalRulesView(target, signal) {
       save.type = 'submit';
       const actions = el('div', 'form-actions');
       actions.append(save, status.node);
-      form.append(el('p', 'path file-path', resource.file), editor.node, actions);
+      form.append(el('p', 'path file-path', displayPath(resource.file)), editor.node, actions);
       describeControls(form, status.node);
       form.addEventListener('submit', (event) => {
         event.preventDefault();

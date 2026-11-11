@@ -1,5 +1,5 @@
 import { get, send, projectRoute } from '../api.js';
-import { badge, button, card, code, date, el, empty, fields, link, loadSection, number, pageHeader, totals, warning } from '../components.js';
+import { badge, button, card, code, date, displayPath, el, empty, fields, link, loadSection, number, pageHeader, totals, warning } from '../components.js';
 
 import { confirmAction, confirmDialog } from '../forms.js';
 
@@ -129,8 +129,8 @@ export async function launchView(target, signal, launchId) {
     if (hooked) metadata.append(el('p', 'section-description', 'Recorded by Fonn\'s hook inside the agent. It sees each command, not when the session ends.'));
     metadata.append(fields([
       ['Launch ID', launch.launchId], ['Agent', launch.providerLabel], ['Profile', launch.profile ?? 'no profile'],
-      ['Model', launch.model ?? 'Agent default'], ['Project', link(launch.projectRoot, projectRoute(launch.projectRoot), 'path')],
-      ['Working folder', launch.cwd], ['Started', date(launch.createdAt)], ['Finished', date(launch.finishedAt)],
+      ['Model', launch.model ?? 'Agent default'], ['Project', link(displayPath(launch.projectRoot), projectRoute(launch.projectRoot), 'path')],
+      ['Working folder', displayPath(launch.cwd)], ['Started', date(launch.createdAt)], ['Finished', date(launch.finishedAt)],
       ['Exit code', launch.exitCode === null ? 'Not recorded' : number(launch.exitCode)],
       ['Filter mode', launch.filterMode], ['Filter level', launch.filterLevel], ['Subagents', launch.subagents],
     ]));

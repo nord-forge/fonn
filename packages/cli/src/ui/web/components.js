@@ -11,6 +11,23 @@ export function link(text, href, className) {
   return node;
 }
 
+let homeFolder = '';
+/** Remembers the home folder from /api/session, for displayPath. */
+export function setHome(home) { homeFolder = typeof home === 'string' && home.length > 1 ? home.replace(/\/+$/, '') : ''; }
+/** Shows the home folder as ~ wherever it appears in a path or a sentence. Only for display: send real paths to the server. */
+export function displayPath(text) {
+  const value = String(text ?? '');
+  if (!homeFolder) return value;
+  // "/Users/sam/x" becomes "~/x". The folder itself becomes "~" when a space, punctuation or the end follows it.
+  const parts = value.split(homeFolder);
+  let result = parts[0];
+  for (let index = 1; index < parts.length; index++) {
+    const next = parts[index];
+    result += (next === '' || /^[/\s,.;:)]/.test(next) ? '~' : homeFolder) + next;
+  }
+  return result;
+}
+
 export function button(text, action, className = '') {
   const node = el('button', className, text);
   node.type = 'button';

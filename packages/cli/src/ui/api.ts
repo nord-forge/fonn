@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
 // The data behind each fonn ui endpoint. Every function takes the config
 // and state directories explicitly, so tests can point them at temporary
 // folders. Reads never write to disk. Changes go through the same validated,
@@ -262,6 +263,11 @@ async function knownRoot(directories: UiDirectories, cache: RootCache, root: str
 async function packageVersion(): Promise<string> {
   const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string };
   return manifest.version;
+}
+
+/** GET /api/session: the home folder, which the browser shows as ~ in paths. */
+export function getSession(): { home: string } {
+  return { home: homedir() };
 }
 
 export async function getOverview(directories: UiDirectories): Promise<Overview> {

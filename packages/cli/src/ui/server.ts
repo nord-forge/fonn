@@ -12,7 +12,7 @@ import { uiAssets } from './assets.generated.js';
 import {
   getHooks, getHookPlan, postHookApply, type UiHooks,
   ApiFailure, DEFAULT_SLICE, deleteLaunch, deleteProfile, getArtifact, getGlobalSettings, getInstruction, getLaunch, getLaunches,
-  getOverview, getProfiles, getProject, getProjects, getRuns, postFilterTest, postRecordsCleanup, postProfile, putGlobalRules, putGlobalSetting,
+  getOverview, getSession, getProfiles, getProject, getProjects, getRuns, postFilterTest, postRecordsCleanup, postProfile, putGlobalRules, putGlobalSetting,
   putProfile, putProjectSettings, putRulesApproval, type UiDirectories,
 } from './api.js';
 
@@ -126,6 +126,7 @@ function route(directories: UiDirectories, url: URL, folders: PickerState, hooks
         finally { folders.open = false; }
       },
     };
+    case '/api/session': return { GET: async () => getSession() };
     case '/api/hooks': return { GET: async () => getHooks(directories, await hooks()) };
     case '/api/overview': return { GET: () => getOverview(directories) };
     case '/api/profiles': return { GET: () => getProfiles(directories), POST: (body) => postProfile(directories, body) };
