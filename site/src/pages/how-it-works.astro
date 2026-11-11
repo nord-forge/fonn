@@ -22,10 +22,18 @@ import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 
         <section id="visualiser" class="viz" aria-label="Filter visualiser" hidden>
           <div class="viz-controls">
-            <fieldset class="chips">
-              <legend>Sample</legend>
-              <div class="chip-row" id="sample-list"></div>
-            </fieldset>
+            <div class="sample-field">
+              <span class="viz-label" id="sample-label">Sample</span>
+              <div class="theme-select sample-select">
+                <button type="button" class="theme-select-button" id="sample-button" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="sample-label sample-current">
+                  <span id="sample-current"></span>
+                  <svg class="theme-select-chevron" aria-hidden="true" viewBox="0 0 16 16" width="12" height="12">
+                    <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
+                <ul class="theme-select-menu" id="sample-list" role="listbox" aria-labelledby="sample-label" tabindex="-1" hidden></ul>
+              </div>
+            </div>
             <div class="viz-options">
               <fieldset class="segmented">
                 <legend>Filter mode</legend>

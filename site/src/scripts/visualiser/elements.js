@@ -5,6 +5,8 @@ export const root = byId('visualiser');
 
 export const elements = {
   samples: byId('sample-list'),
+  sampleButton: byId('sample-button'),
+  sampleCurrent: byId('sample-current'),
   blurb: byId('sample-blurb'),
   replay: byId('replay'),
   command: byId('command'),

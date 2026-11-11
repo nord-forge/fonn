@@ -1,6 +1,6 @@
 import { get, send } from '../api.js';
 import { activitySections } from './activity.js';
-import { badge, button, card, code, displayPath, el, empty, filterSettingKeys, launchSettingKeys, link, loadSection, number, pageHeader, settingKeys, sourceLabel, totals, warning } from '../components.js';
+import { badge, button, card, code, displayPath, el, empty, filterSettingKeys, link, loadSection, number, pageHeader, settingKeys, sourceLabel, totals, warning } from '../components.js';
 
 import { describeControls, explanations, feedback, field, saving, select as select_, settingValues } from '../forms.js';
 import { rulesEditor, rulesList } from '../rules.js';
@@ -182,13 +182,13 @@ export async function projectView(target, signal, root) {
     }
 
     function overview() {
-      const summary = card('How Fonn runs here', 'What the Fonn hook and new launches use in this project, and where each value comes from.');
+      const summary = card('How Fonn runs here');
       if (!project.effective) {
-        summary.append(warning('A settings file is invalid, so Fonn cannot tell what a launch would use. Open Settings to see which one.'));
+        summary.append(warning('A settings file is invalid, so Fonn cannot tell what it uses here. Open Settings to see which one.'));
         return [summary];
       }
-      // The hook uses the filter settings, so they lead. Profile and subagents only matter when Fonn starts the agent.
-      const grid = el('dl', 'summary-grid summary-grid-filter');
+      // What the hook uses, at a glance. Profile and subagents stay on the Settings tab.
+      const grid = el('dl', 'summary-grid summary-grid-overview');
       for (const key of filterSettingKeys) {
         const item = el('div', 'summary-item');
         const value = el('dd');
@@ -196,31 +196,28 @@ export async function projectView(target, signal, root) {
         item.append(el('dt', '', LABELS[key]), value);
         grid.append(item);
       }
-      const launchLine = el('p', 'summary-launch');
-      launchLine.append('When Fonn starts the agent, with fonn claude or fonn codex: ');
-      launchSettingKeys.forEach((key, index) => {
-        if (index) launchLine.append(', ');
-        launchLine.append(`${LABELS[key].toLowerCase()} `, el('code', '', project.effective[key].value), ` (${sourceLabel(project.effective[key].source)})`);
-      });
-      launchLine.append('.');
       const applied = project.effective.rules;
       const fromGlobal = applied.filter((rule) => rule.source === 'global').length;
-      const fromProject = applied.length - fromGlobal;
       const pending = project.effective.unapprovedRules.length;
-      const rulesLine = el('p', 'summary-line');
-      const where = applied.length ? `: ${[fromGlobal ? `${fromGlobal} global` : '', fromProject ? `${fromProject} from this project` : ''].filter(Boolean).join(', ')}` : '';
-      rulesLine.append(`${applied.length === 0 ? 'No filter rules apply' : `${applied.length} filter ${applied.length === 1 ? 'rule applies' : 'rules apply'}${where}`}${pending ? `. ${pending} waiting for your approval` : ''}. `);
-      rulesLine.append(button('Manage rules', () => { select('rules', true); tabButtons[2].focus(); }, 'link-button'));
+      const rulesItem = el('div', 'summary-item');
+      const rulesValue = el('dd');
+      rulesValue.append(el('span', 'summary-value', applied.length ? number(applied.length) : 'None'));
+      if (applied.length) rulesValue.append(badge(fromGlobal === applied.length ? 'global' : fromGlobal ? `${number(fromGlobal)} global` : 'this project'));
+      if (pending) rulesValue.append(badge(`${number(pending)} to approve`, 'warn'));
+      rulesItem.append(el('dt', '', 'Filter rules'), rulesValue);
+      grid.append(rulesItem);
+      summary.append(grid);
       const saved = project.totals.originalCharacters - project.totals.deliveredCharacters;
-      const metrics = el('dl', 'summary-metrics');
-      for (const [label, value] of [['Characters saved', saved], ['Lines removed', project.totals.removedLines], ['Commands filtered', project.totals.filtered]]) {
-        const item = el('div');
-        item.append(el('dt', '', label), el('dd', '', number(value)));
-        metrics.append(item);
+      if (project.totals.filtered) {
+        summary.append(el('p', 'summary-line', `Fonn saved ${number(saved)} characters over ${number(project.totals.filtered)} ${project.totals.filtered === 1 ? 'command' : 'commands'} here.`));
       }
       const actions = el('div', 'form-actions');
-      actions.append(button('Change settings', () => { select('settings', true); tabButtons[1].focus(); }, 'primary'), link('Try the filter on this project', testRoute(project.root), 'button-link'));
-      summary.append(grid, launchLine, rulesLine, metrics, el('p', 'field-hint', 'Characters, not tokens or cost.'), actions);
+      actions.append(
+        button('Change settings', () => { select('settings', true); tabButtons[1].focus(); }, 'primary'),
+        button('Manage rules', () => { select('rules', true); tabButtons[2].focus(); }),
+        link('Try the filter', testRoute(project.root), 'button-link'),
+      );
+      summary.append(actions);
       return [summary];
     }
 

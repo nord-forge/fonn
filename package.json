@@ -1,6 +1,6 @@
 {
   "name": "fonn",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "Core, CLI, Homebrew distribution and future desktop app for Fonn.",
   "type": "module",

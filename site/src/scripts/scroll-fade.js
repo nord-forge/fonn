@@ -4,7 +4,7 @@
 //
 // Covers Starlight's tab bars and the visualiser's sample and option rows.
 
-const SELECTOR = '.tablist-wrapper, .viz-controls .chips .chip-row, .viz-options';
+const SELECTOR = '.tablist-wrapper, .viz-options';
 const EDGE = 2;
 
 function update(row) {
