@@ -1,6 +1,6 @@
 import { get, send } from '../api.js';
 import { activitySections } from './activity.js';
-import { badge, button, card, code, displayPath, el, empty, link, loadSection, number, pageHeader, settingKeys, sourceLabel, totals, warning } from '../components.js';
+import { badge, button, card, code, displayPath, el, empty, filterSettingKeys, launchSettingKeys, link, loadSection, number, pageHeader, settingKeys, sourceLabel, totals, warning } from '../components.js';
 
 import { describeControls, explanations, feedback, field, saving, select as select_, settingValues } from '../forms.js';
 import { rulesEditor, rulesList } from '../rules.js';
@@ -182,23 +182,34 @@ export async function projectView(target, signal, root) {
     }
 
     function overview() {
-      const summary = card('How Fonn runs here', 'What a new launch in this project uses, and where each value comes from.');
+      const summary = card('How Fonn runs here', 'What the Fonn hook and new launches use in this project, and where each value comes from.');
       if (!project.effective) {
         summary.append(warning('A settings file is invalid, so Fonn cannot tell what a launch would use. Open Settings to see which one.'));
         return [summary];
       }
-      const grid = el('dl', 'summary-grid');
-      for (const key of settingKeys) {
+      // The hook uses the filter settings, so they lead. Profile and subagents only matter when Fonn starts the agent.
+      const grid = el('dl', 'summary-grid summary-grid-filter');
+      for (const key of filterSettingKeys) {
         const item = el('div', 'summary-item');
         const value = el('dd');
         value.append(el('span', 'summary-value', project.effective[key].value), badge(sourceLabel(project.effective[key].source)));
         item.append(el('dt', '', LABELS[key]), value);
         grid.append(item);
       }
-      const applied = project.effective.rules.length;
+      const launchLine = el('p', 'summary-launch');
+      launchLine.append('When Fonn starts the agent, with fonn claude or fonn codex: ');
+      launchSettingKeys.forEach((key, index) => {
+        if (index) launchLine.append(', ');
+        launchLine.append(`${LABELS[key].toLowerCase()} `, el('code', '', project.effective[key].value), ` (${sourceLabel(project.effective[key].source)})`);
+      });
+      launchLine.append('.');
+      const applied = project.effective.rules;
+      const fromGlobal = applied.filter((rule) => rule.source === 'global').length;
+      const fromProject = applied.length - fromGlobal;
       const pending = project.effective.unapprovedRules.length;
       const rulesLine = el('p', 'summary-line');
-      rulesLine.append(`${applied === 0 ? 'No filter rules apply' : `${applied} filter ${applied === 1 ? 'rule applies' : 'rules apply'}`}${pending ? `, ${pending} waiting for approval` : ''}. `);
+      const where = applied.length ? `: ${[fromGlobal ? `${fromGlobal} global` : '', fromProject ? `${fromProject} from this project` : ''].filter(Boolean).join(', ')}` : '';
+      rulesLine.append(`${applied.length === 0 ? 'No filter rules apply' : `${applied.length} filter ${applied.length === 1 ? 'rule applies' : 'rules apply'}${where}`}${pending ? `. ${pending} waiting for your approval` : ''}. `);
       rulesLine.append(button('Manage rules', () => { select('rules', true); tabButtons[2].focus(); }, 'link-button'));
       const saved = project.totals.originalCharacters - project.totals.deliveredCharacters;
       const metrics = el('dl', 'summary-metrics');
@@ -208,8 +219,8 @@ export async function projectView(target, signal, root) {
         metrics.append(item);
       }
       const actions = el('div', 'form-actions');
-      actions.append(button('Change settings', () => { select('settings', true); tabButtons[1].focus(); }, 'primary'), link('Try the filter on this project', testRoute(project.root), 'section-link'));
-      summary.append(grid, rulesLine, metrics, el('p', 'field-hint', 'Characters, not tokens or cost.'), actions);
+      actions.append(button('Change settings', () => { select('settings', true); tabButtons[1].focus(); }, 'primary'), link('Try the filter on this project', testRoute(project.root), 'button-link'));
+      summary.append(grid, launchLine, rulesLine, metrics, el('p', 'field-hint', 'Characters, not tokens or cost.'), actions);
       return [summary];
     }
 
