@@ -20,8 +20,8 @@ In testing with Qwen3.8-27B (UD-IQ3_XXS) on Ollama, the same task, listing a fol
 | Tool | What it does | Asks first |
 | --- | --- | --- |
 | `run_command` | Runs a shell command in the project root, with a time limit | Always |
-| `read_file` | Reads part of a file | Only outside the project |
-| `list_files` | Lists a folder | Only outside the project |
+| `read_file` | Reads part of a file | Outside the project, for secret files, and always with a server elsewhere |
+| `list_files` | Lists a folder | Outside the project, and always with a server elsewhere |
 | `write_file` | Creates or replaces a file | Always |
 | `edit_file` | Replaces one exact piece of text in a file | Always |
 | `read_original` | Reads an archived original of shortened command output | Never |
@@ -38,4 +38,10 @@ Local models have small context windows. Fonn keeps a rough token count and, whe
 
 ## Privacy
 
-Fonn reads an API key only from the environment variable you name with `--api-key-env`. It is never written to disk or shown. Prompts, file contents and command output go to the server you chose. For Ollama and LM Studio that is your own machine.
+Prompts, file contents and command output go to the server you chose. For Ollama and LM Studio on this machine, nothing leaves it. A server elsewhere, such as a hosted API through `--base-url`, receives everything the model reads. So Fonn decides from the server address:
+
+- **On this machine** (`localhost`, `127.0.0.1` or `::1`): reads inside the project need no approval, except files that usually hold secrets.
+- **Anywhere else**: every read and folder listing asks first, and the header says so. "Always" covers that exact file for the rest of the session.
+- **Secret files ask on any server**: `.env` and its variants (but not `.env.example` or similar templates), private keys such as `*.pem`, `*.key` and `id_ed25519`, `.npmrc`, `.netrc`, `.git-credentials`, credential and secret files, and anything in folders such as `.ssh`, `.aws` or `.gnupg`.
+
+Commands always ask too, so a command that prints a secret, such as `cat .env`, also needs your approval. Fonn reads an API key only from the environment variable you name with `--api-key-env`. It is never written to disk or shown.

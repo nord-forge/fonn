@@ -100,6 +100,21 @@ export interface ToolRunnerOptions {
   commandTimeoutMs?: number;
   /** Most characters of command output given to the model in one result. */
   maxDeliveredCharacters?: number;
+  /** Ask before every read and listing, for a model server that is not on this machine. */
+  confirmReads?: boolean;
+}
+
+// Files that usually hold secrets. Reading one always asks, on any server,
+// because its contents end up in the conversation. Templates such as
+// .env.example are ordinary files.
+const SECRET_NAMES = /^(?:\.env(?:\.(?!example$|sample$|template$|dist$)[^/]+)?|\.envrc|\.npmrc|\.pypirc|\.netrc|\.git-credentials|\.pgpass|credentials(?:\.json)?|secrets?\.(?:json|ya?ml|toml|env)|id_(?:rsa|dsa|ecdsa|ed25519)|.*\.(?:pem|key|p12|pfx|keystore|jks|kdbx))$/i;
+const SECRET_FOLDERS = new Set(['.ssh', '.aws', '.gnupg', '.kube', '.docker', '.azure', '.config/gcloud']);
+
+/** True for paths that usually hold credentials, such as .env or a private key. */
+export function looksSecret(file: string): boolean {
+  const parts = file.split(path.sep).filter(Boolean);
+  if (parts.some((part, index) => SECRET_FOLDERS.has(part) || SECRET_FOLDERS.has(`${part}/${parts[index + 1] ?? ''}`))) return true;
+  return SECRET_NAMES.test(parts.at(-1) ?? '');
 }
 
 export interface ToolRunner {
@@ -246,6 +261,7 @@ export function createToolRunner(options: ToolRunnerOptions): ToolRunner {
   const archived = new Set<string>();
   const rememberedCommands = new Set<string>();
   const rememberedPaths = new Set<string>();
+  const rememberedReads = new Set<string>();
   const recovery = (id: string) => `[fonn: output shortened. Call read_original with {"id":"${id}"} to read the full original.]`;
   const filter: OutputFilter = createOutputFilter({
     store, mode: options.filterMode, level: options.filterLevel, rules: options.filterRules,
@@ -280,6 +296,16 @@ export function createToolRunner(options: ToolRunnerOptions): ToolRunner {
     if (!place.inside) {
       const via = place.real !== place.absolute ? ` (through a link from ${place.absolute})` : '';
       const allowed = await approve({ kind: 'read', summary: `${verb} ${place.real}${via}, outside the project`, detail: place.real, target: place.real }, undefined, signal);
+      if (allowed !== true) return allowed;
+      return place;
+    }
+    // A secret always asks. With a server elsewhere every read asks, and
+    // "always" covers that exact path for the rest of the session.
+    const secret = looksSecret(place.real);
+    if (secret || options.confirmReads) {
+      const why = secret ? ', which may hold secrets' : '';
+      const where = options.confirmReads ? ' Its contents go to the model server.' : '';
+      const allowed = await approve({ kind: 'read', summary: `${verb} ${place.display}${why}`, detail: `${place.real}${where}`, target: place.real }, rememberedReads, signal);
       if (allowed !== true) return allowed;
     }
     return place;

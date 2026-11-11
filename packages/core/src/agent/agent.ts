@@ -83,7 +83,7 @@ export function createAgent(options: AgentOptions): Agent {
   const toolCharacters = JSON.stringify(toolDefinitions).length;
   const runner = createToolRunner({
     root: options.root, host, stateDirectory: options.stateDirectory, sessionId,
-    filterMode, filterLevel, filterRules, commandTimeoutMs: timeout,
+    filterMode, filterLevel, filterRules, commandTimeoutMs: timeout, confirmReads: options.confirmReads ?? false,
     // One command result may use up to a quarter of the context.
     maxDeliveredCharacters: Math.min(40_000, Math.max(4_000, contextLimit)),
   });
