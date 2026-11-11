@@ -103,6 +103,12 @@ test('agent badges give errors and stale installs precedence over detection', as
   assert.equal(displayPath('/Users/samuel/code'), '/Users/samuel/code');
   assert.equal(displayPath('/opt/config/hooks.json'), '/opt/config/hooks.json');
   setHome('');
+  const { suggestText, sampleLines } = await import('../../src/ui/web/rules.js');
+  assert.equal(suggestText('Waiting for database (attempt 3/10)'), 'Waiting for database (attempt');
+  assert.equal(suggestText('  [12:04:33] Compiled 418 modules in 2.3s'), 'Compiled');
+  assert.equal(suggestText('\u001b[32mready\u001b[0m - started server on 0.0.0.0:3000'), 'ready - started server on');
+  assert.equal(suggestText('12 34'), '12 34');
+  assert.deepEqual(sampleLines('one\r\ntwo\n'), ['one', 'two']);
 });
 
 test('the hook diff marks skipped lines, so separate changes never look adjacent', async () => {

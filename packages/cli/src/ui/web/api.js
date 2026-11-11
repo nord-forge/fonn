@@ -39,11 +39,12 @@ export function get(path, { query = {}, signal } = {}) {
   return request(`${path}${params.size ? `?${params}` : ''}`, { signal, cache: 'no-store' });
 }
 
-export function send(method, path, body = {}) {
+export function send(method, path, body = {}, { signal } = {}) {
   return request(path, {
     method,
     headers: { 'Content-Type': 'application/json', 'X-Fonn-Request': '1' },
     body: JSON.stringify(body),
+    signal,
   });
 }
 

@@ -1,4 +1,4 @@
-import { get, send } from '../api.js';
+import { get, projectRoute, send } from '../api.js';
 import { button, card, code, displayPath, el, empty, fields, filterSettingKeys, launchSettingKeys, link, loadSection, number, pageHeader } from '../components.js';
 
 import { describeControls, explanations, feedback, field, saving, select, settingValues } from '../forms.js';
@@ -85,9 +85,27 @@ export async function overviewView(target, signal) {
 }
 
 export async function globalRulesView(target, signal) {
-  target.append(pageHeader('Global / Rules', 'Filter rules', 'These rules apply to all projects. A project rule with the same name replaces a global rule.'));
+  target.append(pageHeader('Global / Rules', 'Filter rules', 'Rules here are global: they apply in every project. To filter one project only, add rules on that project\'s page. A project rule with the same name replaces a global rule.'));
   const section = card('Global rules');
-  target.append(section);
+  const projects = card('Project rules', 'Each project keeps its own rules, in a personal or a shared file. They apply only in that project, after you approve them.');
+  target.append(section, projects);
+  loadSection(projects, async () => {
+    const data = await get('projects', { signal });
+    if (!data.projects.length) {
+      projects.append(empty('No projects yet.'), link('Open a project', '#/projects/open', 'section-link'));
+      return;
+    }
+    const list = el('ul', 'project-rules');
+    for (const project of data.projects) {
+      const item = el('li');
+      const anchor = link('', `${projectRoute(project.root)}?tab=rules`);
+      anchor.append(el('strong', '', project.name), el('span', 'path', displayPath(project.root)));
+      anchor.setAttribute('aria-label', `Rules for ${project.name}`);
+      item.append(anchor);
+      list.append(item);
+    }
+    projects.append(list, link('Open another project', '#/projects/open', 'section-link'));
+  }, signal);
   await loadSection(section, async () => {
     const data = await get('settings/global', { signal });
     function render(resource, saved = false) {
@@ -97,7 +115,7 @@ export async function globalRulesView(target, signal) {
       const save = button('Save rules', () => {}, 'primary');
       save.type = 'submit';
       const actions = el('div', 'form-actions');
-      actions.append(save, status.node);
+      actions.append(editor.add, save, status.node);
       form.append(el('p', 'path file-path', displayPath(resource.file)), editor.node, actions);
       describeControls(form, status.node);
       form.addEventListener('submit', (event) => {

@@ -299,6 +299,16 @@ test('fonn ui change endpoints save through the stores and refuse invalid values
   assert.equal(tested.body.decision.artifactId, null);
   assert.doesNotMatch(tested.body.delivered, /DEBUG noise from/);
   assert.match(tested.body.delivered, /step 0 passed/);
+  // Short output stays as it is, unless the rule builder asks for its preview at any size.
+  const short = 'Waiting for database (attempt 1/10)\nWaiting for database (attempt 2/10)\nError: connection failed (attempt 3/10)\nready';
+  const builderRule = { name: 'Database wait', command: 'npm run dev', remove: ['Waiting for database', 'connection failed'] };
+  const plain = await change('POST', '/api/filter/test', { command: 'npm run dev', stdout: short, mode: 'filter', level: 'strict', rules: [builderRule] });
+  assert.equal(plain.body.decision.status, 'unchanged');
+  assert.equal(plain.body.delivered, short);
+  const preview = await change('POST', '/api/filter/test', { command: 'npm run dev', stdout: short, mode: 'filter', level: 'strict', rules: [builderRule], anySize: true });
+  assert.doesNotMatch(preview.body.delivered, /Waiting for database/);
+  assert.match(preview.body.delivered, /Error: connection failed/);
+  assert.equal((await change('POST', '/api/filter/test', { command: 'npm run dev', stdout: short, anySize: 'yes' })).status, 400);
   assert.equal((await change('POST', '/api/filter/test', { command: 'x'.repeat(2001), stdout })).status, 400);
 
   assert.equal((await change('DELETE', '/api/launches/not-an-id')).status, 400);

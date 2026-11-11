@@ -274,7 +274,7 @@ export async function projectView(target, signal, root) {
         const save = button(`Save ${scope === 'shared' ? 'shared' : 'personal'} rules`, () => {}, 'primary');
         save.type = 'submit';
         const actions = el('div', 'form-actions');
-        actions.append(save, status.node);
+        actions.append(editor.add, save, status.node);
         form.append(editor.node, actions);
         describeControls(form, status.node);
         form.addEventListener('submit', (event) => {

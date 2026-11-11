@@ -11,7 +11,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { ArtifactStore, FilterRule, RunRecord } from '@nord-forge/fonn-core/contracts';
-import { createOutputFilter } from '@nord-forge/fonn-core/filtering';
+import { createOutputFilter, reduceRecognizedOutput } from '@nord-forge/fonn-core/filtering';
 import { createProfileStore, effortSchema, modelSourceSchema, modelTextSchema, profiles as builtInProfiles, providerSchema } from '@nord-forge/fonn-core/profiles';
 import { filterRulesSchema, findProjectRoot, LOCAL_SETTINGS_FILE, projectSettingsSchema, resolveSettings, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, projectRulesFingerprint } from '@nord-forge/fonn-core/settings';
 import { readRun } from '@nord-forge/fonn-core/state';
@@ -670,6 +670,8 @@ const filterTestSchema = z.object({
   mode: z.enum(['filter', 'observe', 'off']).optional(),
   level: z.enum(['strict', 'standard', 'similar']).optional(),
   rules: filterRulesSchema.optional(),
+  /** The rule builder's preview: show what the rules remove even from output too short for Fonn to shorten. */
+  anySize: z.boolean().optional(),
 }).strict();
 
 /** The settings a test runs with: a project's effective values, otherwise the global ones. */
@@ -703,6 +705,20 @@ export async function postFilterTest(directories: UiDirectories, body: unknown):
       throw new Error('The test bench stores nothing.');
     },
   };
+  if (input.anySize) {
+    // The rule builder's preview: what the rules and adapters remove, at any size, without archiving or a footer.
+    // Real sessions still only shorten output over the size limits, which the builder says.
+    const reduction = mode === 'filter' ? reduceRecognizedOutput({ command: input.command }, input.stdout, { level, rules }) : undefined;
+    const delivered = reduction?.text ?? input.stdout;
+    const changed = delivered !== input.stdout;
+    return {
+      mode,
+      level,
+      rules,
+      decision: { status: changed ? 'filtered' : 'unchanged', reason: changed ? 'safe_reduction' : 'no_safe_reduction', adapter: reduction?.adapter ?? null, artifactId: null, originalCharacters: input.stdout.length, deliveredCharacters: delivered.length, removedLines: reduction?.removedLines ?? 0 },
+      delivered,
+    };
+  }
   const filter = createOutputFilter({ store, mode, level, rules, recoveryHint: (id) => `fonn native-output <launch-id> ${id}` });
   const response = { stdout: input.stdout, stderr: '', interrupted: false, isImage: false };
   const outcome = await filter.apply({ toolName: 'Bash', toolInput: { command: input.command }, response, sessionId: 'fonn-ui-test', toolUseId: 'fonn-ui-test', cwd: '/' });
