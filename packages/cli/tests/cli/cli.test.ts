@@ -45,7 +45,7 @@ test('help, profiles and version run offline and do not import/execute the SDK',
   assert.equal(JSON.parse(p.out()).length, 13);
   const v = harness();
   assert.equal(await v.run(['--version']), 0);
-  assert.match(v.out(), /^0\.2\.2\n$/);
+  assert.match(v.out(), /^0\.2\.3\n$/);
 });
 
 test('profile commands persist custom choices, manage the default and reject invalid arguments', async () => {

@@ -77,13 +77,40 @@
   box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
 }
 
-.viz-controls .chips {
-  flex: 1 1 100%;
+/* One row: the sample picker, then mode and level, then Replay. */
+.sample-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.viz-label {
+  font: 600 0.75rem/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.sample-select .theme-select-button {
+  min-height: 36px;
+  min-width: 190px;
+  justify-content: space-between;
+  background: var(--bg);
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+
+.sample-select .theme-select-menu {
+  left: 0;
+  right: auto;
+  min-width: 230px;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
 }
 
 .viz-options {
   display: flex;
-  flex: 1 1 100%;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 28px;
@@ -196,8 +223,24 @@ legend {
   }
 
 
-  .viz-controls .chips {
+  .sample-field {
     flex: 1 1 100%;
+    padding: 0 12px;
+  }
+
+  .sample-field .viz-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .sample-select,
+  .sample-select .theme-select-button {
+    flex: 1 1 auto;
+    width: 100%;
   }
 
   /* Mode, level and Replay share the second row and scroll together. */
