@@ -118,7 +118,8 @@ export interface HookSessionRecord {
 
 // UI endpoints (implemented in packages/cli/src/ui/):
 //   GET  /api/hooks                          -> HookStatus[]
-//   GET  /api/hooks/<agent>/plan?action=install|uninstall -> HookPlan
-//   POST /api/hooks/<agent>/apply  body { action, before } -> HookStatus
-//        `before` is the plan's before text; a mismatch returns 409 so the
-//        user sees the current file before anything is written.
+//   GET  /api/hooks/<agent>/plan?action=install|uninstall -> HookPlan plus beforeHash
+//   POST /api/hooks/<agent>/apply  body { action, beforeHash, afterHash } -> HookStatus
+//        beforeHash is the SHA-256 of the plan's before text ("missing" for no
+//        file); a mismatch returns 409 so the user sees the current file
+//        before anything is written.

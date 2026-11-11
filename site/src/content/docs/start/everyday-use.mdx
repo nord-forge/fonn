@@ -1,11 +1,36 @@
 ---
 title: Everyday use
-description: Launch Claude Code or Codex, pick a profile, choose filtering and resume a session.
+description: Keep using your agent with the hook, manage it in fonn ui, and use Fonn's own launchers if you want them.
 sidebar:
   order: 3
 ---
 
 These use the `fonn` name. In a checkout without an alias, use `node packages/cli/dist/cli/main.js`.
+
+## With the hook
+
+After `fonn hooks install`, you do nothing different. Start `claude`, `codex`, Crush, OpenCode or a desktop app on top of them as usual. Each shell command's output is filtered with your global settings, the project's settings and the project rules you approved. Hooks need a source checkout until 0.2.0.
+
+```sh
+fonn hooks                            # which agents have the hook
+fonn hooks install --agent claude     # add it (shows a diff, asks first)
+fonn hooks uninstall --agent claude   # remove it
+fonn config approve-rules             # approve a project's filter rules
+```
+
+A hook that points at a moved checkout or a removed Node does nothing and stays quiet. Run `fonn hooks` after an update, and `fonn hooks install` again if it reports `needs updating`. See [hooks](/reference/hooks/).
+
+## In fonn ui
+
+```sh
+fonn ui
+```
+
+The Agents page installs, updates and removes hooks with a preview of each change. The same interface edits filter settings and your own rules, tries them on a test bench, and lists every session in Activity. Hook sessions are marked "via hook". See [the Fonn UI](/reference/ui/).
+
+## Fonn's own launchers
+
+These are optional. They start the agent for you, with a Fonn profile, subagent guidance and resume.
 
 ```sh
 fonn                                  # open your default agent
@@ -21,7 +46,7 @@ fonn help                             # offline help
 
 Pass native arguments after `--`, for example `fonn -- --resume`. Flags that override the profile, hooks or permission policy are rejected.
 
-## Resume
+### Resume
 
 When a session closes, Fonn prints a command such as `fonn resume <launch-id>`. It restores the agent, profile, project, filter mode, filter level and subagent preference. If the provider's session ID was not observed, the same command opens the provider's session picker.
 

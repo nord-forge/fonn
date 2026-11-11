@@ -124,9 +124,11 @@ export async function launchView(target, signal, launchId) {
   await loadSection(content, async () => {
     const data = await get(`launches/${encodeURIComponent(launchId)}`, { signal });
     const launch = data.launch;
-    const metadata = card('Launch');
+    const hooked = launch.origin === 'hook';
+    const metadata = card(hooked ? 'Hook session' : 'Launch');
+    if (hooked) metadata.append(el('p', 'section-description', 'Recorded by Fonn\'s hook inside the agent. It sees each command, not when the session ends.'));
     metadata.append(fields([
-      ['Launch ID', launch.launchId], ['Agent', launch.provider], ['Profile', launch.profile],
+      ['Launch ID', launch.launchId], ['Agent', launch.providerLabel], ['Profile', launch.profile ?? 'no profile'],
       ['Model', launch.model ?? 'Agent default'], ['Project', link(launch.projectRoot, projectRoute(launch.projectRoot), 'path')],
       ['Working folder', launch.cwd], ['Started', date(launch.createdAt)], ['Finished', date(launch.finishedAt)],
       ['Exit code', launch.exitCode === null ? 'Not recorded' : number(launch.exitCode)],
@@ -165,7 +167,11 @@ export async function launchView(target, signal, launchId) {
       const result = await send('DELETE', `launches/${encodeURIComponent(launch.launchId)}${query}`);
       if (!signal.aborted && result.deleted === launch.launchId) window.location.hash = '#/global/activity';
     };
-    const trigger = confirmAction("Delete this launch's records", "This removes this launch's filter records and archived originals from this machine. This cannot be undone.", async () => {
+    // Deleting a hook session's records is safe while it is open: its next
+    // command simply starts a new record.
+    const trigger = confirmAction(hooked ? "Delete this session's records" : "Delete this launch's records", hooked
+      ? "This removes the filter records and archived originals of this hook session from this machine. If the session is still open, its next command starts a new record. This cannot be undone."
+      : "This removes this launch's filter records and archived originals from this machine. This cannot be undone.", async () => {
       try {
         await remove();
       } catch (error) {
@@ -173,7 +179,7 @@ export async function launchView(target, signal, launchId) {
         // No recorded finish: it may still be running, so ask once more.
         confirmDialog({ title: 'This launch may still be running', message: `${error.message} Its hook will lose its records if it is.`, confirmLabel: 'Delete anyway', action: () => remove('?confirm=running'), returnFocus: trigger });
       }
-    }, { title: "Delete this launch's records?" });
+    }, { title: hooked ? "Delete this session's records?" : "Delete this launch's records?" });
     cleanup.append(trigger);
     content.append(cleanup);
   }, signal);

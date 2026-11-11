@@ -74,3 +74,36 @@ test('session expiry emits the shared event, and unreadable replies stay errors'
   fetch.mock.mockImplementation(async () => new Response('not json', { status: 200 }));
   await assert.rejects(send('POST', 'filter/test', {}), /unreadable response/);
 });
+
+test('hook previews show exact added and removed lines with bounded context', async () => {
+  const { hookDiff } = await import('../../src/ui/web/hook-diff.js');
+  assert.deepEqual(hookDiff(null, 'new'), [{ kind: 'added', text: 'new' }]);
+  assert.deepEqual(hookDiff('old', null), [{ kind: 'removed', text: 'old' }]);
+  assert.deepEqual(hookDiff('same', 'same'), []);
+  const diff = hookDiff('first\nold\nlast', 'first\nnew\nlast');
+  assert.deepEqual(diff.filter((line) => line.kind !== 'context'), [{ kind: 'removed', text: 'old' }, { kind: 'added', text: 'new' }]);
+  const large = hookDiff(Array.from({ length: 600 }, (_, i) => `old ${i}`).join('\n'), Array.from({ length: 600 }, (_, i) => `new ${i}`).join('\n'));
+  assert.equal(large.filter((line) => line.kind === 'removed').length, 600);
+  assert.equal(large.filter((line) => line.kind === 'added').length, 600);
+});
+
+test('agent badges give errors and stale installs precedence over detection', async () => {
+  const { hookStatusBadge } = await import('../../src/ui/web/views/agents.js');
+  assert.equal(hookStatusBadge({ error: 'bad', installed: true, current: true })[0], 'Error');
+  assert.equal(hookStatusBadge({ installed: true, current: true })[0], 'Installed');
+  assert.equal(hookStatusBadge({ installed: true, current: false, detected: false })[0], 'Needs update');
+  assert.equal(hookStatusBadge({ installed: false, detected: true })[0], 'Not installed');
+  assert.equal(hookStatusBadge({ installed: false, detected: false })[0], 'Not detected');
+});
+
+test('the hook diff marks skipped lines, so separate changes never look adjacent', async () => {
+  const { hookDiff } = await import('../../src/ui/web/hook-diff.js');
+  const before = Array.from({ length: 20 }, (_, index) => `line ${index}`).join('\n');
+  const after = before.replace('line 2', 'line two').replace('line 17', 'line seventeen');
+  const diff = hookDiff(before, after);
+  const kinds = diff.map((line) => line.kind);
+  assert.equal(kinds.filter((kind) => kind === 'gap').length, 1, 'one gap between the two changes');
+  const gap = kinds.indexOf('gap');
+  assert.ok(kinds.slice(0, gap).includes('added') && kinds.slice(gap).includes('added'), 'a change on each side of the gap');
+  assert.ok(diff.every((line) => line.kind !== 'context' || /line (?:[0-4]|1[5-9])$/.test(line.text)), 'only nearby context is kept');
+});

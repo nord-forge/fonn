@@ -14,13 +14,14 @@ import { createOutputFilter } from '@nord-forge/fonn-core/filtering';
 import { createProfileStore, effortSchema, modelSourceSchema, modelTextSchema, profiles as builtInProfiles, providerSchema } from '@nord-forge/fonn-core/profiles';
 import { filterRulesSchema, findProjectRoot, LOCAL_SETTINGS_FILE, projectSettingsSchema, resolveSettings, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, projectRulesFingerprint } from '@nord-forge/fonn-core/settings';
 import { readRun } from '@nord-forge/fonn-core/state';
+import { HOOK_AGENTS, HOOK_AGENT_LABELS, type HookAgent, type HookOptions, type HookPlan, type HookStatus } from '../hooks/contract.js';
 import { delegationGuidance } from '../native/delegation.js';
 import { readNativeOutput } from '../native/index.js';
-import { readLaunch, type LaunchRecord } from '../native/storage.js';
+import { readStoredLaunch, type StoredLaunchRecord } from '../native/storage.js';
 import type {
   ArtifactSliceResponse, DecisionSummary, EffectiveSettings, FilterTotals, GlobalSettingsResponse, InstructionContent,
   FilterTestResult, InstructionFile, LaunchDeleted, LaunchDetail, LaunchesResponse, LaunchSummary, Overview, ProfilesResponse,
-  ProjectDetail, ProjectDetailWithWarning, ProjectsResponse, ProjectSummary, RunsResponse, RunSummary, SettingsFileInfo, RulesApproval } from './contract.js';
+  ProjectDetail, ProjectDetailWithWarning, ProjectsResponse, ProjectSummary, RunsResponse, RunSummary, SettingsFileInfo, RulesApproval, HookPlanResponse, RecordsCleanup } from './contract.js';
 
 export interface UiDirectories {
   configDirectory: string;
@@ -54,7 +55,7 @@ const decisionSchema = z.object({
 });
 
 interface StoredLaunch {
-  record: LaunchRecord;
+  record: StoredLaunchRecord;
   directory: string;
   projectRoot: string;
 }
@@ -102,7 +103,7 @@ async function loadLaunches(stateDirectory: string, cache: RootCache): Promise<S
   }
   const launches = await Promise.all(names.filter((name) => ID_PATTERN.test(name)).map(async (name) => {
     try {
-      const { record, directory } = await readLaunch(stateDirectory, name);
+      const { record, directory } = await readStoredLaunch(stateDirectory, name);
       return { record, directory, projectRoot: await projectRootOf(cache, record.cwd) };
     } catch {
       return undefined;
@@ -170,11 +171,15 @@ function runTotals(run: RunRecord): FilterTotals {
 
 async function launchSummary(launch: StoredLaunch, decisions?: DecisionSummary[]): Promise<LaunchSummary> {
   const { record } = launch;
-  const snapshot = record.profileSnapshot;
+  const hook = 'origin' in record && record.origin === 'hook';
+  const snapshot = 'profileSnapshot' in record ? record.profileSnapshot : undefined;
+  const provider = record.provider ?? snapshot?.provider ?? 'claude';
   return {
     launchId: record.launchId,
-    provider: record.provider ?? snapshot?.provider ?? 'claude',
-    profile: record.profile,
+    origin: hook ? 'hook' : 'launch',
+    provider,
+    providerLabel: HOOK_AGENT_LABELS[provider],
+    profile: 'profile' in record ? record.profile : null,
     model: snapshot?.model ?? null,
     cwd: record.cwd,
     projectRoot: launch.projectRoot,
@@ -451,7 +456,7 @@ function checkId(id: string, label: string): void {
 async function findLaunch(directories: UiDirectories, launchId: string): Promise<StoredLaunch> {
   checkId(launchId, 'launch');
   try {
-    const { record, directory } = await readLaunch(directories.stateDirectory, launchId);
+    const { record, directory } = await readStoredLaunch(directories.stateDirectory, launchId);
     return { record, directory, projectRoot: await projectRootOf(new Map(), record.cwd) };
   } catch {
     throw new ApiFailure(404, 'Launch not found.');
@@ -728,11 +733,116 @@ export async function deleteLaunch(directories: UiDirectories, launchId: string,
   // crashed. Removing a running launch's records breaks its recovery footers,
   // so that needs an explicit confirmation.
   if (!confirmRunning) {
-    const record = await readFile(path.join(target, 'launch.json'), 'utf8').then((text) => JSON.parse(text) as { finishedAt?: string }).catch(() => undefined);
+    const record = await readFile(path.join(target, 'launch.json'), 'utf8').then((text) => JSON.parse(text) as { finishedAt?: string; origin?: string }).catch(() => undefined);
     // An unreadable record says nothing about whether it finished, so it needs confirming too.
-    if (!record?.finishedAt) throw new ApiFailure(409, 'This launch has no recorded finish, so it may still be running. Confirm to delete it anyway.');
+    // A hook session never records a finish, and deleting its records while it
+    // is open is harmless: its next command starts a new record.
+    if (!record?.finishedAt && record?.origin !== 'hook') throw new ApiFailure(409, 'This launch has no recorded finish, so it may still be running. Confirm to delete it anyway.');
   }
   // rm does not follow symlinks inside the folder, so only this launch is removed.
   await rm(target, { recursive: true });
   return { deleted: launchId };
+}
+
+const cleanupSchema = z.object({ olderThanDays: z.number().int().min(1).max(3650), confirm: z.boolean() }).strict();
+
+/**
+ * POST /api/records/cleanup. Without confirm it only counts what would go;
+ * with confirm it deletes those records, keeping any that became active.
+ */
+export async function postRecordsCleanup(directories: UiDirectories, body: unknown): Promise<RecordsCleanup> {
+  const request = parseBody(cleanupSchema, body);
+  const { deleteOldRecords, findOldRecords } = await import('../native/cleanup.js');
+  const summary = await findOldRecords(request.olderThanDays, directories.stateDirectory);
+  const counts = {
+    olderThanDays: request.olderThanDays,
+    records: summary.records.length,
+    hookSessions: summary.records.filter((record) => record.origin === 'hook').length,
+    bytes: summary.bytes,
+    oldest: summary.records[0]?.lastActivity ?? null,
+  };
+  if (!request.confirm) return { ...counts, deleted: 0, kept: 0 };
+  const result = await deleteOldRecords(summary, directories.stateDirectory);
+  return { ...counts, deleted: result.deleted.length, kept: result.kept.length };
+}
+
+/** The hook dependency is injectable so HTTP tests never read user agent settings. */
+export interface UiHooks {
+  hookStatus(options?: HookOptions): Promise<HookStatus[]>;
+  planHook(agent: HookAgent, action: HookPlan['action'], options?: HookOptions): Promise<HookPlan>;
+  applyHookPlan(plan: HookPlan, options?: HookOptions): Promise<HookStatus>;
+  /** Which file a plan was made for; part of the fingerprint apply checks. */
+  planIdentity(plan: HookPlan): string;
+  /** A copy of a config with likely secrets hidden, for showing only. */
+  redactForDisplay(text: string, agent: HookAgent): string | null;
+}
+
+function hookAgent(agent: string): HookAgent {
+  if (!HOOK_AGENTS.includes(agent as HookAgent)) throw new ApiFailure(404, 'Agent not found.');
+  return agent as HookAgent;
+}
+
+async function hookRequest<T>(action: () => Promise<T>): Promise<T> {
+  try { return await action(); }
+  catch (error) {
+    if (error instanceof ApiFailure) throw error;
+    if (error instanceof Error && (error.name === 'HookConflictError' || error.constructor.name === 'HookConflictError')) {
+      throw new ApiFailure(409, 'The file changed. Review the new version.');
+    }
+    // Fonn's own config errors are written to be shown: they name the file and
+    // the next step, never its contents. Anything else may carry private data.
+    if (error instanceof Error && error.name === 'HookConfigError') throw new ApiFailure(400, error.message);
+    if (error instanceof Error && /^Build fonn first/.test(error.message)) throw new ApiFailure(400, 'Build Fonn first with npm run build, then try again.');
+    if (error instanceof Error) throw new ApiFailure(400, 'The hook settings could not be updated or read. Check the agent configuration and file permissions.');
+    throw error;
+  }
+}
+
+export function getHooks(directories: UiDirectories, hooks: UiHooks): Promise<HookStatus[]> {
+  return hookRequest(() => hooks.hookStatus(directories));
+}
+
+/** The fingerprint apply compares, so the browser never has to send the file back. */
+export const fingerprint = (text: string | null): string => (text === null ? 'missing' : createHash('sha256').update(text).digest('hex'));
+
+/**
+ * What would be written: the new content and any extra files. Apply refuses
+ * when it differs from the plan the user reviewed, for example after a
+ * Homebrew update moved the command between preview and click.
+ */
+export const afterFingerprint = (plan: Pick<HookPlan, 'after' | 'files'>): string => fingerprint(JSON.stringify([plan.after, plan.files]));
+
+/**
+ * The file as it was when planned: its content and which file it is. Apply
+ * refuses when either changed, so a symlink pointed at another file with the
+ * same bytes is caught too. `identity` comes from the hooks module's
+ * planIdentity on the plan planHook returned.
+ */
+export const beforeFingerprint = (plan: Pick<HookPlan, 'before'>, identity: string): string => fingerprint(JSON.stringify([plan.before, identity]));
+
+export function getHookPlan(directories: UiDirectories, hooks: UiHooks, agent: string, action: unknown): Promise<HookPlanResponse> {
+  const validatedAgent = hookAgent(agent);
+  const validatedAction = parseBody(z.enum(['install', 'uninstall']), action);
+  return hookRequest(async () => {
+    const plan = await hooks.planHook(validatedAgent, validatedAction, directories);
+    // The browser only shows the plan, so it gets copies with likely secrets
+    // hidden. The fingerprints come from the real contents, which apply checks.
+    const shown = (text: string | null) => (text === null ? null : hooks.redactForDisplay(text, validatedAgent));
+    return { ...plan, before: shown(plan.before), after: shown(plan.after), beforeHash: beforeFingerprint(plan, hooks.planIdentity(plan)), afterHash: afterFingerprint(plan) };
+  });
+}
+
+export async function postHookApply(directories: UiDirectories, hooks: UiHooks, agent: string, body: unknown): Promise<HookStatus> {
+  const validatedAgent = hookAgent(agent);
+  const change = parseBody(z.object({
+    action: z.enum(['install', 'uninstall']),
+    beforeHash: z.string().regex(/^(?:[0-9a-f]{64}|missing)$/),
+    afterHash: z.string().regex(/^[0-9a-f]{64}$/),
+  }).strict(), body);
+  return hookRequest(async () => {
+    const plan = await hooks.planHook(validatedAgent, change.action, directories);
+    if (beforeFingerprint(plan, hooks.planIdentity(plan)) !== change.beforeHash) throw new ApiFailure(409, 'The file changed. Review the new version.');
+    if (afterFingerprint(plan) !== change.afterHash) throw new ApiFailure(409, 'The change Fonn would make is different now, for example after an update. Review the new version.');
+    return hooks.applyHookPlan(plan, directories);
+  });
 }

@@ -1,10 +1,10 @@
 ---
 title: Home
-description: A local CLI around native Claude Code and Codex. Saved model profiles, subagent guidance, and conservative filtering of noisy shell output with recoverable originals.
+description: Install a hook once and keep using your agent. Fonn shortens noisy shell output before the model reads it, with recoverable originals and a local UI.
 template: splash
 hero:
   title: Less noise in the context window. Nothing lost.
-  tagline: Fonn opens the native Claude Code or Codex CLI with your saved model profile. It trims recognized noisy shell output before the model reads it, and keeps every original on disk so the agent can read it back.
+  tagline: Install Fonn once, add its hook to claude, codex, Crush or OpenCode, and keep working as you do now. Fonn trims recognized noisy shell output before the model reads it, and keeps every original on disk so the agent can read it back.
   actions:
     - text: Install
       link: /start/install/
@@ -17,30 +17,36 @@ hero:
 import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 <CardGrid>
-  <Card title="Saved profiles" icon="setting">
-    A provider, model and effort level under a short name, so `fonn --profile focused` always starts the same way.
+  <Card title="Hooks" icon="puzzle">
+    `fonn hooks install --agent <agent>` adds the filter to Claude Code, Codex, Crush or OpenCode. Keep using them, or a desktop app on top of them.
   </Card>
-  <Card title="Subagent guidance" icon="rocket">
-    Startup instructions ask the agent to hand meaningful independent work to its built-in subagents. Simple tasks stay with the parent.
+  <Card title="Fonn UI" icon="setting">
+    `fonn ui` manages hooks, filters and your own rules, and shows every session with its full originals.
   </Card>
   <Card title="Output filtering" icon="document">
     Recognized noisy shell output, like test progress rows, is shortened before the model reads it. The full original stays recoverable.
   </Card>
-  <Card title="Your CLI, unchanged" icon="approve-check">
-    Claude Code and Codex keep their own login, settings, permissions and questions. Fonn never bypasses an approval.
+  <Card title="Your agent, unchanged" icon="approve-check">
+    Login, settings, permissions and questions stay the agent's own. Fonn never bypasses an approval.
+  </Card>
+  <Card title="Optional launchers" icon="rocket">
+    `fonn claude`, `fonn codex` and `fonn chat` start an agent for you, with saved profiles and subagent guidance.
   </Card>
 </CardGrid>
 
 ## Quick start
 
+Hooks need a source checkout until 0.2.0. Homebrew installs 0.1.0, which has no hooks yet. The [install guide](/start/install/) has both.
+
 ```sh
-brew tap nord-forge/fonn https://github.com/nord-forge/fonn
-brew install --cask nord-forge/fonn/fonn
-cd /path/to/your/project && fonn
+git clone https://github.com/nord-forge/fonn.git
+cd fonn && npm ci --ignore-scripts && npm run build
+node packages/cli/dist/cli/main.js hooks install --agent claude
+node packages/cli/dist/cli/main.js ui
 ```
 
 <CardGrid>
-  <LinkCard title="Install" description="Homebrew, a source checkout, or just the standalone filters." href="/start/install/" />
+  <LinkCard title="Install" description="A source checkout or Homebrew, the hook for your agent, or just the standalone filters." href="/start/install/" />
   <LinkCard title="How the filter decides" description="Step through every check with real samples or your own output." href="/how-it-works/" />
 </CardGrid>
 

@@ -10,8 +10,9 @@ import type { FolderPicked, FolderPickerInfo } from './contract.js';
 import { pickerCommand, systemFolderPicker, type FolderPicker } from './folder-picker.js';
 import { uiAssets } from './assets.generated.js';
 import {
+  getHooks, getHookPlan, postHookApply, type UiHooks,
   ApiFailure, DEFAULT_SLICE, deleteLaunch, deleteProfile, getArtifact, getGlobalSettings, getInstruction, getLaunch, getLaunches,
-  getOverview, getProfiles, getProject, getProjects, getRuns, postFilterTest, postProfile, putGlobalRules, putGlobalSetting,
+  getOverview, getProfiles, getProject, getProjects, getRuns, postFilterTest, postRecordsCleanup, postProfile, putGlobalRules, putGlobalSetting,
   putProfile, putProjectSettings, putRulesApproval, type UiDirectories,
 } from './api.js';
 
@@ -31,6 +32,8 @@ export interface UiServerOptions extends UiDirectories {
   token?: string;
   /** Tests pass their own picker, or null for none. Otherwise the system dialog is used where one exists. */
   folderPicker?: FolderPicker | null;
+  /** Tests supply an offline hook implementation. */
+  hooks?: UiHooks;
 }
 
 /** One folder dialog at a time; a second request while it is open gets a 409. */
@@ -109,7 +112,7 @@ function pathSegment(value: string): string {
 }
 
 /** The handlers for one API path, keyed by method. Undefined for unknown paths. */
-function route(directories: UiDirectories, url: URL, folders: PickerState): Methods | undefined {
+function route(directories: UiDirectories, url: URL, folders: PickerState, hooks: () => Promise<UiHooks>): Methods | undefined {
   const root = url.searchParams.get('root');
   switch (url.pathname) {
     case '/api/pick-folder': return {
@@ -123,6 +126,7 @@ function route(directories: UiDirectories, url: URL, folders: PickerState): Meth
         finally { folders.open = false; }
       },
     };
+    case '/api/hooks': return { GET: async () => getHooks(directories, await hooks()) };
     case '/api/overview': return { GET: () => getOverview(directories) };
     case '/api/profiles': return { GET: () => getProfiles(directories), POST: (body) => postProfile(directories, body) };
     case '/api/settings/global': return { GET: () => getGlobalSettings(directories), PUT: (body) => putGlobalSetting(directories, body) };
@@ -135,6 +139,14 @@ function route(directories: UiDirectories, url: URL, folders: PickerState): Meth
     case '/api/launches': return { GET: () => getLaunches(directories, root) };
     case '/api/runs': return { GET: () => getRuns(directories, root) };
     case '/api/filter/test': return { POST: (body) => postFilterTest(directories, body) };
+    case '/api/records/cleanup': return { POST: (body) => postRecordsCleanup(directories, body) };
+  }
+  const hook = /^\/api\/hooks\/([^/]+)\/(plan|apply)$/.exec(url.pathname);
+  if (hook) {
+    const agent = pathSegment(hook[1]!);
+    return hook[2] === 'plan'
+      ? { GET: async () => getHookPlan(directories, await hooks(), agent, url.searchParams.get('action')) }
+      : { POST: async (body) => postHookApply(directories, await hooks(), agent, body) };
   }
   const profile = /^\/api\/profiles\/([^/]+)$/.exec(url.pathname);
   if (profile) {
@@ -242,6 +254,7 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServer>
       : pickerCommand().then((command) => (command ? systemFolderPicker(command) : null)),
     open: false,
   };
+  const hooks = async (): Promise<UiHooks> => options.hooks ?? await import('../hooks/index.js');
   let port = 0;
   // Cookies are not separated by port, so each server gets its own name.
   const cookieName = () => `fonn_ui_${port}`;
@@ -254,7 +267,7 @@ export async function startUiServer(options: UiServerOptions): Promise<UiServer>
     if (origin !== undefined && origin !== `http://${host}`) return sendError(response, 403, 'Forbidden.');
     if (!request.url?.startsWith('/')) return sendError(response, 400, 'Bad request.');
     const url = new URL(request.url, `http://${host}`);
-    const methods = url.pathname.startsWith('/api/') ? route(directories, url, folders) : undefined;
+    const methods = url.pathname.startsWith('/api/') ? route(directories, url, folders, hooks) : undefined;
     const allowed = allowedMethods(methods);
     const method = request.method ?? '';
     if (!allowed.includes(method)) return sendError(response, 405, 'Method not allowed.', { Allow: allowed.join(', ') });

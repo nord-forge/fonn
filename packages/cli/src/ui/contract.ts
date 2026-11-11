@@ -31,6 +31,29 @@
 //
 // All endpoints return JSON. Errors use ApiError with a matching status.
 
+import type { HookAgent, HookPlan, HookStatus } from '../hooks/contract.js';
+
+/** GET /api/hooks returns HookStatus[]. */
+export type { HookPlan, HookStatus };
+
+/**
+ * GET /api/hooks/<agent>/plan. `beforeHash` is the SHA-256 of `before`
+ * (or "missing" when the file does not exist), so apply can send a small
+ * fingerprint instead of the whole file, whatever its size.
+ */
+export interface HookPlanResponse extends HookPlan {
+  beforeHash: string;
+  /** SHA-256 of what would be written (after and files). */
+  afterHash: string;
+}
+
+/** POST /api/hooks/<agent>/apply. Returns HookStatus; 409 when the file or the planned change no longer matches. */
+export interface HookApply {
+  action: HookPlan['action'];
+  beforeHash: string;
+  afterHash: string;
+}
+
 export type Provider = 'claude' | 'codex';
 export type FilterMode = 'filter' | 'observe' | 'off';
 export type FilterLevel = 'strict' | 'standard' | 'similar';
@@ -189,8 +212,10 @@ export interface InstructionContent {
 
 export interface LaunchSummary {
   launchId: string;
-  provider: Provider;
-  profile: string;
+  origin: 'launch' | 'hook';
+  provider: HookAgent;
+  providerLabel: string;
+  profile: string | null;
   model: string | null;
   cwd: string;
   projectRoot: string;
@@ -255,6 +280,7 @@ export interface RunsResponse {
 
 /** Paths the web interface may route to (client-side, hash based). */
 export type UiRoute =
+  | '#/global/agents'
   | '#/global'
   | '#/global/profiles'
   | '#/global/activity'
@@ -371,4 +397,21 @@ export interface FolderPickerInfo {
 }
 export interface FolderPicked {
   path: string | null;
+}
+
+/**
+ * POST /api/records/cleanup, body { olderThanDays, confirm }. Records whose
+ * last activity is older than that many days, with their archived originals.
+ * confirm false only counts; confirm true deletes. Nothing runs on its own.
+ */
+export interface RecordsCleanup {
+  olderThanDays: number;
+  records: number;
+  hookSessions: number;
+  bytes: number;
+  /** Last activity of the oldest record, or null when there are none. */
+  oldest: string | null;
+  deleted: number;
+  /** Records skipped because they became active since they were counted. */
+  kept: number;
 }
