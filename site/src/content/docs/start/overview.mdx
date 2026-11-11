@@ -13,7 +13,7 @@ Fonn shortens noisy command output before your coding agent reads it. You instal
 It works in three layers:
 
 - **Hooks.** `fonn hooks install --agent <agent>` adds one hook to the agent's own user settings. Every session then gets the filter, with your global settings, the project's settings and the project rules you approved. Your login, permissions and other hooks stay as they are.
-- **`fonn ui`.** A local web interface to manage hooks, filters and your own rules, try them on a test bench, and review every session with the full originals.
+- **`fonn ui`, in alpha.** A local web interface to manage hooks, filters and your own rules, try them on a test bench, and review every session with the full originals.
 - **Fonn's own launchers.** Optional. `fonn claude` and `fonn codex` open the native interface with saved profiles and subagent guidance. `fonn chat` is a small agent for local models. `fonn run` starts a structured task through the Claude Agent SDK with validated results, budgets and estimated usage accounting. That path uses an API key and API billing. See [permissions and billing](/configuration/permissions-and-billing/).
 
 ## How it works

@@ -1,5 +1,7 @@
 # Fonn UI
 
+> **Alpha.** `fonn ui` is experimental, and its pages may change between releases. Every change it makes is shown first and waits for your confirmation. `fonn hooks` and `fonn config` stay the stable way to manage Fonn.
+
 `fonn ui` opens a local web interface for Fonn's hooks, settings, filter rules, profiles and history. Its first page, Agents, manages the hooks from [Use Fonn with the tools you already have](hooks.md). It runs inside the Fonn CLI, so there is nothing extra to install.
 
 ```sh
