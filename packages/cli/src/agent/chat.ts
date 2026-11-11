@@ -25,6 +25,15 @@ export interface ChatDependencies extends TerminalOptions {
 
 const commands = '/help  Show commands\n/exit  Exit (also Ctrl+D)\n/clear  Start a new conversation\n/context  Show the context estimate';
 
+/**
+ * True when the server runs on this machine. Anything else receives every
+ * file the model reads, so reads then ask first.
+ */
+export function isLocalServer(baseUrl: string): boolean {
+  const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return host === 'localhost' || host.endsWith('.localhost') || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
 function serverAddress(baseUrl: string): string {
   const url = new URL(baseUrl);
   return `${url.protocol}//${url.host}${url.pathname}`;
@@ -54,8 +63,9 @@ export async function runChat(options: ChatOptions, dependencies: ChatDependenci
     host.cancelQuestion();
     host.line(empty ? 'Press Ctrl+C again to exit.' : 'Input cancelled.');
   };
+  const local = isLocalServer(options.baseUrl);
   const newAgent = () => (dependencies.createAgent ?? createAgent)({
-    client, host, root: options.root,
+    client, host, root: options.root, confirmReads: !local,
     // Core owns Agent.sessionId. This directory ID is allocated before construction.
     stateDirectory: join(resolve(options.stateDirectory ?? getDefaultStateDirectory()), 'agent', randomUUID()),
     contextTokens: contextLimit, filterMode: options.filterMode, filterLevel: options.filterLevel, filterRules: options.filterRules,
@@ -63,7 +73,7 @@ export async function runChat(options: ChatOptions, dependencies: ChatDependenci
   try {
     let agent = newAgent();
     let contextTokens = estimateTokens(agent.messages(), JSON.stringify(toolDefinitions).length);
-    host.line(`Fonn chat\nModel: ${options.model}\nServer: ${serverAddress(options.baseUrl)}\nProject: ${options.root}\nFilter: ${options.filterMode ?? 'filter'}, level ${options.filterLevel ?? 'standard'}\nEvery command and file change asks first. Session approvals can remember an exact command or file.\nType /help for commands.`);
+    host.line(`Fonn chat\nModel: ${options.model}\nServer: ${serverAddress(options.baseUrl)}\nProject: ${options.root}\nFilter: ${options.filterMode ?? 'filter'}, level ${options.filterLevel ?? 'standard'}\nEvery command and file change asks first. Session approvals can remember an exact command or file.\n${local ? 'Files that may hold secrets, such as .env, ask before they are read.' : 'This server is not on this machine, so every file read asks first: what the model reads is sent there.'}\nType /help for commands.`);
     host.readline.on('SIGINT', interrupt);
     const onInterrupt = dependencies.onInterrupt ?? (handler => { process.on('SIGINT', handler); return () => { process.off('SIGINT', handler); }; });
     detach = onInterrupt(interrupt);

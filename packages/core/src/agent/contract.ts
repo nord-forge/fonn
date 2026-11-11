@@ -9,8 +9,10 @@
 //   through AgentHost.approve. There is no flag, mode or setting that skips
 //   it. "Remember" only covers the exact same command, or writes to the exact
 //   same file, for the rest of the session.
-// - Reading inside the project root needs no approval. Reading outside it,
-//   or through a symlink that leaves it, asks.
+// - Reading inside the project root needs no approval, unless the file looks
+//   like a secret (.env, private keys, credentials) or confirmReads is set
+//   for a server that is not on this machine. Reading outside the root, or
+//   through a symlink that leaves it, always asks.
 // - Command output goes through Fonn's output filter before the model sees
 //   it. Originals are archived and the model can read them back in bounded
 //   slices with the read_original tool.
@@ -141,6 +143,12 @@ export interface AgentOptions {
   contextTokens?: number;
   /** Per command. Defaults to 120 seconds. */
   commandTimeoutMs?: number;
+  /**
+   * Ask before every read and folder listing, also inside the project. Set it
+   * when the model server is not on this machine, because whatever the model
+   * reads is sent there. Secret files such as .env always ask either way.
+   */
+  confirmReads?: boolean;
 }
 
 export interface Agent {

@@ -174,3 +174,28 @@ test('the real core loop renders a resolved model failure and stores only sessio
     assert.doesNotMatch(record + io.text(), /fixture-key/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test('only a server on this machine counts as local, so reads elsewhere ask first', async () => {
+  const { isLocalServer } = await import('../../src/agent/chat.js');
+  for (const url of ['http://localhost:11434/v1', 'http://127.0.0.1:1234/v1', 'http://[::1]:11434/v1', 'http://ollama.localhost/v1']) assert.equal(isLocalServer(url), true, url);
+  for (const url of ['https://api.moonshot.ai/v1', 'http://192.168.1.20:11434/v1', 'http://localhost.evil.example/v1', 'https://127.0.0.1.nip.io/v1']) assert.equal(isLocalServer(url), false, url);
+});
+
+test('a server elsewhere makes every read ask, and the header says why', async () => {
+  for (const [baseUrl, confirmReads, notice] of [
+    ['http://localhost:11434/v1', false, /Files that may hold secrets, such as \.env, ask before they are read\./],
+    ['https://api.moonshot.ai/v1', true, /This server is not on this machine, so every file read asks first/],
+  ] as const) {
+    const io = streams();
+    const agents: AgentOptions[] = [];
+    const run = runChat({ ...options, baseUrl }, {
+      ...io, env: {}, onInterrupt: () => () => {}, createClient: fakeClient,
+      createAgent: settings => { agents.push(settings); return { sessionId: 'fixture', messages: () => [], send: async () => {} }; },
+    });
+    await io.waitFor('› ');
+    assert.equal(agents[0]!.confirmReads, confirmReads, baseUrl);
+    assert.match(io.text(), notice);
+    io.input.write('/exit\n');
+    assert.equal(await run, 0);
+  }
+});

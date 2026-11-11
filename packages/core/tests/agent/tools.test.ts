@@ -137,3 +137,35 @@ test('unknown tools and invalid JSON return errors for the model', async () => {
   assert.match((await call('read_file', '{"path": ')).content, /not valid JSON/);
   assert.match((await call('read_file', { path: 'a', extra: true })).content, /invalid arguments for read_file/);
 });
+
+test('secret files always ask before they are read, and templates do not', async () => {
+  const { root, approvals, call } = await setup((request) => (request.target.endsWith('id_ed25519') ? { allow: false, reason: 'Never read keys' } : { allow: true }));
+  await writeFile(join(root, '.env'), 'API_KEY=synthetic\n');
+  await writeFile(join(root, '.env.example'), 'API_KEY=\n');
+  await mkdir(join(root, '.ssh'));
+  await writeFile(join(root, '.ssh', 'id_ed25519'), 'synthetic key\n');
+  await writeFile(join(root, 'server.pem'), 'synthetic\n');
+
+  assert.equal((await call('read_file', { path: '.env.example' })).ok, true);
+  assert.equal(approvals.length, 0, 'a template is an ordinary file');
+  assert.equal((await call('read_file', { path: '.env' })).ok, true);
+  assert.equal(approvals.at(-1)!.kind, 'read');
+  assert.match(approvals.at(-1)!.summary, /\.env, which may hold secrets/);
+  await call('read_file', { path: 'server.pem' });
+  assert.equal(approvals.length, 2);
+  const key = await call('read_file', { path: '.ssh/id_ed25519' });
+  assert.equal(key.ok, false);
+  assert.match(key.content, /declined this read\. Their reason: Never read keys/);
+  assert.doesNotMatch(key.content, /synthetic key/);
+});
+
+test('with a server elsewhere every read and listing asks, and always covers that path', async () => {
+  const { root, approvals, call } = await setup((request) => ({ allow: true, remember: request.target.endsWith('a.txt') }), { confirmReads: true });
+  await writeFile(join(root, 'a.txt'), 'hello\n');
+  assert.equal((await call('read_file', { path: 'a.txt' })).ok, true);
+  assert.match(approvals[0]!.detail, /Its contents go to the model server\./);
+  await call('read_file', { path: 'a.txt' });
+  assert.equal(approvals.length, 1, 'remembered for this exact file');
+  await call('list_files', {});
+  assert.equal(approvals.length, 2, 'listing a folder asks too');
+});
