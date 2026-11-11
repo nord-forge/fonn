@@ -55,7 +55,7 @@ Usage:
   fonn output <task-id> <artifact-id> [--offset <n>] [--limit <n>] [--state-dir <path>]
   fonn native-output <launch-id> <artifact-id> [--offset <n>] [--limit <n>] [--state-dir <path>]
   fonn doctor [--json]
-  fonn ui [--port <n>] [--no-open] [--state-dir <path>]   Local web interface for settings, rules and history; see fonn help ui
+  fonn ui [--port <n>] [--no-open] [--state-dir <path>]   Local web interface, in alpha, for settings, rules and history; see fonn help ui
   fonn records clean --older-than <days> [--dry-run] [--yes]   Delete old launch and hook session records; see fonn help records
   fonn hooks [status|install|uninstall] [--agent <agent>]... [--yes] [--json]   Filter in claude, codex, Crush and OpenCode you start yourself; see fonn help hooks
   fonn hook --agent <agent>            Run by the agent's hook; reads one event on stdin
@@ -185,10 +185,14 @@ Changed defaults or deleted custom profiles do not replace a saved profile snaps
 This is separate from fonn run --resume, which resumes a Claude SDK task.
 `;
 
-const uiHelp = `Fonn ui: a local web interface for settings, rules and history
+const uiHelp = `Fonn ui (alpha): a local web interface for settings, rules and history
 
 Usage:
   fonn ui [--port <n>] [--no-open] [--state-dir <path>]
+
+fonn ui is an alpha. It is experimental, and its pages may change between
+releases. Every change it makes is shown first and waits for your
+confirmation. fonn hooks and fonn config stay the stable way to manage Fonn.
 
 Change global and project settings, write filter rules and try them on a
 test bench, approve project rules, and manage profiles. Also shows native

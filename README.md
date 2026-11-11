@@ -67,11 +67,11 @@ If you have a shell alias named `fonn`, it shadows the Homebrew command. Check w
 
 Desktop apps and editor extensions that run Claude Code or Codex underneath read the same user settings, so install the hook for that agent and restart the app. `fonn hooks install` without `--agent` offers the hook for every agent it finds, `fonn hooks` shows the status, and `fonn hooks uninstall` removes exactly what Fonn added. Settings come from each session's project folder, and rules from a project's files only apply once you approve them. See [hooks](docs/hooks.md).
 
-**3. Manage it.** Run `fonn ui` (see below).
+**3. Manage it.** Run `fonn ui` (see below), which is in alpha.
 
-## Fonn UI
+## Fonn UI (alpha)
 
-`fonn ui` opens a local web interface. Its **Agents** page shows which agents have the hook and lets you install, update or remove it. Its **Rules** page builds your own filter rules from real output: paste what a command printed and click the lines the model does not need. You can also try rules on a test bench, give a project its own settings and rules, approve project rules, manage profiles, and look through every hooked session and launch with what was shortened and the full originals. It listens on `127.0.0.1` only, behind a new private link each time. See [the Fonn UI guide](docs/ui.md).
+`fonn ui` is an alpha: it is experimental, and its pages may change between releases. It opens a local web interface. Its **Agents** page shows which agents have the hook and lets you install, update or remove it. Its **Rules** page builds your own filter rules from real output: paste what a command printed and click the lines the model does not need. You can also try rules on a test bench, give a project its own settings and rules, approve project rules, manage profiles, and look through every hooked session and launch with what was shortened and the full originals. It listens on `127.0.0.1` only, behind a new private link each time. See [the Fonn UI guide](docs/ui.md).
 
 ## Use the filter without installing Fonn
 

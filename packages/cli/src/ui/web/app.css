@@ -504,3 +504,7 @@ label { display: block; font-size: 0.8125rem; font-weight: 600; overflow-wrap: a
 .project-card .known-project-meta { margin: 2px 0 0; }
 .project-card .project-badges { margin-top: 6px; }
 .project-card-actions { margin-top: auto; padding-top: 14px; }
+/* fonn ui is an alpha; the label sits next to "local" in the sidebar and the mobile header. */
+.brand-label + .brand-label { margin-left: 4px; }
+.brand-alpha { border-color: var(--warn); color: var(--warn); }
+.page-footer strong { color: var(--text); font-weight: 600; }
