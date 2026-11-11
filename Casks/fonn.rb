@@ -1,6 +1,6 @@
 cask "fonn" do
-  version "0.2.0"
-  sha256 "0961f5b0c991d6489e419678fc30a787959c84375000f85ef3e2fd1f3ddd97c7"
+  version "0.2.1"
+  sha256 "e77b36c4014963d82940c5bdb13f2a6fbf513bd9c2c75a77f7e41e4d60edb40e"
 
   url "https://github.com/nord-forge/fonn/releases/download/v#{version}/fonn-#{version}.tar.gz"
   name "Fonn"
