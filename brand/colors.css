@@ -1,0 +1,11 @@
+/* fonn Option A - colour tokens */
+:root {
+  --fonn-night: #09131d;
+  --fonn-surface: #0f1e2d;
+  --fonn-ice: #84bdf3;
+  --fonn-light-ice: #a9d1f7;
+  --fonn-snow: #e3eef8;
+  --fonn-frost: #a2b8cc;
+  --fonn-deep: #0e2236;
+  --fonn-blue: #1d5fa8;
+}

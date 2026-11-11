@@ -1,4 +1,9 @@
-# Fonn
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/logos/fonn-horizontal-dark-transparent.png">
+    <img alt="Fonn" src="brand/logos/fonn-horizontal-light-transparent.png" width="260">
+  </picture>
+</h1>
 
 Fonn makes noisy command output smaller before your coding agent reads it, so fewer tokens go to test runs, build logs and repeated lines. Install its hook once and keep using the tools you have: `claude`, `codex`, Crush, OpenCode, or a desktop app on top of them. Manage filters, your own rules and the hooks themselves in a local UI. Originals always stay recoverable.
 

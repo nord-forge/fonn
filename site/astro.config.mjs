@@ -16,8 +16,20 @@ export default defineConfig({
     starlight({
       title: 'Fonn',
       description: 'A local CLI around native Claude Code and Codex. Saved model profiles, subagent guidance, and conservative filtering of noisy shell output with recoverable originals.',
-      logo: { src: './public/favicon.svg', alt: '' },
+      // The brand mark from brand/logos: light lines on the dark theme, dark blue on the light one.
+      logo: { dark: './src/assets/brand/mark-dark.svg', light: './src/assets/brand/mark-light.svg', alt: '' },
       favicon: '/favicon.svg',
+      head: [
+        { tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '48x48' } },
+        { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
+        // The link preview for GitHub, LinkedIn and chat apps: brand/social/fonn-github-dark.png.
+        { tag: 'meta', attrs: { property: 'og:image', content: 'https://fonn.nord-forge.dev/og.png' } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1280' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '640' } },
+        { tag: 'meta', attrs: { property: 'og:image:alt', content: 'fonn. Your CLI, a little clearer.' } },
+        { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://fonn.nord-forge.dev/og.png' } },
+      ],
       customCss: [
         './src/styles/theme.css',
         './src/styles/hero.css',

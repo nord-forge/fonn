@@ -114,7 +114,9 @@ code, .mono, .path { font-family: var(--mono); font-size: 0.8125rem; overflow-wr
   border-right: 1px solid var(--border);
 }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 1.5rem; font-weight: 650; letter-spacing: -0.045em; text-decoration: none; }
-.brand-mark { display: grid; place-items: center; width: 30px; height: 32px; border: 1px solid var(--accent); border-radius: 8px; color: var(--accent-strong); font: 600 1.6rem/1 var(--mono); }
+/* The Fonn mark from brand/logos, drawn in the interface's own colours so it follows the light and dark themes. */
+.brand-mark { flex: none; width: 30px; height: 30px; color: var(--accent-strong); }
+.brand-mark-line { fill: var(--accent); }
 .brand-label { align-self: center; margin-left: 2px; padding: 2px 7px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; font: 400 0.6875rem/1.5 var(--mono); letter-spacing: 0; }
 .desktop-brand { margin: 0 10px 38px; }
 .nav-heading { margin: 0 12px 10px; color: var(--muted); font: 600 0.6875rem/1.5 var(--sans); text-transform: uppercase; letter-spacing: 0.12em; }
