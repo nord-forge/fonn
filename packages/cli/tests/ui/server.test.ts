@@ -327,6 +327,46 @@ test('fonn ui change endpoints save through the stores and refuse invalid values
   await assert.rejects(stat(running), { code: 'ENOENT' });
 });
 
+test('a project you save settings for stays listed until you forget it, and only while it still looks like a project', async (t) => {
+  const { server, repository, outsider, config } = await fixture(t);
+  const change = changer(server);
+  const listed = async () => (await change('GET', '/api/projects')).body.projects as Array<{ root: string; savedAt: string | null; launches: number }>;
+  // No session has run in the repository yet, so it is not listed.
+  assert.ok(!(await listed()).some((project) => project.root === repository));
+  const opened = await change('GET', `/api/project?root=${encodeURIComponent(repository)}`);
+  const saved = await change('PUT', '/api/project/settings', { root: repository, scope: 'local', version: opened.body.local.version, settings: { filterLevel: 'strict' } });
+  assert.equal(saved.status, 200);
+  const remembered = (await listed()).find((project) => project.root === repository);
+  assert.ok(remembered?.savedAt);
+  assert.equal(remembered.launches, 0);
+  // The list holds paths only, in a private file in Fonn's config folder.
+  const file = path.join(config, 'projects.json');
+  assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).projects.map((project: { root: string }) => project.root), [repository]);
+  assert.equal((await stat(file)).mode & 0o777, 0o600);
+  // A remembered folder that no longer looks like a project drops out, and the list cannot add an outsider.
+  await writeFile(file, JSON.stringify({ format: 1, projects: [{ root: outsider, savedAt: '2026-01-01T00:00:00.000Z' }, { root: repository, savedAt: '2026-01-01T00:00:00.000Z' }] }));
+  const roots = (await listed()).map((project) => project.root);
+  assert.ok(roots.includes(repository));
+  assert.ok(!roots.includes(outsider));
+  assert.equal((await change('GET', `/api/project?root=${encodeURIComponent(outsider)}`)).status, 404);
+  // Forgetting changes only the list. The project's own settings file stays.
+  const forgotten = await change('DELETE', `/api/projects/remembered?root=${encodeURIComponent(repository)}`);
+  assert.equal(forgotten.status, 200);
+  assert.ok(!forgotten.body.projects.some((project: { root: string }) => project.root === repository));
+  assert.match(await readFile(path.join(repository, '.fonn', 'settings.local.json'), 'utf8'), /strict/);
+  assert.equal((await change('DELETE', `/api/projects/remembered?root=${encodeURIComponent(repository)}`)).status, 404);
+  assert.equal((await change('DELETE', '/api/projects/remembered?root=relative')).status, 400);
+  // A broken or symlinked list counts as empty and is never written through.
+  await writeFile(file, '{nope');
+  assert.ok(Array.isArray(await listed()));
+  await rm(file);
+  await symlink(path.join(outsider, 'secret.md'), file);
+  assert.equal((await change('GET', `/api/project?root=${encodeURIComponent(repository)}`)).status, 200);
+  const again = await change('GET', `/api/project?root=${encodeURIComponent(repository)}`);
+  assert.equal((await change('PUT', '/api/project/settings', { root: repository, scope: 'local', version: again.body.local.version, settings: {} })).status, 200);
+  assert.equal(await readFile(path.join(outsider, 'secret.md'), 'utf8'), 'not for the interface\n');
+});
+
 test('fonn ui opens one system folder dialog at a time and returns the chosen path', async (t) => {
   const base = await mkdtemp(path.join(await realpath(os.tmpdir()), 'fonn-ui-picker-'));
   t.after(() => rm(base, { recursive: true, force: true }));

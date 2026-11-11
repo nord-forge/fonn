@@ -403,7 +403,7 @@ label { display: block; font-size: 0.8125rem; font-weight: 600; overflow-wrap: a
 .project-row .known-project-meta { grid-column: 1; margin: 0; }
 .project-badges { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1; }
 .project-badges:empty { display: none; }
-.project-rules-link { grid-column: 2; grid-row: 1 / span 3; font-size: 0.8125rem; }
+.project-row-actions { display: flex; gap: 14px; grid-column: 2; grid-row: 1 / span 3; font-size: 0.8125rem; }
 .button-link { display: inline-flex; align-items: center; min-height: 40px; padding: 7px 14px; border: 1px solid var(--muted); border-radius: 7px; font: 600 0.8125rem/1.5 var(--sans); text-decoration: none; }
 .button-link.primary { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
 .projects-actions { margin-top: 18px; }

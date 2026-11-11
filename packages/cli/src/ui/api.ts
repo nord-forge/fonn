@@ -18,6 +18,7 @@ import { readRun } from '@nord-forge/fonn-core/state';
 import { HOOK_AGENTS, HOOK_AGENT_LABELS, type HookAgent, type HookOptions, type HookPlan, type HookStatus } from '../hooks/contract.js';
 import { delegationGuidance } from '../native/delegation.js';
 import { readNativeOutput } from '../native/index.js';
+import { forgetProject, readKnownProjects, rememberProject } from './known-projects.js';
 import { readStoredLaunch, type StoredLaunchRecord } from '../native/storage.js';
 import type {
   ArtifactSliceResponse, DecisionSummary, EffectiveSettings, FilterTotals, GlobalSettingsResponse, InstructionContent,
@@ -222,7 +223,7 @@ async function collectProjects(directories: UiDirectories, cache: RootCache): Pr
   const touch = (root: string, time: string) => {
     let project = projects.get(root);
     if (!project) {
-      project = { root, name: path.basename(root) || root, launches: 0, runs: 0, lastUsed: null, hasSharedSettings: false, hasLocalSettings: false };
+      project = { root, name: path.basename(root) || root, launches: 0, runs: 0, lastUsed: null, hasSharedSettings: false, hasLocalSettings: false, savedAt: null };
       projects.set(root, project);
     }
     if (project.lastUsed === null || time > project.lastUsed) project.lastUsed = time;
@@ -230,12 +231,21 @@ async function collectProjects(directories: UiDirectories, cache: RootCache): Pr
   };
   for (const launch of launches) touch(launch.projectRoot, launch.record.createdAt).launches++;
   for (const run of runs) touch(await projectRootOf(cache, run.cwd), run.startedAt).runs++;
+  // Projects you set up here before any agent worked in them. They only count
+  // while they still look like a project, so the list cannot point anywhere else.
+  for (const known of await readKnownProjects(directories.configDirectory)) {
+    const existing = projects.get(known.root);
+    if (existing) { existing.savedAt = known.savedAt; continue; }
+    if (!await looksLikeProject(known.root)) continue;
+    projects.set(known.root, { root: known.root, name: path.basename(known.root) || known.root, launches: 0, runs: 0, lastUsed: null, hasSharedSettings: false, hasLocalSettings: false, savedAt: known.savedAt });
+  }
   const list = [...projects.values()];
   await Promise.all(list.map(async (project) => {
     project.hasSharedSettings = await isRegularFile(path.join(project.root, SHARED_SETTINGS_FILE));
     project.hasLocalSettings = await isRegularFile(path.join(project.root, LOCAL_SETTINGS_FILE));
   }));
-  return list.sort((a, b) => (b.lastUsed ?? '').localeCompare(a.lastUsed ?? '') || a.root.localeCompare(b.root));
+  const recent = (project: ProjectSummary) => [project.lastUsed ?? '', project.savedAt ?? ''].sort().at(-1)!;
+  return list.sort((a, b) => recent(b).localeCompare(recent(a)) || a.root.localeCompare(b.root));
 }
 
 /** A folder that is plainly a project: a Git repository root or one with a Fonn settings file. */
@@ -623,7 +633,19 @@ export async function putProjectSettings(directories: UiDirectories, body: unkno
   if (change.scope === 'local' && Object.keys(change.settings).length > 0 && await notIgnoredByGit(root, written)) {
     detail.warning = `${LOCAL_SETTINGS_FILE} is not ignored by Git. Add .fonn/ to .gitignore to keep personal settings out of commits.`;
   }
+  // Remember it, so it stays on the Projects page before any agent works in it.
+  // The save already succeeded, so a failure here only costs that convenience.
+  await rememberProject(directories.configDirectory, root).catch(() => undefined);
   return detail;
+}
+
+/** DELETE /api/projects/remembered?root=: Fonn forgets a project you saved settings for. Nothing in the project changes. */
+export async function deleteRememberedProject(directories: UiDirectories, root: string | null): Promise<ProjectsResponse> {
+  if (!root || root.includes('\0') || !path.isAbsolute(root)) throw new ApiFailure(400, 'The root must be an absolute path.');
+  if (!await forgetProject(directories.configDirectory, root).catch(() => { throw new ApiFailure(400, 'Fonn could not update its list of projects.'); })) {
+    throw new ApiFailure(404, 'Fonn does not remember that project.');
+  }
+  return getProjects(directories);
 }
 
 const rulesApprovalChangeSchema = z.object({ root: z.string(), fingerprint: z.string().regex(/^[0-9a-f]{64}$/).nullable() }).strict();

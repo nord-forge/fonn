@@ -160,9 +160,15 @@ export interface ProjectSummary {
   lastUsed: string | null;
   hasSharedSettings: boolean;
   hasLocalSettings: boolean;
+  /** When you last saved settings or rules for it in fonn ui, if Fonn remembers it. Null otherwise. */
+  savedAt: string | null;
 }
 
-/** GET /api/projects: every project seen in launch or run records. */
+/**
+ * GET /api/projects: every project seen in launch or run records, plus the
+ * ones you saved settings for in fonn ui. DELETE /api/projects/remembered?root=
+ * forgets a remembered one and returns the new list.
+ */
 export interface ProjectsResponse {
   projects: ProjectSummary[];
 }
