@@ -1,53 +1,18 @@
 ---
 title: Install
-description: Four ways to get Fonn, from a one-line Homebrew install to the filter on its own with Ollama and an open-source agent.
+description: Install Fonn once, add the hook for the agent you use, and keep working with claude, codex, Crush, OpenCode or a GUI on top of them.
 sidebar:
   order: 2
 ---
 
-import { Aside, Badge, Card, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
+import { Aside, Badge, Card, CardGrid, LinkCard, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Pick the way that matches how you work. Every way needs Node 22 or later. Nothing here signs you in to a model provider: Claude Code, Codex or Ollama stay set up on their own.
+Fonn works inside the agent you already use. Install it once, add the hook for your agent, and keep running `claude`, `codex`, Crush, OpenCode or a desktop app on top of them. Command output gets shorter before the model reads it, and you manage filters and rules in `fonn ui`. You need Node 22 or later, and your agent set up and signed in as usual.
 
-<CardGrid>
-  <Card title="Homebrew" icon="rocket">
-    The Fonn CLI on macOS in two commands, for Claude Code and Codex.
+## 1. Install Fonn
 
-    [Install with Homebrew](#homebrew)
-  </Card>
-  <Card title="Source checkout" icon="github">
-    The newest features first: `fonn ui`, filter rules and open models.
-
-    [Build from source](#source-checkout)
-  </Card>
-  <Card title="Filter only" icon="puzzle">
-    Just the output filter in your existing Claude Code or Codex project.
-
-    [Add the filter](#filter-only)
-  </Card>
-  <Card title="With Ollama" icon="laptop">
-    Open models on your own machine with Crush, OpenCode or Claude Code.
-
-    [Use it with Ollama](#ollama-and-open-agents)
-  </Card>
-</CardGrid>
-
-## At a glance
-
-<div class="install-compare">
-
-| | Homebrew | Source | Filter only | Ollama |
-| --- | :---: | :---: | :---: | :---: |
-| Output filter | ✓ | ✓ | ✓ | ✓ |
-| The `fonn` command | ✓ | ✓ | | |
-| `fonn ui` and rules | 0.2.0 | ✓ | | |
-| Needs Claude or Codex | ✓ | ✓ | ✓ | |
-
-</div>
-
-## Homebrew
-
-<Badge text="Released 0.1.0" variant="success" />
+<Tabs syncKey="fonn-install">
+  <TabItem label="Homebrew" icon="rocket">
 
 Homebrew runs on macOS.
 
@@ -65,22 +30,16 @@ Homebrew runs on macOS.
    brew install --cask nord-forge/fonn/fonn
    ```
 
-3. Check it works, then start Claude Code or Codex through Fonn in any project.
-
-   ```sh
-   fonn --help
-   fonn claude
-   ```
-
 </Steps>
 
-Update later with `brew upgrade --cask nord-forge/fonn/fonn`. If you already have a shell alias named `fonn`, for example from a source checkout, it wins over the installed command; check with `type -a fonn`. See [distribution](/reference/distribution/) for what the cask installs.
-
-<Aside type="note" title="Newer features">
-Homebrew installs the released version, 0.1.0. The [local interface](/reference/ui/), filter rules and open model profiles arrive in 0.2.0. Until then, use a source checkout to try them.
+<Aside type="caution" title="Hooks arrive in 0.2.0">
+Homebrew installs the released version, 0.1.0, which does not have `fonn hooks` or `fonn ui` yet. Until 0.2.0 is out, use a source checkout for the steps below.
 </Aside>
 
-## Source checkout
+Update later with `brew upgrade --cask nord-forge/fonn/fonn`. See [distribution](/reference/distribution/) for what the cask installs.
+
+  </TabItem>
+  <TabItem label="Source checkout" icon="github">
 
 <Badge text="Newest features" variant="tip" />
 
@@ -101,22 +60,112 @@ Homebrew installs the released version, 0.1.0. The [local interface](/reference/
    echo "alias fonn='node $PWD/packages/cli/dist/cli/main.js'"
    ```
 
-3. Open a new terminal and try it.
-
-   ```sh
-   fonn --help
-   fonn ui
-   ```
+3. Open a new terminal and check it works with `fonn --help`.
 
 </Steps>
 
-Without the alias, run `node packages/cli/dist/cli/main.js` from the checkout and pass `--cwd /absolute/path/to/project`. Update with `git pull` followed by `npm ci --ignore-scripts && npm run build`.
+Update with `git pull`, then `npm ci --ignore-scripts && npm run build`. After moving the checkout, run `fonn hooks install` again so the hooks point at the new place.
 
-## Filter only
+  </TabItem>
+</Tabs>
+
+## 2. Add the hook for your agent
+
+Pick the agent you use. Fonn shows the change it will make to that agent's own settings file and asks before writing it. Your other settings and hooks stay as they are, and `fonn hooks uninstall` removes exactly what Fonn added.
+
+<Tabs syncKey="agent">
+  <TabItem label="Claude Code">
+
+```sh
+fonn hooks install --agent claude
+```
+
+Fonn adds one `PostToolUse` hook to `~/.claude/settings.json`. Start a new `claude` session and it applies, in every project.
+
+  </TabItem>
+  <TabItem label="Codex">
+
+```sh
+fonn hooks install --agent codex
+```
+
+Fonn adds its hook to `~/.codex/hooks.json`. Codex asks you to review and trust new hooks: open `/hooks` in Codex once and trust the Fonn hook. Fonn never trusts it on your behalf.
+
+  </TabItem>
+  <TabItem label="Crush">
+
+```sh
+fonn hooks install --agent crush
+```
+
+Fonn adds a `PostToolUse` hook for the `bash` tool to `~/.config/crush/crushrc`. It works with any model Crush runs, including Ollama.
+
+  </TabItem>
+  <TabItem label="OpenCode">
+
+```sh
+fonn hooks install --agent opencode
+```
+
+Fonn adds a small plugin to `~/.config/opencode/plugins/`. It works with any model OpenCode runs, including Ollama.
+
+  </TabItem>
+  <TabItem label="A desktop app">
+
+Desktop apps and editor extensions that run Claude Code or Codex underneath read the same user settings as the terminal. Install the hook for that agent, then restart the app:
+
+```sh
+fonn hooks install --agent claude
+```
+
+If the app runs its own agent instead, the hook does not reach it. `fonn hooks` shows what is installed.
+
+  </TabItem>
+</Tabs>
+
+Use several agents? `fonn hooks install` without `--agent` offers the hook for every agent it finds. Check the result any time with `fonn hooks`.
+
+## 3. Manage it in fonn ui
+
+```sh
+fonn ui
+```
+
+<CardGrid>
+  <Card title="Agents" icon="puzzle">
+    See which agents have the hook, update it after moving Fonn, or remove it.
+  </Card>
+  <Card title="Rules and filters" icon="setting">
+    Add your own filters for noisy commands, per project or for everything, and approve project rules.
+  </Card>
+  <Card title="Test bench" icon="seti:shell">
+    Paste a command's output and see exactly what the model would receive.
+  </Card>
+  <Card title="Activity" icon="list-format">
+    Every hooked session, with what was shortened and the full originals.
+  </Card>
+</CardGrid>
+
+<LinkCard title="The Fonn UI" description="Everything the local interface can do, and how it keeps your data on this machine." href="/reference/ui/" />
+
+## Other ways
+
+The hook is the easiest way for most people. These suit other needs.
+
+<CardGrid>
+  <Card title="Without installing Fonn" icon="document">
+    Download the filter into one project and wire it into Claude Code, Codex, Crush or OpenCode yourself. [Filter only](#filter-only-without-installing-fonn)
+  </Card>
+  <Card title="Fonn's own launchers" icon="rocket">
+    `fonn claude` and `fonn codex` start your agent with Fonn's settings, profiles and resume. `fonn chat` is a small agent for local models. [Launchers](#fonns-own-launchers)
+  </Card>
+</CardGrid>
+
+### Filter only, without installing Fonn
 
 <Badge text="No Fonn CLI" variant="note" />
 
-Use only the filter with the Claude Code or Codex you already have. There is no npm install or SDK, just five files in your project.
+Use only the filter with the Claude Code or Codex you already have. There is no npm install or SDK, just a handful of files in your project.
 
 <Steps>
 
@@ -143,7 +192,7 @@ Use only the filter with the Claude Code or Codex you already have. There is no 
 
 The hook takes `--level strict|standard|similar`; see [filter levels](/filtering/levels/). The [local filtering guide](/reference/local-filtering/) has complete hook examples and shows how to pin the download to one reviewed commit.
 
-## Ollama and open agents
+### Ollama and open agents, without installing Fonn
 
 <Badge text="No Claude or Codex needed" variant="tip" />
 
@@ -170,15 +219,19 @@ Run open models such as Qwen, Gemma or Kimi with [Ollama](https://ollama.com) an
 
    - **Crush**: a `PostToolUse` hook that runs `hook.mjs --provider crush`.
    - **OpenCode**: nothing more to copy when you downloaded into `.opencode/plugins`. The plugin finds `hook.mjs` beside it. A plugin on its own skips filtering without any error, unless `FONN_FILTER_HOOK` points at `hook.mjs`.
-   - **Claude Code**: point it at Ollama's Anthropic API and use the normal Claude hook from [Filter only](#filter-only).
+   - **Claude Code**: point it at Ollama's Anthropic API and use the normal Claude hook from [Filter only](#filter-only-without-installing-fonn).
 
 </Steps>
 
 <Aside type="tip" title="Or use Fonn's own agent">
-`fonn chat --model qwen3.8:27b` is a small coding agent for open models with the filter built in. Its first request is under 1,000 tokens, so local models answer much sooner than in agents with large prompts. It asks before every command and file change. It is in the [source checkout](#source-checkout) until 0.2.0; see [fonn chat](/reference/agent/).
+`fonn chat --model qwen3.8:27b` is a small coding agent for open models with the filter built in. Its first request is under 1,000 tokens, so local models answer much sooner than in agents with large prompts. It asks before every command and file change. It is in the [source checkout](#1-install-fonn) until 0.2.0; see [fonn chat](/reference/agent/).
 </Aside>
 
 <LinkCard title="Use the filter with Ollama and other agents" description="Exact configuration for Crush, OpenCode and Claude Code with Ollama, model tips and which agents cannot use the filter yet." href="/reference/other-agents/" />
+
+### Fonn's own launchers
+
+Instead of a hook, Fonn can start your agent for you. `fonn claude` and `fonn codex` launch it with a Fonn profile, the project's settings and `fonn resume`. `fonn chat --model qwen3.8:27b` is Fonn's own small agent for Ollama and LM Studio, with the filter built in. See [everyday use](/start/everyday-use/) and [fonn chat](/reference/agent/).
 
 <Aside>
 Installing from npm is not a supported distribution method today. A desktop app is planned, and none exists yet.

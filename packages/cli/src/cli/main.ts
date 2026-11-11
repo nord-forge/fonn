@@ -9,6 +9,8 @@ import { createProfileStore, modelSourceSchema, effortSchema, filterLevelSchema,
 import { findProjectRoot, LOCAL_SETTINGS_FILE, projectRulesFingerprint, projectSettingsSchema, projectSourcedValues, readProjectSettings, resolveSettings, SETTING_KEYS, SHARED_SETTINGS_FILE, writeProjectSettings, type ProjectSettings, type ResolvedSettings, type SettingKey, type SettingScope } from '@nord-forge/fonn-core/settings';
 import { renderRun, runExitCode, terminalText, validateResult } from './render.js';
 import type { ChatOptions } from '../agent/chat.js';
+import { HOOK_AGENTS, HOOK_AGENT_LABELS, type HookAgent } from '../hooks/contract.js';
+import type { HookRuntimeOptions } from '../hooks/command.js';
 
 export interface CliDependencies {
   runTask: (options: RunTaskOptions) => Promise<RunRecord>;
@@ -30,6 +32,8 @@ export interface CliDependencies {
   onInterrupt: (handler: () => void) => () => void;
   env: NodeJS.ProcessEnv;
   nodeVersion: string;
+  /** Directories and command for fonn hooks and fonn hook; tests pass a temporary home. */
+  hookOptions: HookRuntimeOptions;
 }
 
 const help = `Fonn — native Claude and Codex launchers, Claude Agent SDK tasks
@@ -44,7 +48,7 @@ Usage:
   fonn config [show|get|set|unset] ...   Project settings; see fonn help config
   fonn resume <launch-id> [--state-dir <path>]
   fonn profiles [--json]
-  fonn help profiles | codex | chat | resume
+  fonn help profiles | codex | chat | resume | config | ui | hooks
   fonn run <prompt> [options]
   fonn runs [--state-dir <path>] [--json]
   fonn show <task-id> [--state-dir <path>] [--json]
@@ -52,6 +56,9 @@ Usage:
   fonn native-output <launch-id> <artifact-id> [--offset <n>] [--limit <n>] [--state-dir <path>]
   fonn doctor [--json]
   fonn ui [--port <n>] [--no-open] [--state-dir <path>]   Local web interface for settings, rules and history; see fonn help ui
+  fonn records clean --older-than <days> [--dry-run] [--yes]   Delete old launch and hook session records; see fonn help records
+  fonn hooks [status|install|uninstall] [--agent <agent>]... [--yes] [--json]   Filter in claude, codex, Crush and OpenCode you start yourself; see fonn help hooks
+  fonn hook --agent <agent>            Run by the agent's hook; reads one event on stdin
   fonn help | --help | --version
 
 Run options:
@@ -194,6 +201,43 @@ interface while it runs, so do not share it.
 Press Ctrl+C to stop the server.
 `;
 
+const recordsHelp = `Fonn records: delete old launch and hook session records
+
+Usage:
+  fonn records clean --older-than <days> [--dry-run] [--yes] [--state-dir <path>]
+
+Deletes records, with their archived originals, whose last activity is older
+than the given number of days. Records can hold private code, logs or secrets a
+command printed, and the global hook keeps one for every hooked session.
+It lists what it would delete and asks first. --dry-run only lists. --yes skips
+the question; without a terminal, --yes is required. A record that becomes
+active before it is deleted is kept. Nothing is deleted automatically.
+`;
+
+const hooksHelp = `Fonn hooks: use Fonn's filter in the agents you already start yourself
+
+Usage:
+  fonn hooks [status] [--json]
+  fonn hooks install [--agent <agent>]... [--yes]
+  fonn hooks uninstall [--agent <agent>]... [--yes]
+  fonn hook --agent <agent>
+
+Agents: claude (Claude Code), codex (Codex), crush (Crush), opencode (OpenCode).
+install adds one hook to the agent's user-level config, so every session gets
+Fonn's filter with your global and project settings and approved rules. Without
+--agent it uses every agent found on this machine. It shows each change first
+and asks before writing it. Without a terminal it needs --yes.
+Files: ~/.claude/settings.json, ~/.codex/hooks.json (CODEX_HOME moves it),
+~/.config/crush/crushrc, and a plugin file in ~/.config/opencode/plugins/.
+Fonn keeps a copy of the original next to the file as <file>.fonn-backup.
+uninstall removes only the entries that run fonn hook --agent.
+Codex runs the hook only after you review and trust it in /hooks.
+Sessions started with fonn claude or fonn codex already filter, so the
+global hook leaves them alone. Hook sessions show in fonn ui with their
+decisions and originals. Recover an original with fonn native-output.
+fonn hooks status warns when a hook points at a missing or older Fonn.
+`;
+
 const chatHelp = `Fonn chat: a small coding agent for open models
 
 Usage:
@@ -222,7 +266,7 @@ function parse(args: string[], allowed: string[]): Parsed {
     const flag = value.slice(2);
     if (!allowed.includes(flag)) throw new Error(`Unknown option ${value}. Use --help for usage.`);
     if (flags.has(flag)) throw new Error(`Option ${value} was supplied more than once.`);
-    if (flag === 'json' || flag === 'shared' || flag === 'local' || flag === 'global' || flag === 'no-open') { flags.set(flag, true); continue; }
+    if (flag === 'json' || flag === 'shared' || flag === 'local' || flag === 'global' || flag === 'no-open' || flag === 'dry-run' || flag === 'yes') { flags.set(flag, true); continue; }
     const argument = args[++index];
     if (!argument || argument.startsWith('--')) throw new Error(`Option ${value} requires a value.`);
     flags.set(flag, argument);
@@ -385,13 +429,130 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       if (args.length === 2 && args[1] === 'resume') { stdout(resumeHelp); return 0; }
       if (args.length === 2 && args[1] === 'config') { stdout(configHelp); return 0; }
       if (args.length === 2 && args[1] === 'ui') { stdout(uiHelp); return 0; }
-      throw new Error('Expected help [profiles|codex|chat|resume|config|ui]. Use --help for usage.');
+      if (args.length === 2 && args[1] === 'hooks') { stdout(hooksHelp); return 0; }
+      if (args.length === 2 && args[1] === 'records') { stdout(recordsHelp); return 0; }
+      throw new Error('Expected help [profiles|codex|chat|resume|config|ui|hooks]. Use --help for usage.');
     }
     if (command === 'profiles' && args.length === 2 && args[1] === '--help') { stdout(profilesHelp); return 0; }
     if (command === 'codex' && args.length === 2 && args[1] === '--help') { stdout(codexHelp); return 0; }
     if (command === 'chat' && args.includes('--help')) { stdout(chatHelp); return 0; }
     if (command === 'resume' && args.length === 2 && args[1] === '--help') { stdout(resumeHelp); return 0; }
     if (command === 'ui' && args.length === 2 && args[1] === '--help') { stdout(uiHelp); return 0; }
+    if (command === 'hooks' && args.includes('--help')) { stdout(hooksHelp); return 0; }
+    if (command === 'hook') {
+      // Run by an agent. It fails open: any problem leaves the output unchanged and exits 0.
+      let reply = '{}';
+      try {
+        const agent = args.length === 3 && args[1] === '--agent' && HOOK_AGENTS.includes(args[2] as HookAgent) ? args[2] as HookAgent : undefined;
+        if (agent) {
+          const input = await (injected.readStdin ?? readStdin)();
+          const { runHook } = await import('../hooks/run.js');
+          reply = await runHook(agent, input, { ...injected.hookOptions, env });
+        } else {
+          stderr(`fonn hook: expected --agent ${HOOK_AGENTS.join('|')}. The output is left unchanged.`);
+        }
+      } catch { /* fail open */ }
+      writeStdout(reply + '\n');
+      return 0;
+    }
+    if (command === 'records') {
+      if (args.includes('--help') || args.length === 1) { stdout(recordsHelp); return 0; }
+      if (args[1] !== 'clean') throw new Error('Expected fonn records clean --older-than <days>. Use fonn help records for usage.');
+      const parsed = parse(args.slice(2), ['older-than', 'dry-run', 'yes', 'state-dir']);
+      argumentCount(parsed, 0, 'records clean --older-than <days>');
+      if (!parsed.flags.has('older-than')) throw new Error('fonn records clean needs --older-than <days>, for example --older-than 30.');
+      const days = numeric(parsed.flags.get('older-than'), '--older-than', 30, true);
+      const { deleteOldRecords, findOldRecords, formatBytes } = await import('../native/cleanup.js');
+      const { getDefaultStateDirectory } = await import('@nord-forge/fonn-core/state');
+      const stateDirectory = resolve(stringFlag(parsed, 'state-dir') ?? getDefaultStateDirectory());
+      const summary = await findOldRecords(days, stateDirectory);
+      if (!summary.records.length) { stdout(`No records older than ${days} days.\n`); return 0; }
+      const hooked = summary.records.filter((record) => record.origin === 'hook').length;
+      stdout(`${summary.records.length} records older than ${days} days (${hooked} from hook sessions), ${formatBytes(summary.bytes)} with their archived originals.\n`);
+      stdout(`Oldest activity ${summary.records[0]!.lastActivity.slice(0, 10)}, newest ${summary.records.at(-1)!.lastActivity.slice(0, 10)}.\n`);
+      if (parsed.flags.has('dry-run')) { stdout('Dry run: nothing was deleted.\n'); return 0; }
+      if (!parsed.flags.has('yes')) {
+        const interactive = injected.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
+        if (!interactive) throw new Error('fonn records clean deletes records. Run it in a terminal to confirm, or pass --yes.');
+        const ask = async (question: string): Promise<string> => {
+          if (injected.ask) return injected.ask(question);
+          const reader = createInterface({ input: process.stdin, output: process.stdout });
+          try { return await reader.question(question); } finally { reader.close(); }
+        };
+        const answer = (await ask('Delete them? This cannot be undone. [y/N] ')).trim().toLowerCase();
+        if (answer !== 'y' && answer !== 'yes') { stdout('Nothing was deleted.\n'); return 0; }
+      }
+      const result = await deleteOldRecords(summary, stateDirectory);
+      stdout(`Deleted ${result.deleted.length} records.${result.kept.length ? ` Kept ${result.kept.length} that became active meanwhile.` : ''}\n`);
+      return 0;
+    }
+    if (command === 'hooks') {
+      const action = ['status', 'install', 'uninstall'].includes(args[1] ?? '') ? args[1] as 'status' | 'install' | 'uninstall' : 'status';
+      const rest = args.slice(action === args[1] ? 2 : 1);
+      const agents: HookAgent[] = [];
+      let yes = false;
+      let asJson = false;
+      for (let index = 0; index < rest.length; index++) {
+        const value = rest[index]!;
+        if (value === '--agent' && action !== 'status') {
+          const agent = rest[++index];
+          if (!agent || !HOOK_AGENTS.includes(agent as HookAgent)) throw new Error(`--agent must be one of: ${HOOK_AGENTS.join(', ')}.`);
+          if (!agents.includes(agent as HookAgent)) agents.push(agent as HookAgent);
+        } else if (value === '--yes' && action !== 'status') yes = true;
+        else if (value === '--json' && action === 'status') asJson = true;
+        else throw new Error(`Unexpected ${value}. Use fonn help hooks for usage.`);
+      }
+      const hooks = await import('../hooks/index.js');
+      const options: HookRuntimeOptions = { ...injected.hookOptions, env };
+      if (action === 'status') {
+        const statuses = await hooks.hookStatus(options);
+        if (asJson) json(statuses);
+        else {
+          const lines: string[] = [];
+          for (const status of statuses) {
+            const state = status.error ? 'cannot read its config' : status.installed ? (status.current ? 'installed' : 'needs updating') : status.detected ? 'not installed' : 'not installed, agent not found';
+            lines.push(`${status.label.padEnd(12)} ${state.padEnd(31)} ${terminalText(status.configPath)}`);
+            if (status.error) lines.push(`  ${terminalText(status.error)}`);
+            if (status.note) lines.push(`  ${terminalText(status.note)}`);
+          }
+          stdout(lines.join('\n') + '\n');
+        }
+        for (const warning of await hooks.hookWarnings(options)) stderr(`Warning: ${warning}`);
+        return 0;
+      }
+      const chosen = agents.length ? agents : (await hooks.hookStatus(options)).filter(status => status.detected).map(status => status.agent);
+      if (!chosen.length) throw new Error(`No supported agent was found on this machine. Name one with --agent ${HOOK_AGENTS.join('|')}.`);
+      const interactive = injected.interactive ?? Boolean(process.stdin.isTTY && process.stdout.isTTY);
+      if (!yes && !interactive) throw new Error(`fonn hooks ${action} changes agent config files. Run it in a terminal to confirm each change, or pass --yes.`);
+      const ask = async (question: string): Promise<string> => {
+        if (injected.ask) return injected.ask(question);
+        const reader = createInterface({ input: process.stdin, output: process.stdout });
+        try { return await reader.question(question); } finally { reader.close(); }
+      };
+      const { compactDiff } = await import('../hooks/diff.js');
+      const { redactForDisplay } = await import('../hooks/redact.js');
+      let failures = 0;
+      for (const agent of chosen) {
+        const label = HOOK_AGENT_LABELS[agent];
+        try {
+          const plan = await hooks.planHook(agent, action, options);
+          if (!plan.changes) { stdout(`${label}: ${terminalText(plan.summary[0] ?? 'Nothing to change.')}\n`); continue; }
+          stdout([`${label}: ${terminalText(plan.configPath)}`, ...plan.summary.map(line => `  ${terminalText(line)}`), terminalText(compactDiff(redactForDisplay(plan.before, agent), redactForDisplay(plan.after, agent))), ''].join('\n') + '\n');
+          if (!yes) {
+            const answer = (await ask(`${action === 'install' ? 'Install' : 'Remove'} the Fonn hook for ${label}? [y/N] `)).trim().toLowerCase();
+            if (answer !== 'y' && answer !== 'yes') { stdout(`${label}: skipped. Nothing was written.\n`); continue; }
+          }
+          const status = await hooks.applyHookPlan(plan, options);
+          stdout(`${label}: ${action === 'install' ? 'installed' : 'removed'}.\n`);
+          if (action === 'install' && agent === 'codex') stdout('Codex: open Codex and run /hooks to review and trust the Fonn hook. Codex skips it until you trust it.\n');
+          if (status.error) stderr(`${label}: ${status.error}`);
+        } catch (error) {
+          failures++;
+          stderr(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      return failures ? 1 : 0;
+    }
     if (command === '--help' || command === '-h' || (args.length === 2 && args[1] === '--help')) { stdout(help); return 0; }
     if (command === '--version') { if (args.length !== 1) throw new Error('--version takes no arguments.'); stdout(await version() + '\n'); return 0; }
     if (command === 'resume') {

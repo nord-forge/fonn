@@ -1,6 +1,7 @@
 import { get, projectRoute, SESSION_EXPIRED } from './api.js';
 import { button, el, link, number, pageHeader, warning } from './components.js';
 import { overviewView, profilesView, globalRulesView } from './views/global.js';
+import { agentsView } from './views/agents.js';
 import { activityView } from './views/activity.js';
 import { projectView } from './views/project.js';
 import { launchView } from './views/launch.js';
@@ -76,6 +77,7 @@ async function loadProjects() {
 }
 
 function parseRoute(hash) {
+  if (hash === '#/global/agents') return { title: 'Agents', view: agentsView };
   if (hash === '#/global') return { title: 'Overview', view: overviewView };
   if (hash === '#/global/rules') return { title: 'Rules', view: globalRulesView };
   if (hash === '#/test' || hash.startsWith('#/test?')) return { title: 'Test bench', view: testView, id: new URLSearchParams(hash.split('?')[1]).get('root') || undefined };
@@ -136,7 +138,7 @@ window.addEventListener('fonn:session-expired', () => {
 });
 window.addEventListener('hashchange', () => render());
 if (!window.location.hash) {
-  history.replaceState(null, '', `${window.location.pathname}${window.location.search}#/global`);
+  history.replaceState(null, '', `${window.location.pathname}${window.location.search}#/global/agents`);
 }
 render(false);
 loadProjects();

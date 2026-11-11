@@ -1,6 +1,6 @@
 # Fonn UI
 
-`fonn ui` opens a local web interface for Fonn's settings, filter rules, profiles and history. It runs inside the Fonn CLI, so there is nothing extra to install: the Homebrew cask and a source checkout both include it.
+`fonn ui` opens a local web interface for Fonn's hooks, settings, filter rules, profiles and history. Its first page, Agents, manages the hooks from [Use Fonn with the tools you already have](hooks.md). It runs inside the Fonn CLI, so there is nothing extra to install. It needs a source checkout until 0.2.0, because the Homebrew cask installs 0.1.0, which does not have `fonn ui` or `fonn hooks` yet.
 
 ```sh
 fonn ui              # starts the server and opens your browser
@@ -14,14 +14,15 @@ Press Ctrl+C in the terminal to stop it. Everything you change in the interface 
 
 | Page | What it does |
 | --- | --- |
+| Agents | The default page. One row for each of Claude Code, Codex, Crush and OpenCode, with its hook state: installed, needs update, or not installed. **Install**, **Update** and **Remove** each open a preview first: the config file, a diff of the change and any extra file Fonn writes or removes. Nothing is written until you confirm. If the file changed after the preview, Fonn asks you to review it again. Codex shows a notice that you must review and trust the Fonn hook in Codex's `/hooks` once. Fonn never trusts it for you |
 | Overview | Version, Node and the config and state folders. Change each global setting (profile, filter level, filter mode, subagents) or reset it to the built-in default. Also shows the exact startup guidance Fonn adds when subagents are on |
 | Profiles | The default profile at the top, then your own profiles and the built-in ones by agent. Create a profile, or copy a built-in one to change its model or effort. A Codex profile can run on OpenAI, a local model through Ollama or LM Studio, or another provider from your Codex config. Edit or delete your own, and use any profile as the default |
 | Rules | Your global filter rules: add, edit, delete and save them |
 | Test bench | Paste a command and its output and see exactly what the model would receive with a project's settings and rules, or with a rule you are still editing. Nothing is saved or archived |
 | Open a project | Open any Git repository or Fonn project by its path, pick the folder in your system's folder dialog, or choose one of the projects Fonn already knows |
 | Projects | Tabs. **Overview** shows what a new launch uses and where each value comes from, how many rules apply, and three key numbers. **Settings** and **Rules** each have one editor with a Personal or Shared switch for which file to save. **Rules** also lists the rules that apply and the approval for project rules. **Instructions** opens files such as `CLAUDE.md` and `AGENTS.md`, and **Activity** has the project's totals, launches and runs. Rules waiting for approval show a notice above the tabs |
-| Activity | Recent native launches, titled by project, agent and profile, and SDK runs, each with filter totals |
-| Launch detail | Each filter decision. "View original" loads the archived original in bounded slices and shows it as command output, with "Show raw JSON" for the exact stored response. You can delete the launch's records and archived originals to free space |
+| Activity | Recent native launches, titled by project, agent and profile, and SDK runs, each with filter totals. Sessions from a global hook are marked "via hook". **Clean up old records** deletes records, with their archived originals, that were not used for more than 7, 30, 90 or 180 days. It shows how many and how much space first, and asks before deleting |
+| Launch detail | Each filter decision. Hook sessions carry the same "via hook" mark. "View original" loads the archived original in bounded slices and shows it as command output, with "Show raw JSON" for the exact stored response. You can delete the launch's records and archived originals to free space |
 
 Character counts are characters in observations. They are not tokens or costs.
 

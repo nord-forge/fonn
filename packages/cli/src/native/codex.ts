@@ -161,7 +161,7 @@ export async function runCodexHook(event: unknown, stateDirectory: string, launc
   };
   const filter = createOutputFilter({
     store: createArtifactStore(path.join(location.directory, 'artifacts')), mode: location.record.filterMode, level: location.record.filterLevel ?? 'strict', rules: location.record.filterRules ?? [],
-    recoveryHint: artifactId => 'Recover the original tool response with: ' + [process.execPath, location.record.hookEntrypoint, 'native-output', launchId, artifactId, '--state-dir', location.root].map(shellQuote).join(' '),
+    recoveryHint: artifactId => [process.execPath, location.record.hookEntrypoint, 'native-output', launchId, artifactId, '--state-dir', location.root].map(shellQuote).join(' '),
   });
   // Unknown/structured responses and unrecognized command output pass through.
   const outcome = await filter.apply(observation);

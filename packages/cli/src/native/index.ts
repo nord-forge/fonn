@@ -11,7 +11,7 @@ import { nativeDelegationContext } from './delegation.js';
 import { captureNativeSession, nativeResumeArguments, printNativeResumeHint, resolveNativeProfile } from './session.js';
 
 const executeFile = promisify(execFile);
-import { atomicJson, launchDirectory, privateDirectory, readLaunch, shellQuote } from './storage.js';
+import { atomicJson, launchDirectory, privateDirectory, readLaunch, readStoredLaunch, shellQuote } from './storage.js';
 import type { LaunchRecord, NativeLaunchOptions } from './storage.js';
 export { atomicJson, launchDirectory, privateDirectory, readLaunch, shellQuote } from './storage.js';
 export type { LaunchRecord, NativeLaunchOptions } from './storage.js';
@@ -103,7 +103,12 @@ export async function launchClaude(options: NativeLaunchOptions): Promise<number
   };
   await atomicJson(settingsPath, settings);
   process.stderr.write(`Native Claude launch ${launchId}: ${profile.name}, filtering ${mode}, subagents ${subagents}.\n`);
-  const child = spawn(executable, ['--settings', settingsPath, '--model', profile.model, '--effort', profile.effort, ...resumeArgs, ...args], { cwd, stdio: 'inherit', env: process.env });
+  const child = spawn(executable, ['--settings', settingsPath, '--model', profile.model, '--effort', profile.effort, ...resumeArgs, ...args], {
+    cwd, stdio: 'inherit',
+    // Marks the session, so the global hook (fonn hook --agent claude) leaves
+    // it to this launch's own hook instead of filtering twice.
+    env: { ...process.env, FONN_CLAUDE_LAUNCH_ID: launchId },
+  });
   // A terminal-generated SIGINT already reaches both processes in the same
   // foreground group. Forward only without a terminal, otherwise one Ctrl+C
   // becomes two interrupts in Claude's interactive UI.
@@ -157,7 +162,7 @@ export async function runNativeHook(event: unknown, stateDirectory: string, laun
   const store = createArtifactStore(path.join(location.directory, 'artifacts'));
   const filter = createOutputFilter({
     store, mode: location.record.filterMode, level: location.record.filterLevel ?? 'strict', rules: location.record.filterRules ?? [],
-    recoveryHint: (artifactId) => 'Recover the original tool response with: ' + [process.execPath, location.record.hookEntrypoint, 'native-output', launchId, artifactId, '--state-dir', location.root].map(shellQuote).join(' '),
+    recoveryHint: (artifactId) => [process.execPath, location.record.hookEntrypoint, 'native-output', launchId, artifactId, '--state-dir', location.root].map(shellQuote).join(' '),
   });
   const outcome = await filter.apply(observation);
   const metricsDirectory = await privateDirectory(path.join(location.directory, 'filters'), true);
@@ -168,6 +173,7 @@ export async function runNativeHook(event: unknown, stateDirectory: string, laun
 }
 
 export async function readNativeOutput(launchId: string, artifactId: string, options?: { offset?: number; limit?: number }, stateDirectory?: string): Promise<ArtifactSlice> {
-  const location = await readLaunch(stateDirectory, launchId);
+  // Hook sessions archive originals the same way, so recovery accepts both.
+  const location = await readStoredLaunch(stateDirectory, launchId);
   return createArtifactStore(path.join(location.directory, 'artifacts')).read(artifactId, options);
 }

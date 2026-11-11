@@ -1,6 +1,6 @@
 ---
 title: What is this
-description: Fonn is a local command line tool and reusable TypeScript core around native Claude Code and Codex.
+description: Fonn shortens noisy command output through a hook in the agent you already use, with a local UI to manage it.
 sidebar:
   order: 1
 ---
@@ -8,29 +8,29 @@ sidebar:
 import { Steps, Tabs, TabItem, Aside, LinkCard } from '@astrojs/starlight/components';
 import FilterDemo from '../../../components/FilterDemo.astro';
 
-Fonn is a local command line tool and a reusable TypeScript core. It wraps the CLIs you already use. Running `fonn` opens the unmodified Claude Code or Codex interface, with its own login, settings, permissions and questions.
+Fonn shortens noisy command output before your coding agent reads it. You install it once, add a hook to the agent you use, and keep working with `claude`, `codex`, Crush, OpenCode or a desktop app on top of them. Hooks need a source checkout until 0.2.0. Fonn is a local command line tool and a reusable TypeScript core.
 
-On top of that launch, Fonn adds three things:
+It works in three layers:
 
-- **Saved profiles.** A provider, model and effort level stored under a short name, so `fonn --profile focused` always starts the same way.
-- **Subagent guidance.** Startup instructions that ask the agent to hand meaningful independent work to its built-in subagents, while simple tasks stay with the parent.
-- **Output filtering.** Recognized noisy shell output, like test progress rows, is shortened before the model reads it. The full original is archived locally and can be read back in bounded slices.
-
-Separately, `fonn run` starts a structured task through the Claude Agent SDK, with validated results, budgets and estimated usage accounting. That path uses an API key and API billing. See [permissions and billing](/configuration/permissions-and-billing/).
+- **Hooks.** `fonn hooks install --agent <agent>` adds one hook to the agent's own user settings. Every session then gets the filter, with your global settings, the project's settings and the project rules you approved. Your login, permissions and other hooks stay as they are.
+- **`fonn ui`.** A local web interface to manage hooks, filters and your own rules, try them on a test bench, and review every session with the full originals.
+- **Fonn's own launchers.** Optional. `fonn claude` and `fonn codex` open the native interface with saved profiles and subagent guidance. `fonn chat` is a small agent for local models. `fonn run` starts a structured task through the Claude Agent SDK with validated results, budgets and estimated usage accounting. That path uses an API key and API billing. See [permissions and billing](/configuration/permissions-and-billing/).
 
 ## How it works
 
 <Steps>
 
-1. **Launch.** Fonn starts the native CLI with your profile's model and effort, plus per-launch hook settings. Your global Claude or Codex settings are not changed.
+1. **Hook.** The agent calls Fonn's hook after each shell command. Your global agent settings gain one entry, and you can remove it any time with `fonn hooks uninstall`.
 
-2. **Delegate.** With `--subagents auto`, startup guidance suggests at most two workers, no nested delegation and read-only exploration. These are instructions. Your policies still decide.
+2. **Filter.** Each **new Bash observation** is checked. Only recognized formats and repeated lines are reduced. Reasoning, history, instructions and source files are never rewritten.
 
-3. **Filter.** Each **new Bash observation** passes through a post-tool hook, including observations from native workers. Only recognized formats and repeated lines are reduced. Reasoning, history, instructions and source files are never rewritten.
+3. **Recover.** A reduced observation ends with a footer naming the archived original. The agent, or you, can read it back 4,000 characters at a time, up to 20,000 per request.
 
-4. **Recover.** A reduced observation ends with a footer naming the archived original. The agent, or you, can read it back 4,000 characters at a time, up to 20,000 per request.
+4. **Review.** `fonn ui` lists hooked sessions with each decision and the archived originals.
 
 </Steps>
+
+If anything goes wrong, the hook leaves the original output alone.
 
 ## See it on real samples
 

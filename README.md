@@ -1,8 +1,10 @@
 # Fonn
 
-A local TypeScript CLI and reusable core for Claude and Codex, with structured task execution through the Claude Agent SDK. Run `fonn` to open the native CLI selected by your default profile, or `fonn run` to start a structured SDK task with estimated usage accounting. Recognized noisy tool output can be shortened conservatively while originals remain recoverable.
+Fonn makes noisy command output smaller before your coding agent reads it, so fewer tokens go to test runs, build logs and repeated lines. Install its hook once and keep using the tools you have: `claude`, `codex`, Crush, OpenCode, or a desktop app on top of them. Manage filters, your own rules and the hooks themselves in a local UI. Originals always stay recoverable.
 
-This is the `nord-forge/fonn` monorepo. The current product is the core and CLI. A desktop GUI is reserved for later; no desktop app is implemented. Project code is [MIT licensed](LICENSE); upstream dependencies retain [their own terms](THIRD_PARTY_NOTICES.md). Fonn is independent of Anthropic and OpenAI.
+Fonn also has its own launchers for Claude and Codex, a small agent for local models (`fonn chat`) and structured tasks through the Claude Agent SDK, for those who want them.
+
+This is the `nord-forge/fonn` monorepo with the core and the CLI. A desktop app is planned; none exists yet. Project code is [MIT licensed](LICENSE); upstream dependencies retain [their own terms](THIRD_PARTY_NOTICES.md). Fonn is independent of Anthropic and OpenAI.
 
 ## Noise output?
 Yes, under the hood, both Claude and Codex use more thinking and logic than you as the user get to see. Below you can find an example of what Fonn removes to keep your tokens from being needlessly burned. Let's say we have the following without Fonn:
@@ -28,43 +30,54 @@ Observation completed. Repetitive PROGRESS heartbeats removed; task payload reta
 
 This example is illustrative. The format adapters recognize Pest/PHPUnit, PHPStan, TypeScript, pytest, Jest and Vitest shell output. For any other command, runs of identical lines collapse to one copy and a count. Heartbeat logs like the one above, where only the numbers change, collapse only at `--filter-level similar`; the first and last line stay. `strict` keeps the format adapters only. See [filter levels](docs/filtering.md#filter-levels). Fonn filters new tool observations; it does not remove model reasoning or rewrite task payloads.
 
-## Get the CLI or reuse a script
+## Quick start: add the hook to your agent
 
-The CLI is ready to run from a checkout; the GUI is planned. If you want to inspect or reuse a specific part, go straight to its source:
+**1. Install Fonn.** With Homebrew on macOS:
 
-| Script / entrypoint | Purpose |
-| --- | --- |
-| [CLI entrypoint](packages/cli/src/cli/main.ts) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/packages/cli/src/cli/main.ts) | Commands, help, profiles, provider selection and task dispatch. |
-| [Claude launcher and hook](packages/cli/src/native/index.ts) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/packages/cli/src/native/index.ts) | Per-launch Claude settings and recoverable output filtering. |
-| [Codex launcher and hook](packages/cli/src/native/codex.ts) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/packages/cli/src/native/codex.ts) | Native Codex launch settings and its post-tool adapter. |
-| [Output filter](packages/core/src/filtering/index.ts) · [format adapters](packages/core/src/filtering/adapters.ts) | Conservative reductions for recognized noisy shell output. |
-| [Release preparation](scripts/release/prepare.mjs) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/scripts/release/prepare.mjs) | Build the archive, checksum and matching cask after compilation. |
-| [Homebrew runtime installer](packaging/homebrew/runtime.mjs) · [command launcher](packaging/homebrew/launcher.mjs) | Install locked runtime dependencies and start the staged CLI. |
+```sh
+brew tap nord-forge/fonn https://github.com/nord-forge/fonn
+brew install --cask nord-forge/fonn/fonn
+```
 
-These source files use the repository's modules and dependencies. For a working CLI immediately, use the checkout below; individual entrypoint downloads are not standalone executables:
+The explicit tap URL is this repository; there is no separate `homebrew-*` repository. The cask uses Homebrew's Node and installs locked runtime dependencies on your machine, without `sudo` and without a bundled SDK. Homebrew currently installs [0.1.0](https://github.com/nord-forge/fonn/releases/tag/v0.1.0), which does not have `fonn hooks` or `fonn ui` yet. Until 0.2.0 is released, use a source checkout:
 
 ```sh
 git clone https://github.com/nord-forge/fonn.git
 cd fonn
 npm ci --ignore-scripts
 npm run build
-node packages/cli/dist/cli/main.js --help
+echo "alias fonn='node $PWD/packages/cli/dist/cli/main.js'"   # add this line to your shell profile
 ```
 
-Then run `node packages/cli/dist/cli/main.js claude` or `node packages/cli/dist/cli/main.js codex` from your project with `--cwd /absolute/path/to/project`. The [Homebrew instructions](docs/distribution.md#first-publication-and-homebrew) cover release installation once the archive is published.
+If you have a shell alias named `fonn`, it shadows the Homebrew command. Check with `type -a fonn`.
+
+**2. Add the hook for the agent you use.** Fonn shows the change to that agent's own settings file and asks before writing it. Your other settings and hooks stay as they are.
+
+| Agent | Command | What changes |
+| --- | --- | --- |
+| Claude Code | `fonn hooks install --agent claude` | One `PostToolUse` hook in `~/.claude/settings.json` |
+| Codex | `fonn hooks install --agent codex` | One hook in your user Codex configuration. Trust it once in Codex's `/hooks`; Fonn never trusts it for you |
+| Crush | `fonn hooks install --agent crush` | One `PostToolUse` hook for `bash` in your global Crush configuration |
+| OpenCode | `fonn hooks install --agent opencode` | A small plugin in `~/.config/opencode/plugins/` |
+
+Desktop apps and editor extensions that run Claude Code or Codex underneath read the same user settings, so install the hook for that agent and restart the app. `fonn hooks install` without `--agent` offers the hook for every agent it finds, `fonn hooks` shows the status, and `fonn hooks uninstall` removes exactly what Fonn added. Settings come from each session's project folder, and rules from a project's files only apply once you approve them. See [hooks](docs/hooks.md).
+
+**3. Manage it.** Run `fonn ui` (see below).
+
+## Fonn UI
+
+`fonn ui` opens a local web interface. Its **Agents** page shows which agents have the hook and lets you install, update or remove it. You can also change global and project settings, write your own filter rules and try them on a test bench, approve project rules, manage profiles, and look through every hooked session and launch with what was shortened and the full originals. It listens on `127.0.0.1` only, behind a new private link each time. See [the Fonn UI guide](docs/ui.md).
 
 ## Use the filter without installing Fonn
 
-You can download just the local filtering files and use them with an existing Claude Code or Codex installation. **Only Node.js 22+ is required—no Fonn CLI, npm dependency install or provider SDK.**
+You can also add the filter to one project without installing Fonn. Only Node.js 22 or later is needed: no Fonn CLI, npm install or provider SDK. You wire the hook up yourself, per project.
 
 From the project where you want filtering:
 
 ```sh
 mkdir -p scripts/fonn-filter
-for file in hook.mjs index.mjs adapters.mjs artifact-store.mjs LICENSE; do
-  curl -fL "https://raw.githubusercontent.com/nord-forge/fonn/main/standalone/filtering/$file" \
-    -o "scripts/fonn-filter/$file"
-done
+curl -fsSL https://codeload.github.com/nord-forge/fonn/tar.gz/main \
+  | tar -xz -C scripts/fonn-filter --strip-components=3 fonn-main/standalone/filtering
 node scripts/fonn-filter/hook.mjs --help
 ```
 
@@ -78,44 +91,11 @@ Read scripts/fonn-filter/*.mjs and its LICENSE. Configure this local filter for 
 
 Filtering only reduces recognized noisy shell output and runs of identical lines (plus similar lines with `--level similar` on the hook command); other unknown output, MCP results and model reasoning are unchanged. It preserves recoverable originals, which may contain private data. Raw artifacts need manual retention and must stay out of Git. The guide also explains how to pin all downloads to one reviewed commit.
 
-## Local setup
+## Fonn's own launchers
 
-Use Node 22 or later. CI tests Node 22, 24 and 26 on Linux. macOS is checked locally with `npm run check:mac`, and Node 24 on both is required for merging. From the repository root:
+Instead of a hook, Fonn can start your agent for you, with a Fonn profile, project settings, automatic subagent guidance and `fonn resume`. These are optional; the hook gives you the filter without changing how you start your agent.
 
-```sh
-npm ci
-npm run check
-node packages/cli/dist/cli/main.js --help
-node packages/cli/dist/cli/main.js profiles
-node packages/cli/dist/cli/main.js doctor
-```
-
-`check` runs typechecking, mocked tests, and a build across the workspaces. Checks never make paid model calls. Dependency installation downloads packages, but does not authenticate to or call a model. `doctor` is offline: it checks Node compatibility, API-key presence, and configuration compatibility, not credential validity, model access, or billing. A missing key makes it exit nonzero, even if you only intend to use native Claude.
-
-| Workspace | Responsibility |
-| --- | --- |
-| `packages/core` · `@nord-forge/fonn-core` | Contracts, profiles, schemas, filtering, artifact recovery, SDK runtime. |
-| `packages/cli` · `@nord-forge/fonn-cli` | CLI parsing, native Claude and Codex launch services, terminal rendering, approval and question input. |
-| `apps/desktop` | Documentation placeholder for a future GUI using the core. |
-
-The repository root is a private workspace coordinator; that flag does not make the GitHub repository private. Package names identify workspace imports and do not imply the packages have been published to npm. Root `dist/cli/main.js` remains a local development compatibility shim; use the canonical entrypoint above for new integrations.
-
-## Homebrew CLI cask
-
-Fonn [0.1.0](https://github.com/nord-forge/fonn/releases/tag/v0.1.0) is released, with a cask for macOS in this repository. Install it with:
-
-```sh
-brew tap nord-forge/fonn https://github.com/nord-forge/fonn
-brew install --cask nord-forge/fonn/fonn
-fonn --help
-fonn --cwd /absolute/path/to/project --profile opus-medium
-```
-
-This explicit tap URL uses the same repository, including its `Casks/` directory; there is no separate `homebrew-*` repository. The CLI cask depends on Homebrew Node and fetches locked runtime dependencies on your machine. The release archive contains no `node_modules` or bundled Anthropic SDK. It does not install a GUI. See [distribution and release preparation](docs/distribution.md).
-
-If you have a shell alias named `fonn`, it can shadow the installed command. Inspect it with `type -a fonn`. To use the installed command in your current shell, run `unalias fonn` if it is an alias; manually remove the alias from your shell configuration for future shells. Installation does not edit that configuration.
-
-## Open interactive Claude
+### Open interactive Claude
 
 Install and authenticate ordinary Claude Code 2.1.319 or newer separately, then run locally:
 
@@ -130,7 +110,7 @@ Tool details start collapsed; press **Ctrl+O** to expand them or use `fonn -- --
 
 Pass ordinary Claude arguments after `--`. Options that override the selected launch model/effort, hook/settings sources, or permission policy are rejected, including permission-bypass flags. Management and cloud subcommands are unsupported through this launcher; use plain `claude` for those. The profile sets the initial model and effort; interactive `/model` and `/effort` remain available. Launch IDs and state locations are recorded for original-output recovery. `native-hook` is an internal stdin-JSON command used by generated hook settings.
 
-## Open interactive Codex
+### Open interactive Codex
 
 Install and authenticate the Codex CLI separately, then run:
 
@@ -142,7 +122,7 @@ fonn codex --profile sol
 
 Codex retains its existing authentication, settings, approval and sandbox policies. New Fonn hooks require review in Codex's `/hooks` browser before filtering or delegation guidance can run; Fonn never bypasses hook trust. The native interface remains Codex's own UI. See [Codex support](docs/codex.md), including filtering limits and recovery. Programmatic `fonn run` remains a Claude SDK command.
 
-## Automatic subagents
+### Automatic subagents
 
 New native launches default to `--subagents auto`. Fonn adds startup guidance asking Claude/Codex to delegate meaningful independent work through their built-in subagent tools, so you do not need to request subagents in every prompt. Simple tasks stay with the parent. The guidance asks for at most two workers, no nested delegation, read-only exploration/review, separate file scopes for builders, and concise verified handoffs. These are instructions, not an enforced concurrency limit; the native agent and your policies control actual delegation.
 
@@ -157,7 +137,7 @@ fonn --filter off --subagents off  # Register no Fonn hooks
 
 Codex requires the normal `/hooks` review/trust for startup guidance and filtering. Existing permission checks, agent definitions, models and provider limits remain active. Fonn does not grant unattended permissions or launch headless CLI workers; a rejected delegation must continue in the parent or report its blocker. When you explicitly ask an agent to work with another agent CLI, such as `codex exec`, it may run it as an ordinary command through the normal approval prompt; see [working with another agent CLI](docs/subagents.md#working-with-another-agent-cli-on-request). `--subagents off` removes Fonn's automatic delegation preference; it does not disable native subagent tools or the session-wide output filter. Delegation can increase total token use. See [subagents and permission boundaries](docs/subagents.md).
 
-## Resume after closing a session
+### Resume after closing a session
 
 When a native Claude or Codex session exits, Fonn prints a command such as:
 
@@ -169,7 +149,7 @@ Copy the printed command to restore the saved agent, initial model/effort profil
 
 Session lifecycle hooks record the provider's session ID when enabled and, for Codex, trusted. When that ID is unavailable, the footer says **Choose a session to resume** and the same command opens the provider's session picker. Help/version, print-only and nonpersistent launches do not print a resume footer. `fonn help resume` explains the command; SDK tasks continue to use `fonn run --resume <task-id>`.
 
-## Choose your default agent
+### Choose your default agent
 
 ```sh
 fonn --default codex    # Save Codex as the default, then exit
@@ -180,7 +160,7 @@ fonn                   # Launch your saved default
 
 Explicit `fonn codex`, `fonn claude`, or `fonn --profile <name>` override the default for that launch. Selecting the current agent keeps its custom default profile; switching agents selects `opus-medium` or `codex:sol-medium`. Use `fonn profiles default <name>` to choose a specific custom default instead.
 
-## Fable 5.2 and Mythos 5.2
+### Fable 5.2 and Mythos 5.2
 
 Use the built-in medium-effort profiles with Claude Code 2.1.321 or newer:
 
@@ -194,9 +174,9 @@ Fonn also accepts `--model fable` or `--model mythos` when creating/editing a cu
 
 The profiles also work with Claude SDK tasks, which require an explicit API key and separate API billing. Existing defaults stay unchanged. Anthropic controls account access and billing; Mythos requires an eligible verified account. Model choice does not disable filtering or native subagent hooks. SDK explorer/reviewer workers keep their fixed read-only Sonnet/Opus configuration. See [model profiles and access](docs/profiles.md#fable-and-mythos) and Anthropic's [Fable](https://platform.claude.com/docs/en/models/fable-5-2/overview), [Mythos](https://platform.claude.com/docs/en/models/mythos-5-2/overview) and [Claude Code model configuration](https://code.claude.com/docs/en/model-config) documentation.
 
-## Fonn UI
+### A small agent for local models
 
-`fonn ui` opens a local web interface to change your global and project settings, write and test filter rules, manage profiles, and look through launches, runs and filter decisions. It listens on `127.0.0.1` only, behind a new private link each time. See [the Fonn UI guide](docs/ui.md).
+`fonn chat --model qwen3.8:27b` talks to Ollama, LM Studio or any OpenAI-compatible server without Claude Code or Codex. Its first request is under 1,000 tokens, it asks before every command and file change, and the filter is built in. See [fonn chat](docs/agent.md).
 
 ## Project settings
 
@@ -274,6 +254,55 @@ Resume accepts only the latest saved task for a session and holds an owner-check
 If cumulative SDK usage counters reset, the run fails with indeterminate accounting and retains reported counters as observations. Start a fresh task without `--resume`; the reset is not reported as a free continuation.
 
 Output-reduction benchmarks motivated this experiment. They do not promise 60% savings, equivalent accuracy, or lower costs on real tasks. Character reduction is not token or dollar reduction.
+
+## Develop Fonn
+
+### Get the CLI or reuse a script
+
+The CLI is ready to run from a checkout; the GUI is planned. If you want to inspect or reuse a specific part, go straight to its source:
+
+| Script / entrypoint | Purpose |
+| --- | --- |
+| [CLI entrypoint](packages/cli/src/cli/main.ts) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/packages/cli/src/cli/main.ts) | Commands, help, profiles, provider selection and task dispatch. |
+| [Claude launcher and hook](packages/cli/src/native/index.ts) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/packages/cli/src/native/index.ts) | Per-launch Claude settings and recoverable output filtering. |
+| [Codex launcher and hook](packages/cli/src/native/codex.ts) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/packages/cli/src/native/codex.ts) | Native Codex launch settings and its post-tool adapter. |
+| [Output filter](packages/core/src/filtering/index.ts) · [format adapters](packages/core/src/filtering/adapters.ts) | Conservative reductions for recognized noisy shell output. |
+| [Release preparation](scripts/release/prepare.mjs) · [raw](https://raw.githubusercontent.com/nord-forge/fonn/main/scripts/release/prepare.mjs) | Build the archive, checksum and matching cask after compilation. |
+| [Homebrew runtime installer](packaging/homebrew/runtime.mjs) · [command launcher](packaging/homebrew/launcher.mjs) | Install locked runtime dependencies and start the staged CLI. |
+
+These source files use the repository's modules and dependencies. For a working CLI immediately, use the checkout below; individual entrypoint downloads are not standalone executables:
+
+```sh
+git clone https://github.com/nord-forge/fonn.git
+cd fonn
+npm ci --ignore-scripts
+npm run build
+node packages/cli/dist/cli/main.js --help
+```
+
+Then run `node packages/cli/dist/cli/main.js hooks install` to add the hook for your agent, or `node packages/cli/dist/cli/main.js claude --cwd /absolute/path/to/project` to use a launcher. [Distribution](docs/distribution.md) covers releases and the Homebrew cask.
+
+### Local setup
+
+Use Node 22 or later. CI tests Node 22, 24 and 26 on Linux. macOS is checked locally with `npm run check:mac`, and Node 24 on both is required for merging. From the repository root:
+
+```sh
+npm ci
+npm run check
+node packages/cli/dist/cli/main.js --help
+node packages/cli/dist/cli/main.js profiles
+node packages/cli/dist/cli/main.js doctor
+```
+
+`check` runs typechecking, mocked tests, and a build across the workspaces. Checks never make paid model calls. Dependency installation downloads packages, but does not authenticate to or call a model. `doctor` is offline: it checks Node compatibility, API-key presence, and configuration compatibility, not credential validity, model access, or billing. A missing key makes it exit nonzero, even if you only intend to use native Claude.
+
+| Workspace | Responsibility |
+| --- | --- |
+| `packages/core` · `@nord-forge/fonn-core` | Contracts, profiles, schemas, filtering, artifact recovery, SDK runtime. |
+| `packages/cli` · `@nord-forge/fonn-cli` | CLI parsing, native Claude and Codex launch services, terminal rendering, approval and question input. |
+| `apps/desktop` | Documentation placeholder for a future GUI using the core. |
+
+The repository root is a private workspace coordinator; that flag does not make the GitHub repository private. Package names identify workspace imports and do not imply the packages have been published to npm. Root `dist/cli/main.js` remains a local development compatibility shim; use the canonical entrypoint above for new integrations.
 
 ## Documentation site
 

@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createArtifactStore } from '@nord-forge/fonn-core/filtering';
+import type { UiHooks } from '../../src/ui/api.js';
+import { afterFingerprint, beforeFingerprint } from '../../src/ui/api.js';
 import { startUiServer } from '../../src/ui/server.js';
 
 interface Reply { status: number; headers: IncomingHttpHeaders; body: string }
@@ -23,7 +25,7 @@ function send(port: number, target: string, options: { method?: string; headers?
   });
 }
 
-async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
+async function fixture(t: { after: (fn: () => Promise<void>) => void }, hooks?: UiHooks) {
   const base = await mkdtemp(path.join(await realpath(os.tmpdir()), 'fonn-ui-'));
   t.after(() => rm(base, { recursive: true, force: true }));
   const project = path.join(base, 'project');
@@ -54,9 +56,9 @@ async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
   // A broken launch folder must be skipped rather than failing the listing.
   await mkdir(path.join(state, 'native', randomUUID()), { mode: 0o700 });
 
-  const server = await startUiServer({ port: 0, configDirectory: config, stateDirectory: state, folderPicker: null });
+  const server = await startUiServer({ port: 0, configDirectory: config, stateDirectory: state, folderPicker: null, hooks });
   t.after(() => server.close());
-  return { server, project, outsider, repository, launch, launchId, artifactId: artifact.id, characters: artifact.characters };
+  return { server, project, outsider, repository, launch, launchId, config, state, artifactId: artifact.id, characters: artifact.characters };
 }
 
 test('fonn ui guards every request and exchanges the token for a cookie', async (t) => {
@@ -333,4 +335,132 @@ test('fonn ui opens one system folder dialog at a time and returns the chosen pa
   t.after(() => none.close());
   assert.deepEqual((await changer(none)('GET', '/api/pick-folder')).body, { supported: false });
   assert.equal((await changer(none)('POST', '/api/pick-folder', {})).status, 404);
+});
+
+test('hook endpoints validate plans, preserve change guards and pass configured directories', async (t) => {
+  let before: string | null = null;
+  let applied = 0;
+  let conflict = false;
+  let failure = false;
+  const status = { agent: 'codex' as const, label: 'Codex', configPath: '/synthetic/.codex/hooks.json', detected: true, installed: false, current: false };
+  const calls: unknown[] = [];
+  const hooks: UiHooks = {
+    planIdentity: () => 'fixture-identity',
+    redactForDisplay: (text) => text,
+    async hookStatus(options) { calls.push(options); return [status]; },
+    async planHook(agent, action, options) {
+      calls.push(options);
+      if (failure) throw new SyntaxError('private configuration contents');
+      return { agent, action, configPath: status.configPath, changes: true, before, after: '{"hooks":[]}', summary: ['Install the hook.'], files: [{ path: '/synthetic/plugin.js', action: 'write' }] };
+    },
+    async applyHookPlan(plan, options) {
+      calls.push(options);
+      if (conflict) { const error = new Error('private file contents'); error.name = 'HookConflictError'; throw error; }
+      applied++;
+      before = plan.after;
+      return { ...status, installed: plan.action === 'install', current: plan.action === 'install' };
+    },
+  };
+  const { server, config: configDirectory, state: stateDirectory } = await fixture(t, hooks);
+  const auth = { Authorization: `Bearer ${server.token}` };
+  const get = (target: string) => send(server.port, target, { headers: auth });
+  const change = changer(server);
+  const endpoint = '/api/hooks/codex/apply';
+  assert.deepEqual(JSON.parse((await get('/api/hooks')).body), [status]);
+  const planned = await get('/api/hooks/codex/plan?action=install');
+  assert.equal(planned.status, 200);
+  const plan = JSON.parse(planned.body);
+  assert.equal(plan.before, null);
+  assert.equal(plan.beforeHash, beforeFingerprint({ before: null }, 'fixture-identity'));
+  assert.equal(plan.files[0].action, 'write');
+  assert.equal((await get('/api/hooks/codex/plan?action=uninstall')).status, 200);
+  for (const target of ['/api/hooks/unknown/plan?action=install', '/api/hooks/%63odex%2Fclaude/plan?action=install']) assert.equal((await get(target)).status, 404);
+  for (const suffix of ['', '?action=remove', '?action=INSTALL']) assert.equal((await get(`/api/hooks/codex/plan${suffix}`)).status, 400);
+  assert.equal((await change('POST', '/api/hooks/unknown/apply', { action: 'install', beforeHash: 'missing' })).status, 404);
+  for (const body of [{ action: 'install' }, { action: 'remove', beforeHash: 'missing' }, { action: 'install', beforeHash: 42 }, { action: 'install', beforeHash: 'not-a-hash' }, { action: 'install', beforeHash: 'missing', extra: true }]) {
+    assert.equal((await change('POST', endpoint, body)).status, 400);
+  }
+  const afterHash = afterFingerprint({ after: '{"hooks":[]}', files: [{ path: '/synthetic/plugin.js', action: 'write' }] });
+  assert.equal(plan.afterHash, afterHash);
+  const body = { action: 'install', beforeHash: 'missing', afterHash };
+  assert.equal((await send(server.port, endpoint, { method: 'POST', headers: auth, body: JSON.stringify(body) })).status, 403);
+  const invalidHeaders: Record<string, string>[] = [{ Origin: '' }, { Origin: 'http://evil.example' }, { 'X-Fonn-Request': '' }, { 'Content-Type': 'text/plain' }];
+  for (const headers of invalidHeaders) {
+    assert.equal((await change('POST', endpoint, body, headers)).status, 403);
+  }
+  assert.equal((await change('POST', endpoint, body, { Authorization: '' })).status, 401);
+  assert.equal((await change('POST', endpoint, { ...body, padding: 'x'.repeat(70 * 1024) })).status, 413);
+  const invalid = await send(server.port, endpoint, { method: 'POST', headers: { ...auth, Origin: `http://127.0.0.1:${server.port}`, 'X-Fonn-Request': '1', 'Content-Type': 'application/json' }, body: '{broken' });
+  assert.equal(invalid.status, 400);
+  assert.equal(applied, 0);
+  before = 'changed on disk';
+  const stale = await change('POST', endpoint, body);
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.error, 'The file changed. Review the new version.');
+  assert.equal(applied, 0);
+  conflict = true;
+  const raced = await change('POST', endpoint, { ...body, beforeHash: beforeFingerprint({ before }, 'fixture-identity') });
+  assert.equal(raced.status, 409);
+  assert.doesNotMatch(raced.body.error, /private/);
+  conflict = false;
+  const changedPlan = await change('POST', endpoint, { ...body, beforeHash: beforeFingerprint({ before }, 'fixture-identity'), afterHash: 'a'.repeat(64) });
+  assert.equal(changedPlan.status, 409, 'a different planned change is refused even when the file is the same');
+  assert.match(changedPlan.body.error, /different now/);
+  const installed = await change('POST', endpoint, { ...body, beforeHash: beforeFingerprint({ before }, 'fixture-identity') });
+  assert.equal(installed.status, 200);
+  assert.equal(installed.body.current, true);
+  const removed = await change('POST', endpoint, { action: 'uninstall', beforeHash: beforeFingerprint({ before }, 'fixture-identity'), afterHash });
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.installed, false);
+  assert.equal(applied, 2);
+  failure = true;
+  const failed = await get('/api/hooks/codex/plan?action=install');
+  assert.equal(failed.status, 400);
+  assert.doesNotMatch(failed.body, /private configuration/);
+  assert.ok(calls.length > 0);
+  for (const options of calls) assert.deepEqual(options, { configDirectory, stateDirectory });
+});
+
+test('hook sessions list all agents without profiles and retain detail, recovery and deletion', async (t) => {
+  const { server, launch, project, launchId: normalId } = await fixture(t);
+  const native = path.dirname(launch);
+  const ids: string[] = [];
+  let artifactId = '';
+  for (const provider of ['claude', 'codex', 'crush', 'opencode']) {
+    const launchId = randomUUID();
+    ids.push(launchId);
+    const folder = path.join(native, launchId);
+    await mkdir(folder);
+    await writeFile(path.join(folder, 'launch.json'), JSON.stringify({
+      schemaVersion: 1, origin: 'hook', provider, agentSessionId: `synthetic-${provider}`, launchId,
+      cwd: project, filterMode: 'filter', filterLevel: 'standard', createdAt: '2026-02-01T00:00:00.000Z',
+    }));
+    const artifact = await createArtifactStore(path.join(folder, 'artifacts')).save({ toolName: 'Bash', sessionId: 'synthetic', toolUseId: provider, response: { stdout: 'synthetic hook output' } });
+    artifactId = artifact.id;
+  }
+  const get = async (target: string) => {
+    const reply = await send(server.port, target, { headers: { Authorization: `Bearer ${server.token}` } });
+    return { status: reply.status, body: JSON.parse(reply.body) };
+  };
+  const listing = await get('/api/launches');
+  assert.equal(listing.status, 200);
+  assert.equal(listing.body.launches.length, 5);
+  for (const [index, provider] of ['claude', 'codex', 'crush', 'opencode'].entries()) {
+    const summary = listing.body.launches.find((item: { launchId: string }) => item.launchId === ids[index]);
+    assert.equal(summary.origin, 'hook');
+    assert.equal(summary.provider, provider);
+    assert.equal(summary.providerLabel, ['Claude Code', 'Codex', 'Crush', 'OpenCode'][index]);
+    assert.equal(summary.profile, null);
+    const detail = await get(`/api/launches/${ids[index]}`);
+    assert.equal(detail.status, 200);
+    assert.deepEqual(detail.body.launch, summary);
+  }
+  assert.equal(listing.body.launches.find((item: { launchId: string }) => item.launchId === normalId).origin, 'launch');
+  const slice = await get(`/api/launches/${ids[3]}/artifacts/${artifactId}?limit=200`);
+  assert.equal(slice.status, 200);
+  assert.match(slice.body.text, /synthetic hook output/);
+  const change = changer(server);
+  // Hook sessions never record a finish, so they delete without the running check.
+  assert.equal((await change('DELETE', `/api/launches/${ids[3]}`)).status, 200);
+  assert.equal((await get(`/api/launches/${ids[3]}`)).status, 404);
 });

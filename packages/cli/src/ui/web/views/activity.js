@@ -1,5 +1,45 @@
-import { get, launchRoute, projectRoute } from '../api.js';
-import { badge, card, date, el, empty, fields, link, loadSection, pageHeader, totals } from '../components.js';
+import { get, launchRoute, projectRoute, send } from '../api.js';
+import { badge, button, card, date, el, empty, fields, link, loadSection, pageHeader, totals } from '../components.js';
+import { confirmDialog, feedback, field, select } from '../forms.js';
+
+const size = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/** Delete old records on request. Nothing here runs on its own. */
+function cleanupCard(onDone) {
+  const section = card('Clean up old records', 'Fonn keeps the full original of every output it shortens, in every hooked session and launch. They can hold private code, logs or printed secrets. Delete the ones you no longer need.');
+  const days = select([['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['180', '180 days']], '30');
+  const control = field('Not used for more than', days);
+  const status = feedback();
+  const trigger = button('Delete old records…', async () => {
+    trigger.disabled = true;
+    status.show('Counting…');
+    try {
+      const olderThanDays = Number(days.value);
+      const counted = await send('POST', 'records/cleanup', { olderThanDays, confirm: false });
+      if (!counted.records) { status.show(`No records unused for more than ${olderThanDays} days.`); return; }
+      status.show();
+      confirmDialog({
+        title: `Delete ${counted.records} old ${counted.records === 1 ? 'record' : 'records'}?`,
+        message: `${counted.records} ${counted.records === 1 ? 'record' : 'records'} (${counted.hookSessions} from hook sessions) not used for more than ${olderThanDays} days, ${size(counted.bytes)} with their archived originals. Records that become active meanwhile are kept. This cannot be undone.`,
+        confirmLabel: 'Delete',
+        returnFocus: trigger,
+        action: async () => {
+          const result = await send('POST', 'records/cleanup', { olderThanDays, confirm: true });
+          status.show(`Deleted ${result.deleted} ${result.deleted === 1 ? 'record' : 'records'}.${result.kept ? ` Kept ${result.kept} that became active.` : ''}`);
+          onDone();
+        },
+      });
+    } catch (error) {
+      status.show(error.message, true);
+    } finally {
+      trigger.disabled = false;
+    }
+  }, 'danger');
+  const actions = el('div', 'form-actions');
+  actions.append(trigger, status.node);
+  section.append(control.node, actions);
+  return section;
+}
 
 function launchCard(launch) {
   const item = el('li', 'record');
@@ -7,10 +47,12 @@ function launchCard(launch) {
   // Project, agent and profile are easier to scan than the launch ID.
   const project = launch.projectRoot.split('/').filter(Boolean).pop() ?? launch.projectRoot;
   const title = el('h3');
-  title.append(link(`${project} · ${launch.provider} · ${launch.profile}`, launchRoute(launch.launchId)));
-  const state = launch.exitCode !== null
-    ? badge(`Exit ${launch.exitCode}`, launch.exitCode === 0 ? 'ok' : 'stop')
-    : badge(launch.finishedAt ? 'Exit not recorded' : 'No finish recorded');
+  title.append(link(`${project} · ${launch.providerLabel} · ${launch.profile ?? 'no profile'}`, launchRoute(launch.launchId)));
+  // A hook sees commands, not the session's end, so it never records a finish.
+  const state = launch.origin === 'hook' ? badge('Hook session', 'accent')
+    : launch.exitCode !== null
+      ? badge(`Exit ${launch.exitCode}`, launch.exitCode === 0 ? 'ok' : 'stop')
+      : badge(launch.finishedAt ? 'Exit not recorded' : 'No finish recorded');
   header.append(title, state);
   const meta = el('p', 'record-meta', `${date(launch.createdAt)} · `);
   meta.append(el('span', 'mono', launch.launchId));
@@ -39,7 +81,7 @@ function runCard(run) {
 
 export async function activitySections(target, signal, root) {
   const query = root === undefined ? {} : { root };
-  const launches = card('Recent launches', 'Native Claude and Codex sessions. Up to 200 recent records.');
+  const launches = card('Recent launches', 'Native launches and agent hook sessions. Up to 200 recent records.');
   const runs = card('SDK runs', 'Structured tasks. API costs are estimates. Up to 200 recent records.');
   target.append(launches, runs);
   await Promise.all([
@@ -64,5 +106,8 @@ export async function activitySections(target, signal, root) {
 
 export async function activityView(target, signal) {
   target.append(pageHeader('Global / Activity', 'Activity', 'Recent sessions and the output Fonn delivered. Counts are characters, not tokens.'));
-  await activitySections(target, signal);
+  const records = el('div');
+  const load = () => { records.replaceChildren(); return activitySections(records, signal); };
+  target.append(records, cleanupCard(() => { load(); }));
+  await load();
 }

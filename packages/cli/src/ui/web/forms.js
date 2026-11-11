@@ -92,18 +92,20 @@ function confirmationDialog() {
   message.id = 'confirm-message';
   dialog.setAttribute('aria-labelledby', title.id);
   dialog.setAttribute('aria-describedby', message.id);
+  const content = el('div', 'confirm-content');
   const status = feedback();
   const cancel = button('Cancel', () => dialog.close());
   const confirm = button('Delete', () => {}, 'danger');
   const actions = el('div', 'form-actions confirm-actions');
   actions.append(cancel, confirm);
-  dialog.append(title, message, status.node, actions);
+  dialog.append(title, message, content, status.node, actions);
   document.body.append(dialog);
-  confirmation = { dialog, title, message, status, cancel, confirm, busy: false, current: undefined };
+  confirmation = { dialog, title, message, content, status, cancel, confirm, busy: false, current: undefined };
   // Escape while a change is being saved would hide its outcome.
   dialog.addEventListener('cancel', (event) => { if (confirmation.busy) event.preventDefault(); });
   dialog.addEventListener('close', () => {
-    const returnFocus = confirmation.current?.returnFocus;
+    const target = confirmation.current?.returnFocus;
+    const returnFocus = typeof target === 'function' ? target() : target;
     confirmation.current = undefined;
     // The browser restores its own focus after this event; go after it.
     setTimeout(() => { if (returnFocus?.isConnected) returnFocus.focus(); }, 0);
@@ -130,15 +132,18 @@ function confirmationDialog() {
 }
 
 /**
- * Asks before a destructive change. `action` runs on confirm; when it throws,
- * the dialog stays open with the message. Focus returns to `returnFocus`.
+ * Reviews a change before applying it. `action` runs on confirm; when it
+ * throws, the dialog stays open with the message. Optional `content` holds
+ * a DOM preview. `returnFocus` may be an element or a function returning one.
  */
-export function confirmDialog({ title, message, confirmLabel = 'Delete', action, returnFocus }) {
+export function confirmDialog({ title, message, content, confirmLabel = 'Delete', destructive = true, action, returnFocus }) {
   const dialog = confirmationDialog();
   dialog.current = { action, returnFocus: returnFocus ?? document.activeElement };
   dialog.title.textContent = title;
   dialog.message.textContent = message;
+  dialog.content.replaceChildren(...(content ? [content] : []));
   dialog.confirm.textContent = confirmLabel;
+  dialog.confirm.classList.toggle('danger', destructive);
   dialog.status.show();
   if (!dialog.dialog.open) dialog.dialog.showModal();
   // Cancel is the safe default for a destructive choice.
