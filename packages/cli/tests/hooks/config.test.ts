@@ -167,7 +167,7 @@ test('Codex install writes hooks.json in its home, keeps other hooks, and remind
   const after = JSON.parse(plan.after!);
   assert.deepEqual(after.hooks.SessionStart, original.hooks.SessionStart);
   assert.equal(after.hooks.PostToolUse.length, 2);
-  assert.equal(after.hooks.PostToolUse[1].hooks[0].command, `'${f.node}' '${f.main}' 'hook' '--agent' 'codex'`);
+  assert.deepEqual(after.hooks.PostToolUse[1].hooks[0], { type: 'command', command: `'${f.node}' '${f.main}' 'hook' '--agent' 'codex'`, timeout: 5, statusMessage: 'Fonn output filter' });
   const installed = await applyHookPlan(plan, f.options);
   assert.equal(installed.current, true);
   assert.match(installed.note!, /\/hooks/);
@@ -317,4 +317,23 @@ test('a script at the canonical path counts as Fonn\'s only with Fonn\'s package
   assert.equal(hookOwnership(`'${f.node}' '${f.main}' hook --agent claude`, 'claude'), 'fonn');
   const gone = path.join(f.root, 'moved-away', 'packages', 'cli', 'dist', 'cli', 'main.js');
   assert.equal(hookOwnership(`'${f.node}' '${gone}' hook --agent claude`, 'claude'), 'fonn', 'a removed checkout is a stale Fonn hook uninstall can clean up');
+});
+
+test('a Codex hook from an older Fonn without a name is reported as outdated and gets its name in place', async t => {
+  const f = await hookFixture(t, 'codex');
+  const folder = path.join(f.home, '.codex');
+  await mkdir(folder);
+  const command = `'${f.node}' '${f.main}' 'hook' '--agent' 'codex'`;
+  const unnamed = { hooks: { PostToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command, timeout: 5 }] }, { matcher: 'Bash', hooks: [{ type: 'command', command: '/bin/audit' }] }] } };
+  await writeFile(path.join(folder, 'hooks.json'), JSON.stringify(unnamed, null, 2) + '\n');
+  const before = await status(f.options, 'codex');
+  assert.equal(before.installed, true);
+  assert.equal(before.current, false);
+  assert.match(before.note!, /older Fonn/);
+  assert.match((await hookWarnings(f.options)).join(' '), /older Fonn/);
+  const updated = await applyHookPlan(await planHook('codex', 'install', f.options), f.options);
+  assert.equal(updated.current, true);
+  const after = JSON.parse(await readFile(path.join(folder, 'hooks.json'), 'utf8'));
+  assert.deepEqual(after.hooks.PostToolUse[0].hooks, [{ type: 'command', command, timeout: 5, statusMessage: 'Fonn output filter' }]);
+  assert.deepEqual(after.hooks.PostToolUse[1], unnamed.hooks.PostToolUse[1]);
 });
