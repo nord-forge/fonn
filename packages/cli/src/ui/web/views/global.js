@@ -104,7 +104,7 @@ export async function globalRulesView(target, signal) {
       item.append(anchor);
       list.append(item);
     }
-    projects.append(list, link('Open another project', '#/projects/open', 'section-link'));
+    projects.append(list, link('All projects', '#/projects', 'section-link'));
   }, signal);
   await loadSection(section, async () => {
     const data = await get('settings/global', { signal });

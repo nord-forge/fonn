@@ -1,5 +1,5 @@
-import { get, projectRoute, SESSION_EXPIRED } from './api.js';
-import { button, displayPath, el, link, number, pageHeader, setHome, warning } from './components.js';
+import { get, SESSION_EXPIRED } from './api.js';
+import { el, link, pageHeader, setHome, warning } from './components.js';
 import { overviewView, profilesView, globalRulesView } from './views/global.js';
 import { agentsView } from './views/agents.js';
 import { activityView } from './views/activity.js';
@@ -8,6 +8,7 @@ import { launchView } from './views/launch.js';
 
 import { testView } from './views/test.js';
 import { openProjectView } from './views/open-project.js';
+import { projectsView } from './views/projects.js';
 
 const main = document.querySelector('#main');
 const sidebar = document.querySelector('#sidebar');
@@ -42,37 +43,12 @@ document.querySelector('.skip-link').addEventListener('click', (event) => {
 });
 
 function updateNavigation() {
+  const current = window.location.hash.split('?')[0];
+  // A project, and opening one, belong to Projects.
+  const section = /^#\/(project\/|projects\/open$)/.test(current) ? '#/projects' : current;
   for (const item of sidebar.querySelectorAll('nav a')) {
-    if (item.getAttribute('href') === window.location.hash.split('?')[0]) item.setAttribute('aria-current', 'page');
+    if (item.getAttribute('href') === section) item.setAttribute('aria-current', 'page');
     else item.removeAttribute('aria-current');
-  }
-}
-
-async function loadProjects() {
-  const target = document.querySelector('#project-navigation');
-  try {
-    const data = await get('projects');
-    if (sessionExpired) return;
-    document.querySelector('#project-count').textContent = number(data.projects.length);
-    if (!data.projects.length) {
-      target.replaceChildren(el('p', 'nav-note', 'Launch fonn in a project and it appears here'));
-      return;
-    }
-    const list = el('ul', 'nav-list project-nav');
-    for (const project of data.projects) {
-      const item = el('li');
-      const anchor = link('', projectRoute(project.root));
-      anchor.title = displayPath(project.root);
-      // The bidi marks keep a right-to-left ellipsis from moving the leading slash.
-      anchor.append(el('span', 'project-name', project.name), el('span', 'project-path', `\u200e${displayPath(project.root)}\u200e`));
-      item.append(anchor);
-      list.append(item);
-    }
-    target.replaceChildren(list);
-    updateNavigation();
-  } catch (error) {
-    if (sessionExpired) return;
-    target.replaceChildren(el('p', 'nav-note', error.message), button('Try again', loadProjects, 'nav-retry'));
   }
 }
 
@@ -83,6 +59,7 @@ function parseRoute(hash) {
   if (hash === '#/test' || hash.startsWith('#/test?')) return { title: 'Test bench', view: testView, id: new URLSearchParams(hash.split('?')[1]).get('root') || undefined };
   if (hash === '#/global/profiles') return { title: 'Profiles', view: profilesView };
   if (hash === '#/global/activity') return { title: 'Activity', view: activityView };
+  if (hash === '#/projects') return { title: 'Projects', view: projectsView };
   if (hash === '#/projects/open') return { title: 'Open a project', view: openProjectView };
   // A project page may carry its tab, as in #/project/<root>?tab=rules.
   const match = /^#\/(project|launch)\/([^/?]+)(?:\?[a-z=&]*)?$/.exec(hash);
@@ -133,7 +110,6 @@ window.addEventListener('fonn:session-expired', () => {
   const banner = document.querySelector('#session-message');
   banner.textContent = SESSION_EXPIRED;
   banner.hidden = false;
-  document.querySelector('#project-navigation').replaceChildren(el('p', 'nav-note', SESSION_EXPIRED));
   render();
 });
 window.addEventListener('hashchange', () => render());
@@ -143,5 +119,4 @@ if (!window.location.hash) {
 // The home folder shows as ~ in paths. Without it, paths show in full.
 get('session').then((session) => setHome(session.home), () => {}).finally(() => {
   render(false);
-  loadProjects();
 });
