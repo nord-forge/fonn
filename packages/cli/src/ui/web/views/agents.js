@@ -1,5 +1,5 @@
 import { get, send } from '../api.js';
-import { badge, button, card, el, loadSection, pageHeader, warning } from '../components.js';
+import { badge, button, card, el, link, loadSection, pageHeader, warning } from '../components.js';
 import { confirmDialog, feedback } from '../forms.js';
 import { hookDiff } from '../hook-diff.js';
 
@@ -141,5 +141,6 @@ export async function agentsView(target, signal) {
   }, signal);
   const explanation = card('How it works');
   explanation.append(el('p', '', 'Hooks run inside your agent. Settings come from the project folder and your global settings. Project rules need your approval. Originals stay recoverable. If the hook fails, output passes through unchanged.'));
+  explanation.append(link('Add your own filter rules', '#/global/rules', 'section-link'));
   target.append(explanation);
 }

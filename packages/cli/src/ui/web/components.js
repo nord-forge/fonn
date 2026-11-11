@@ -141,5 +141,8 @@ export function code(text) {
   return block;
 }
 
-export const settingKeys = ['profile', 'filterLevel', 'filterMode', 'subagents'];
+/** Filter settings come first: the hook uses them. Profile and subagents only apply to fonn claude and fonn codex. */
+export const filterSettingKeys = ['filterMode', 'filterLevel'];
+export const launchSettingKeys = ['profile', 'subagents'];
+export const settingKeys = [...filterSettingKeys, ...launchSettingKeys];
 export const sourceLabel = (source) => ({ flag: 'flag', local: 'personal', shared: 'shared', global: 'global', default: 'built-in default' })[source] ?? source;

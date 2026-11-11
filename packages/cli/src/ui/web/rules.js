@@ -45,7 +45,7 @@ export function rulesEditor(initial = [], { root, status, changed = () => {} } =
     const entry = append({ name: '', command: '', remove: [] });
     entry.name.input.focus();
     changed();
-  });
+  }, 'secondary add-rule');
   add.setAttribute('aria-describedby', limit.id);
   function updateLimit() {
     add.disabled = entries.length >= 50;

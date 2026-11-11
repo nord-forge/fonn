@@ -1,5 +1,5 @@
 import { get, send } from '../api.js';
-import { button, card, code, el, empty, fields, link, loadSection, number, pageHeader, settingKeys } from '../components.js';
+import { button, card, code, el, empty, fields, filterSettingKeys, launchSettingKeys, link, loadSection, number, pageHeader } from '../components.js';
 
 import { describeControls, explanations, feedback, field, saving, select, settingValues } from '../forms.js';
 import { rulesEditor } from '../rules.js';
@@ -7,36 +7,43 @@ import { rulesEditor } from '../rules.js';
 export { profilesView } from './profiles.js';
 
 export async function overviewView(target, signal) {
-  target.append(pageHeader('Global / Overview', 'Your Fonn, at a glance', 'Settings, profiles, and sessions from this machine.'));
+  target.append(pageHeader('Global / Overview', 'Your Fonn, at a glance', 'Hooks, filter settings and sessions on this machine.'));
   const overview = el('div', 'overview-section');
   const settings = card('Global settings', 'Saved defaults for all projects. Project settings and launch flags can override these values.');
-  target.append(overview, settings);
+  const environment = card('Environment');
+  target.append(overview, settings, environment);
   await Promise.all([
     loadSection(overview, async () => {
-      const data = await get('overview', { signal });
-      const metrics = el('dl', 'overview-metrics');
-      for (const [key, label] of [['profiles', 'Profiles'], ['projects', 'Projects'], ['launches', 'Launches'], ['runs', 'SDK runs']]) {
-        const item = el('div', 'overview-metric');
-        item.append(el('dt', '', label), el('dd', '', number(data.counts[key])));
+      const [data, hooks, global] = await Promise.all([get('overview', { signal }), get('hooks', { signal }), get('settings/global', { signal })]);
+      const metrics = el('div', 'overview-metrics');
+      const installed = hooks.filter((status) => status.installed).length;
+      for (const [label, value, href] of [
+        ['Hooks installed', `${number(installed)} of ${number(hooks.length)}`, '#/global/agents'],
+        ['Global filter rules', number((global.settings.rules ?? []).length), '#/global/rules'],
+        ['Sessions', number(data.counts.launches), '#/global/activity'],
+        ['Projects', number(data.counts.projects), '#/projects/open'],
+      ]) {
+        const item = el('a', 'overview-metric metric-link');
+        item.href = href;
+        item.append(el('span', 'metric-label', label), el('span', 'metric-value', value));
         metrics.append(item);
       }
-      const environment = card('Environment');
+      overview.append(metrics);
       environment.append(fields([
         ['Fonn version', data.version], ['Node version', data.node], ['Platform', data.platform],
         ['Config folder', data.configDirectory], ['State folder', data.stateDirectory],
       ]));
-      overview.append(metrics, environment);
     }, signal),
     loadSection(settings, async () => {
       const [data, profiles] = await Promise.all([get('settings/global', { signal }), get('profiles', { signal })]);
       settings.append(el('p', 'path file-path', data.file));
-      for (const key of settingKeys) {
+      const settingForm = (key) => {
         const form = el('form', 'setting-row');
         const input = select(key === 'profile' ? profiles.profiles.map((profile) => profile.name) : settingValues[key], data.settings[key] ?? '', key === 'profile' ? undefined : 'Use built-in default');
         const control = field(key, input, explanations[key]);
         const status = feedback();
         let saved = input.value;
-        const save = button('Save', () => {});
+        const save = button('Save', () => {}, 'primary');
         save.type = 'submit';
         save.hidden = true;
         input.addEventListener('change', () => { save.hidden = input.value === saved; status.show(); });
@@ -58,14 +65,21 @@ export async function overviewView(target, signal) {
             input.focus();
           });
         });
-        settings.append(form);
-      }
+        return form;
+      };
+      for (const key of filterSettingKeys) settings.append(settingForm(key));
       settings.append(link('Edit global filter rules', '#/global/rules', 'section-link'));
-      const details = el('details', 'instructions-details');
-      details.append(el('summary', '', 'Instructions Fonn adds'));
-      details.append(el('p', 'section-description', 'Added at session start when subagents is auto.'));
-      details.append(data.delegationGuidance ? code(data.delegationGuidance) : empty('No added instructions.'));
-      settings.append(details);
+      // Hooks do not use these. They only apply when Fonn starts the agent.
+      const launch = el('details', 'launch-settings instructions-details');
+      launch.append(el('summary', '', 'Launch settings'));
+      launch.append(el('p', 'section-description', 'Only used when Fonn starts the agent, with fonn claude or fonn codex. Hooks ignore them.'));
+      for (const key of launchSettingKeys) launch.append(settingForm(key));
+      const instructions = el('details', 'instructions-details');
+      instructions.append(el('summary', '', 'Instructions Fonn adds'));
+      instructions.append(el('p', 'section-description', 'Added at session start when subagents is auto.'));
+      instructions.append(data.delegationGuidance ? code(data.delegationGuidance) : empty('No added instructions.'));
+      launch.append(instructions);
+      settings.append(launch);
     }, signal),
   ]);
 }
@@ -80,9 +94,11 @@ export async function globalRulesView(target, signal) {
       const form = el('form');
       const status = feedback();
       const editor = rulesEditor(resource.settings.rules ?? [], { status: status.node, changed: () => status.show() });
-      const save = button('Save rules', () => {});
+      const save = button('Save rules', () => {}, 'primary');
       save.type = 'submit';
-      form.append(el('p', 'path file-path', resource.file), editor.node, save, status.node);
+      const actions = el('div', 'form-actions');
+      actions.append(save, status.node);
+      form.append(el('p', 'path file-path', resource.file), editor.node, actions);
       describeControls(form, status.node);
       form.addEventListener('submit', (event) => {
         event.preventDefault();
