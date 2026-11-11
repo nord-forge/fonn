@@ -4,7 +4,7 @@ cask "fonn" do
 
   url "https://github.com/nord-forge/fonn/releases/download/v#{version}/fonn-#{version}.tar.gz"
   name "Fonn"
-  desc "Local coding agent harness for Claude and Codex"
+  desc "Shortens noisy command output for coding agents"
   homepage "https://github.com/nord-forge/fonn"
 
   depends_on formula: "node"

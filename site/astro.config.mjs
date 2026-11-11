@@ -15,7 +15,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Fonn',
-      description: 'A local CLI around native Claude Code and Codex. Saved model profiles, subagent guidance, and conservative filtering of noisy shell output with recoverable originals.',
+      description: 'Fonn shortens noisy command output before your coding agent reads it. One hook for Claude Code, Codex, Crush and OpenCode, with every original kept on your machine.',
       // The brand mark from brand/logos: light lines on the dark theme, dark blue on the light one.
       logo: { dark: './src/assets/brand/mark-dark.svg', light: './src/assets/brand/mark-light.svg', alt: '' },
       favicon: '/favicon.svg',
