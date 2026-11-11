@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdir, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { applyHookPlan, hookOwnership, hookStatus, planHook, planIdentity, redactForDisplay } from '../../src/hooks/index.js';
@@ -86,38 +85,4 @@ test('without Bash, every Crush change is refused', async t => {
   await assert.rejects(planHook('crush', 'install', options), /Fonn needs Bash/);
   assert.match((await hookStatus(options)).find(item => item.agent === 'crush')!.error!, /Fonn needs Bash/);
   assert.equal(await readFile(file, 'utf8'), 'provider add ollama --name Ollama\n');
-});
-
-async function deadPid(): Promise<number> {
-  const child = spawn(process.execPath, ['-e', '']);
-  await new Promise(done => child.once('exit', done));
-  return child.pid!;
-}
-
-test('a stale lock is replaced, and a live one is reported', async t => {
-  const f = await hookFixture(t, 'stale-lock');
-  const file = path.join(f.home, '.claude', 'settings.json');
-  await mkdir(path.dirname(file));
-  const lock = path.join(path.dirname(file), '.settings.json.fonn-lock');
-
-  await writeFile(lock, JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() }));
-  await assert.rejects(applyHookPlan(await planHook('claude', 'install', f.options), f.options), /Another Fonn change to .* is in progress/);
-  assert.equal(JSON.parse(await readFile(lock, 'utf8')).pid, process.pid);
-
-  // The owner is gone.
-  await writeFile(lock, JSON.stringify({ pid: await deadPid(), createdAt: new Date().toISOString() }));
-  await applyHookPlan(await planHook('claude', 'install', f.options), f.options);
-  await assert.rejects(readFile(lock), { code: 'ENOENT' });
-
-  // Older than ten minutes, even though the owner is alive.
-  await writeFile(lock, JSON.stringify({ pid: process.pid, createdAt: new Date(Date.now() - 11 * 60 * 1000).toISOString() }));
-  await applyHookPlan(await planHook('claude', 'uninstall', f.options), f.options);
-  await assert.rejects(readFile(lock), { code: 'ENOENT' });
-
-  // An unreadable lock is judged by its age.
-  await writeFile(lock, '');
-  const old = new Date(Date.now() - 11 * 60 * 1000);
-  await utimes(lock, old, old);
-  await applyHookPlan(await planHook('claude', 'install', f.options), f.options);
-  await assert.rejects(readFile(lock), { code: 'ENOENT' });
 });

@@ -21,8 +21,12 @@ export interface HookRuntimeOptions extends HookOptions {
   brewPrefixes?: string[];
   /** Tests only: the Bash used to check crushrc. Defaults to bash on PATH. */
   bash?: string;
-  /** Tests only: runs inside applyHookPlan just before the file is replaced. */
+  /** Tests only: runs inside applyHookPlan just before the final check and the rename. */
   beforeCommit?: () => Promise<void>;
+  /** Tests only: runs right after the rename, before Fonn reads the file back. */
+  afterCommit?: () => Promise<void>;
+  /** Tests only: writes the temporary file, so a failing disk can be simulated. */
+  writeTemporary?: (handle: import('node:fs/promises').FileHandle, content: string) => Promise<void>;
 }
 
 export interface BaseCommand {

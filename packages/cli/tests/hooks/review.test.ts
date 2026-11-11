@@ -120,7 +120,9 @@ test('apply refuses an edit or a retargeted link made during the write', async t
 test('displayed configs hide likely secrets, and the CLI diff never prints them', async t => {
   const json = '{"env":{"ANTHROPIC_API_KEY":"sk-ant-1","DEBUG":"1"},"apiKeyHelper":"/bin/key","model":"opus","hooks":{}}';
   const shown = redactForDisplay(json, 'claude')!;
-  assert.doesNotMatch(shown, /sk-ant-1|\/bin\/key|"DEBUG": "1"/);
+  assert.doesNotMatch(shown, /sk-ant-1|"DEBUG": "1"/);
+  // A helper's path is not a credential, so it stays visible.
+  assert.match(shown, /"apiKeyHelper": "\/bin\/key"/);
   assert.match(shown, /"ANTHROPIC_API_KEY": "\[hidden\]"/);
   assert.match(shown, /"model": "opus"/);
   const text = 'export OPENAI_API_KEY=sk-1\napi_key = "sk-2"\nprovider add x --api-key "sk-3" --base-url http://localhost\nPATH=/usr/bin\n';
@@ -138,7 +140,7 @@ test('displayed configs hide likely secrets, and the CLI diff never prints them'
   await writeFile(file, json);
   const out: string[] = [];
   assert.equal(await dispatch(['hooks', 'install', '--agent', 'claude', '--yes'], { stdout: text => { out.push(text); }, stderr: () => undefined, interactive: false, env: {}, hookOptions: f.options }), 0);
-  assert.doesNotMatch(out.join(''), /sk-ant-1|\/bin\/key/);
+  assert.doesNotMatch(out.join(''), /sk-ant-1/);
   // The file itself keeps the real values.
   assert.equal(JSON.parse(await readFile(file, 'utf8')).env.ANTHROPIC_API_KEY, 'sk-ant-1');
 });

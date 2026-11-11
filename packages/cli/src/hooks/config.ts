@@ -3,7 +3,7 @@
 // the entry that runs `fonn hook --agent <agent>` and leaves the rest alone.
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { constants } from 'node:fs';
+import { constants, lstatSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { access, lstat, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,8 +13,8 @@ import { OPENCODE_PLUGIN_MARKER, opencodePlugin, opencodePluginCommand } from '.
 
 /** Thrown by applyHookPlan when the file changed after the plan was made. */
 export class HookConflictError extends Error {
-  constructor(file: string) {
-    super(`${file} changed after the plan was made. Review the new plan before writing.`);
+  constructor(file: string, message = `${file} changed after the plan was made. Review the new plan before writing.`) {
+    super(message);
     this.name = 'HookConflictError';
   }
 }
@@ -351,6 +351,23 @@ async function identity(file: string): Promise<FileIdentity> {
   return { exists: true, symlink: link.isSymbolicLink(), dev: link.dev, ino: link.ino, target, targetDev: info?.dev ?? 0, targetIno: info?.ino ?? 0 };
 }
 
+/** The same as identity(), without awaiting, for the final check before a rename. */
+function identitySync(file: string): FileIdentity {
+  let link;
+  try { link = lstatSync(file); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { exists: false, symlink: false, dev: 0, ino: 0, target: null, targetDev: 0, targetIno: 0 }; throw error; }
+  let target: string | null = file;
+  if (link.isSymbolicLink()) { try { target = realpathSync(file); } catch { target = null; } }
+  let info;
+  if (target) { try { info = statSync(target); } catch { info = undefined; } }
+  return { exists: true, symlink: link.isSymbolicLink(), dev: link.dev, ino: link.ino, target, targetDev: info?.dev ?? 0, targetIno: info?.ino ?? 0 };
+}
+
+function readTextSync(file: string): string | null {
+  try { return readFileSync(file, 'utf8'); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+}
+
 function sameIdentity(a: FileIdentity, b: FileIdentity): boolean {
   return a.exists === b.exists && a.symlink === b.symlink && a.dev === b.dev && a.ino === b.ino && a.target === b.target && a.targetDev === b.targetDev && a.targetIno === b.targetIno;
 }
@@ -464,11 +481,16 @@ export async function planHook(agent: HookAgent, action: HookPlan['action'], opt
 
 const STALE_LOCK_MS = 10 * 60 * 1000;
 
+function lockPathFor(file: string): string {
+  return path.join(path.dirname(file), `.${path.basename(file)}.fonn-lock`);
+}
+
 /**
- * True when a lock was left behind: its process is gone, or it is older
- * than ten minutes. A lock that cannot be read is judged by its age.
+ * Whether a lock is still held: its owner process is alive and it is less
+ * than ten minutes old. A lock that cannot be read is judged by its age.
+ * Fonn never removes a lock on its own; `fonn hooks unlock` does, on request.
  */
-async function staleLock(lockPath: string, info: { mtimeMs: number }): Promise<boolean> {
+async function lockHeld(lockPath: string, info: { mtimeMs: number }): Promise<boolean> {
   let owner: { pid?: unknown; createdAt?: unknown } = {};
   try {
     const handle = await open(lockPath, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -476,30 +498,26 @@ async function staleLock(lockPath: string, info: { mtimeMs: number }): Promise<b
     finally { await handle.close(); }
   } catch { owner = {}; }
   const created = typeof owner.createdAt === 'string' ? Date.parse(owner.createdAt) : NaN;
-  if (Date.now() - (Number.isFinite(created) ? created : info.mtimeMs) > STALE_LOCK_MS) return true;
+  if (Date.now() - (Number.isFinite(created) ? created : info.mtimeMs) > STALE_LOCK_MS) return false;
   if (typeof owner.pid === 'number' && Number.isSafeInteger(owner.pid) && owner.pid > 0) {
     try { process.kill(owner.pid, 0); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false; }
   }
-  return false;
+  return true;
 }
 
 /** Serialises Fonn's writers of one config file, like the profile store's lock. */
 async function withLock<T>(file: string, work: () => Promise<T>): Promise<T> {
-  const lockPath = path.join(path.dirname(file), `.${path.basename(file)}.fonn-lock`);
-  const busy = () => new Error(`Another Fonn change to ${file} is in progress: ${lockPath}. Retry after it finishes.`);
+  const lockPath = lockPathFor(file);
   let lock;
-  for (let attempt = 0; !lock; attempt++) {
-    try { lock = await open(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || attempt > 0) throw (error as NodeJS.ErrnoException).code === 'EEXIST' ? busy() : error;
-      const found = await lstat(lockPath).catch(() => undefined);
-      if (!found) continue;
-      if (found.isSymbolicLink() || !found.isFile() || !(await staleLock(lockPath, found))) throw busy();
-      // Remove the stale lock only if it is still the same file.
-      const again = await lstat(lockPath).catch(() => undefined);
-      if (again && again.dev === found.dev && again.ino === found.ino) await unlink(lockPath);
+  try { lock = await open(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    const info = await lstat(lockPath).catch(() => undefined);
+    if (info && !info.isSymbolicLink() && info.isFile() && !(await lockHeld(lockPath, info))) {
+      throw new Error(`A lock from an earlier Fonn run that did not finish is left at ${lockPath}. If no other Fonn is changing hooks, run fonn hooks unlock.`);
     }
+    throw new Error(`Another Fonn change to ${file} is in progress. Retry after it finishes.`);
   }
   const lockInfo = await lock.stat();
   try {
@@ -510,6 +528,57 @@ async function withLock<T>(file: string, work: () => Promise<T>): Promise<T> {
     const current = await lstat(lockPath).catch(() => undefined);
     if (current && !current.isSymbolicLink() && current.dev === lockInfo.dev && current.ino === lockInfo.ino) await unlink(lockPath);
   }
+}
+
+export interface UnlockResult {
+  agent: HookAgent;
+  lockPath: string;
+  /** removed: a lock left by a run that did not finish; kept: a lock still in use; none: no lock. */
+  action: 'removed' | 'kept' | 'none';
+  /** One sentence for the user. */
+  message: string;
+}
+
+/**
+ * Removes locks left by Fonn runs that did not finish, for the given agents
+ * or all of them. A lock is removed only when its owner is gone or it is
+ * older than ten minutes. Config files are never touched.
+ */
+export async function unlockHooks(agents: readonly HookAgent[] = HOOK_AGENTS, options: HookRuntimeOptions = {}): Promise<UnlockResult[]> {
+  const results: UnlockResult[] = [];
+  for (const agent of agents) {
+    checkAgent(agent);
+    const lockPath = lockPathFor(agentPaths(agent, options).configPath);
+    const label = HOOK_AGENT_LABELS[agent];
+    const info = await lstat(lockPath).catch(() => undefined);
+    if (!info) { results.push({ agent, lockPath, action: 'none', message: `${label}: no lock.` }); continue; }
+    if (info.isSymbolicLink() || !info.isFile()) {
+      results.push({ agent, lockPath, action: 'kept', message: `${label}: kept ${lockPath}, because it is not a plain file. Check it by hand.` });
+      continue;
+    }
+    // What this run inspected: the lock's full identity and its content.
+    const seen = (() => { try { return { stat: lstatSync(lockPath, { bigint: true }), text: readFileSync(lockPath, 'utf8') }; } catch { return undefined; } })();
+    if (await lockHeld(lockPath, info)) {
+      results.push({ agent, lockPath, action: 'kept', message: `${label}: kept ${lockPath}, because another Fonn change is still in progress.` });
+      continue;
+    }
+    // Check and remove in one synchronous step, so a lock another Fonn took in
+    // the meantime (a new file, or new content) is never removed.
+    const same = (() => {
+      if (!seen) return false;
+      try {
+        const now = lstatSync(lockPath, { bigint: true });
+        return now.dev === seen.stat.dev && now.ino === seen.stat.ino && now.birthtimeNs === seen.stat.birthtimeNs && now.ctimeNs === seen.stat.ctimeNs && readFileSync(lockPath, 'utf8') === seen.text;
+      } catch { return false; }
+    })();
+    if (same) {
+      unlinkSync(lockPath);
+      results.push({ agent, lockPath, action: 'removed', message: `${label}: removed ${lockPath}, left by a Fonn run that did not finish.` });
+    } else {
+      results.push({ agent, lockPath, action: 'kept', message: `${label}: kept ${lockPath}, because it changed while Fonn looked at it.` });
+    }
+  }
+  return results;
 }
 
 /**
@@ -536,13 +605,21 @@ export async function applyHookPlan(plan: HookPlan, options: HookRuntimeOptions 
     await withLock(file, async () => {
       const expected = planIdentities.get(plan) ?? await identity(file);
       // Refuse when the content or the file itself changed since the plan.
-      const unchanged = async () => sameIdentity(expected, await identity(file)) && await readText(file) === plan.before;
-      if (!(await unchanged())) throw new HookConflictError(file);
+      if (!sameIdentity(expected, await identity(file)) || await readText(file) !== plan.before) throw new HookConflictError(file);
+      // The final check and the change run as one synchronous block with no
+      // await in between, so an outside edit has only the time of these few
+      // calls to slip in. Editors do not take Fonn's lock, so it cannot be
+      // fully atomic; the read back after the change catches what is left.
+      const checkedSync = (): string | null => {
+        const seen = readTextSync(file);
+        if (!sameIdentity(expected, identitySync(file)) || seen !== plan.before) throw new HookConflictError(file);
+        return seen;
+      };
       if (plan.after === null) {
         // Remove the path itself. For a link that is the link, never its target.
         await options.beforeCommit?.();
-        if (!(await unchanged())) throw new HookConflictError(file);
-        if (expected.exists) await unlink(file);
+        checkedSync();
+        if (expected.exists) unlinkSync(file);
         return;
       }
       // Write through a symlinked config, such as one kept in a dotfiles folder.
@@ -556,14 +633,32 @@ export async function applyHookPlan(plan: HookPlan, options: HookRuntimeOptions 
         catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
       }
       const temporary = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
-      await writeFile(temporary, plan.after, { mode, flag: 'wx' });
+      let written: { dev: number; ino: number };
       try {
+        const handle = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, mode);
+        try {
+          await (options.writeTemporary ?? ((output, content) => output.writeFile(content)))(handle, plan.after);
+          await handle.sync();
+        } finally { await handle.close(); }
         await options.beforeCommit?.();
-        if (!(await unchanged())) throw new HookConflictError(file);
-        await rename(temporary, target);
-      } catch (error) {
+        checkedSync();
+        renameSync(temporary, target);
+        written = statSync(target);
+      } finally {
+        // Gone after a rename; removed after any failure, such as a full disk.
         await unlink(temporary).catch(() => undefined);
-        throw error;
+      }
+      await options.afterCommit?.();
+      // The configured path must still lead to the file Fonn wrote.
+      const now = await identity(file);
+      if (!now.exists || now.symlink !== expected.symlink || now.target !== target || now.targetDev !== written.dev || now.targetIno !== written.ino) {
+        throw new HookConflictError(file, `${file} now points to another file than the one Fonn wrote, so Fonn's change may not be in effect. Fonn left both files as they are. Run the command again to check.`);
+      }
+      // Another program saved the file right after Fonn wrote it. Its version
+      // is the newest, so Fonn leaves it alone rather than overwrite it again,
+      // and says so instead of reporting success.
+      if (await readText(file) !== plan.after) {
+        throw new HookConflictError(file, `${file} was saved by another program right after Fonn wrote it. Fonn kept that version, so its change may be missing. Run the command again to check.`);
       }
     });
   } else if (await readText(file) !== plan.before) {

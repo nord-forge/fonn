@@ -220,6 +220,7 @@ Usage:
   fonn hooks [status] [--json]
   fonn hooks install [--agent <agent>]... [--yes]
   fonn hooks uninstall [--agent <agent>]... [--yes]
+  fonn hooks unlock [--agent <agent>]...
   fonn hook --agent <agent>
 
 Agents: claude (Claude Code), codex (Codex), crush (Crush), opencode (OpenCode).
@@ -231,6 +232,9 @@ Files: ~/.claude/settings.json, ~/.codex/hooks.json (CODEX_HOME moves it),
 ~/.config/crush/crushrc, and a plugin file in ~/.config/opencode/plugins/.
 Fonn keeps a copy of the original next to the file as <file>.fonn-backup.
 uninstall removes only the entries that run fonn hook --agent.
+unlock removes a lock left by a Fonn run that did not finish: one whose
+process is gone or that is older than ten minutes. It keeps a lock in use
+and never changes config files.
 Codex runs the hook only after you review and trust it in /hooks.
 Sessions started with fonn claude or fonn codex already filter, so the
 global hook leaves them alone. Hook sessions show in fonn ui with their
@@ -487,7 +491,7 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
       return 0;
     }
     if (command === 'hooks') {
-      const action = ['status', 'install', 'uninstall'].includes(args[1] ?? '') ? args[1] as 'status' | 'install' | 'uninstall' : 'status';
+      const action = ['status', 'install', 'uninstall', 'unlock'].includes(args[1] ?? '') ? args[1] as 'status' | 'install' | 'uninstall' | 'unlock' : 'status';
       const rest = args.slice(action === args[1] ? 2 : 1);
       const agents: HookAgent[] = [];
       let yes = false;
@@ -498,12 +502,17 @@ export async function dispatch(args: string[], injected: Partial<CliDependencies
           const agent = rest[++index];
           if (!agent || !HOOK_AGENTS.includes(agent as HookAgent)) throw new Error(`--agent must be one of: ${HOOK_AGENTS.join(', ')}.`);
           if (!agents.includes(agent as HookAgent)) agents.push(agent as HookAgent);
-        } else if (value === '--yes' && action !== 'status') yes = true;
+        } else if (value === '--yes' && (action === 'install' || action === 'uninstall')) yes = true;
         else if (value === '--json' && action === 'status') asJson = true;
         else throw new Error(`Unexpected ${value}. Use fonn help hooks for usage.`);
       }
       const hooks = await import('../hooks/index.js');
       const options: HookRuntimeOptions = { ...injected.hookOptions, env };
+      if (action === 'unlock') {
+        // Removes only locks left by Fonn runs that did not finish. Config files are never touched.
+        for (const result of await hooks.unlockHooks(agents.length ? agents : HOOK_AGENTS, options)) stdout(`${terminalText(result.message)}\n`);
+        return 0;
+      }
       if (action === 'status') {
         const statuses = await hooks.hookStatus(options);
         if (asJson) json(statuses);
