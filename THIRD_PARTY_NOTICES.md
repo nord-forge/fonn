@@ -1,6 +1,6 @@
 # Third-party notices
 
-Fonn's own code is covered by the root [MIT license](LICENSE). That license does not relicense its dependencies, Claude Code, or Anthropic/OpenAI services. This is an independent project and does not imply Anthropic or OpenAI endorsement.
+Fonn's own code is covered by the root [MIT license](LICENSE). The Fonn brand artwork in `brand/`, and its copies in the docs site and `fonn ui`, is licensed under [CC BY 4.0](brand/LICENSE). That license does not relicense its dependencies, Claude Code, or Anthropic/OpenAI services. This is an independent project and does not imply Anthropic or OpenAI endorsement.
 
 ## Claude Agent SDK and Claude Code
 

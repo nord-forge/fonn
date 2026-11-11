@@ -1,0 +1,27 @@
+Fonn brand artwork
+Copyright (c) 2026 Fonn contributors
+
+The Fonn logo, mark, wordmark lockups, icons and social images are licensed
+under the Creative Commons Attribution 4.0 International License (CC BY 4.0).
+
+This covers the files in this brand/ folder and their copies elsewhere in the
+repository: site/public/favicon.svg, site/public/favicon.ico,
+site/public/apple-touch-icon.png, site/public/og.png, site/src/assets/brand/,
+packages/cli/src/ui/web/favicon.svg and the mark drawn in
+packages/cli/src/ui/web/index.html.
+
+You may share and adapt this artwork for any purpose, including commercially,
+as long as you give appropriate credit, link to the licence, and say if you
+made changes. A suitable credit is:
+
+  Fonn logo by Fonn contributors, CC BY 4.0
+  https://github.com/nord-forge/fonn
+
+The licence does not grant any right to use the Fonn name or logo in a way that
+suggests the Fonn project endorses you, your fork or your product.
+
+Full licence text: https://creativecommons.org/licenses/by/4.0/legalcode
+Summary: https://creativecommons.org/licenses/by/4.0/
+
+The Fonn source code is licensed separately under the MIT License in the
+repository's root LICENSE file.

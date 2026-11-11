@@ -27,4 +27,4 @@ The wordmark is lowercase `fonn` in Inter Display Bold with slightly tight lette
 
 Keep the mark at least 16 pixels square, with clear space of at least 15% of its width on every side. Do not add gradients, photos, 3D effects or decorative snowflakes.
 
-The code in this repository is MIT licensed. Licensing for these brand files is decided separately. Until then, use them to refer to Fonn.
+These brand files are licensed under [CC BY 4.0](LICENSE): you may share and adapt them, also commercially, if you credit "Fonn logo by Fonn contributors, CC BY 4.0" with a link to this repository and say if you changed them. The licence does not let anyone suggest the Fonn project endorses them. The code is MIT licensed, in the root [LICENSE](../LICENSE).
