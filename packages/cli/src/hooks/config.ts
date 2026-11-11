@@ -29,6 +29,9 @@ export class HookConfigError extends Error {
 
 const TIMEOUT_SECONDS = 5;
 const CODEX_TRUST = 'Codex runs the hook only after you review and trust it in /hooks.';
+// Codex shows a hook's statusMessage as its name in /hooks, and "Unnamed hook"
+// without one. Claude Code shows it as spinner text, so only Codex gets it.
+const CODEX_HOOK_NAME = 'Fonn output filter';
 
 interface Paths {
   configPath: string;
@@ -146,8 +149,15 @@ function withoutJsonEntries(config: Json, agent: HookAgent, keep?: Json): Json {
   return next;
 }
 
-function sameEntry(hook: Json, command: string): boolean {
-  return Object.keys(hook).length === 3 && hook.type === 'command' && hook.command === command && hook.timeout === TIMEOUT_SECONDS;
+function desiredEntry(agent: HookAgent, command: string): Json {
+  const entry: Json = { type: 'command', command, timeout: TIMEOUT_SECONDS };
+  if (agent === 'codex') entry.statusMessage = CODEX_HOOK_NAME;
+  return entry;
+}
+
+function sameEntry(hook: Json, desired: Json): boolean {
+  const keys = Object.keys(desired);
+  return Object.keys(hook).length === keys.length && keys.every(key => hook[key] === desired[key]);
 }
 
 function jsonPlan(agent: HookAgent, before: string | null, file: string, command: string, action: HookPlan['action']): { after: string | null; summary: string[] } {
@@ -158,8 +168,8 @@ function jsonPlan(agent: HookAgent, before: string | null, file: string, command
     if (!entries.length) return { after: before, summary: [`${label} has no Fonn hook in ${file}. Nothing to remove.`] };
     return { after: serialize(withoutJsonEntries(config, agent), before), summary: [`Remove the Fonn hook from ${file}.`, 'Other hooks and settings stay as they are.'] };
   }
-  const desired = { type: 'command', command, timeout: TIMEOUT_SECONDS };
-  if (entries.length === 1 && entries[0]!.group.matcher === 'Bash' && sameEntry(entries[0]!.hook, command)) {
+  const desired = desiredEntry(agent, command);
+  if (entries.length === 1 && entries[0]!.group.matcher === 'Bash' && sameEntry(entries[0]!.hook, desired)) {
     return { after: before, summary: [`${label} already runs this Fonn hook. Nothing to change.`] };
   }
   const inPlace = entries.find(entry => entry.group.matcher === 'Bash');
@@ -417,12 +427,13 @@ function lookalikeCount(agent: HookAgent, text: string | null, file: string, bas
   return groups.flatMap(group => Array.isArray(group.hooks) ? group.hooks : []).filter(hook => isObject(hook) && hookOwnership(hook.command, agent) === 'lookalike').length;
 }
 
-type Problem = 'broken' | 'stale';
+type Problem = 'broken' | 'stale' | 'outdated';
 const problems = new WeakMap<HookStatus, Problem>();
 
 const PROBLEM_TEXT: Record<Problem, string> = {
   broken: 'the Fonn hook runs a program that no longer exists, so it does nothing',
   stale: 'the Fonn hook points at another Fonn installation',
+  outdated: 'the Fonn hook was written by an older Fonn and needs updating',
 };
 
 async function statusFor(agent: HookAgent, options: HookRuntimeOptions): Promise<HookStatus> {
@@ -445,10 +456,13 @@ async function statusFor(agent: HookAgent, options: HookRuntimeOptions): Promise
     if (status.installed && !status.current) {
       let broken = false;
       for (const argv of commands) if (await brokenCommand(argv)) broken = true;
-      problems.set(status, broken ? 'broken' : 'stale');
+      const outdated = !broken && commands.length === 1 && commands[0]?.join('\0') === wanted.argv.join('\0');
+      problems.set(status, broken ? 'broken' : outdated ? 'outdated' : 'stale');
       notes.push(broken
         ? 'The Fonn hook runs a program that no longer exists, so it does nothing. Run fonn hooks install to repair it.'
-        : 'The Fonn hook points at another Fonn installation. Run fonn hooks install to update it.');
+        : outdated
+          ? 'The Fonn hook was written by an older Fonn. Run fonn hooks install to update it.'
+          : 'The Fonn hook points at another Fonn installation. Run fonn hooks install to update it.');
     }
     if (status.current && wanted.versionedNode) notes.push('Its Node path changes when Node is updated. Run fonn hooks install again after a Node update.');
     const checkout = status.current ? sourceCheckout(wanted.argv) : undefined;

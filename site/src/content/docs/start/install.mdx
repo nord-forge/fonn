@@ -78,6 +78,34 @@ fonn hooks install --agent claude
 
 Fonn adds one `PostToolUse` hook to `~/.claude/settings.json`. Start a new `claude` session and it applies, in every project.
 
+Before writing, Fonn shows the plan and a diff of the file, and waits for your answer:
+
+```text
+Claude Code: ~/.claude/settings.json
+  Add one PostToolUse hook for Bash to ~/.claude/settings.json that runs Fonn's filter.
+  Other hooks and settings stay as they are.
+  ...
+      ]
++   },
++   "hooks": {
++     "PostToolUse": [
++       {
++         "matcher": "Bash",
++         "hooks": [
++           {
++             "type": "command",
++             "command": "'/opt/homebrew/bin/fonn' 'hook' '--agent' 'claude'",
++             "timeout": 5
++           }
++         ]
++       }
++     ]
+    }
+  ...
+
+Install the Fonn hook for Claude Code? [y/N]
+```
+
   </TabItem>
   <TabItem label="Codex">
 
@@ -85,7 +113,15 @@ Fonn adds one `PostToolUse` hook to `~/.claude/settings.json`. Start a new `clau
 fonn hooks install --agent codex
 ```
 
-Fonn adds its hook to `~/.codex/hooks.json`. Codex asks you to review and trust new hooks: open `/hooks` in Codex once and trust the Fonn hook. Fonn never trusts it on your behalf.
+Fonn adds its hook to `~/.codex/hooks.json`, named `Fonn output filter`. Codex asks you to review and trust new hooks, and Fonn never trusts it on your behalf. The next time you start Codex, it says a hook is new:
+
+![Codex at startup: "Hooks need review. 1 hook is new or changed." with the choices Review hooks, Trust all and continue, and Continue without trusting.](../../../assets/codex-hooks/review-prompt.png)
+
+Choose **Review hooks**, or run `/hooks` later. The list shows one `PostToolUse` hook waiting for review:
+
+![The Codex /hooks list, with PostToolUse showing 1 installed, 0 active and 1 to review.](../../../assets/codex-hooks/hooks-list.png)
+
+Open `PostToolUse`. The Fonn hook shows its matcher `Bash`, the source `~/.codex/hooks.json` and the command `'/opt/homebrew/bin/fonn' 'hook' '--agent' 'codex'` with a 5 second timeout. Press `t` to trust it. Codex runs it from then on, and asks again only when the hook changes.
 
   </TabItem>
   <TabItem label="Crush">

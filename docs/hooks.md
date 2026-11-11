@@ -42,7 +42,7 @@ Fonn adds one entry that runs `fonn hook --agent <agent>`. That command is how F
 | Agent | File | Entry |
 | --- | --- | --- |
 | Claude Code | `~/.claude/settings.json` (`CLAUDE_CONFIG_DIR` moves it) | A `PostToolUse` group with matcher `Bash` and one command hook, timeout 5 seconds. |
-| Codex | `~/.codex/hooks.json` (`CODEX_HOME` moves it) | The same shape as Claude's. |
+| Codex | `~/.codex/hooks.json` (`CODEX_HOME` moves it) | The same shape as Claude's, with `statusMessage` set to `Fonn output filter`. Codex shows that as the hook's name in `/hooks`. |
 | Crush | `~/.config/crush/crushrc` (`XDG_CONFIG_HOME` moves it) | One line at the end: `hook add PostToolUse --name fonn --matcher '^bash$' --command "..." --timeout 5`, with a comment above it. |
 | OpenCode | `~/.config/opencode/plugins/fonn-hook.js` (`XDG_CONFIG_HOME` moves it) | Fonn's own plugin file. It runs the hook command for the `bash` tool, uses Node builtins only, and keeps the output after any error or 5 seconds. |
 
@@ -56,7 +56,7 @@ Codex can also hold hooks in `[hooks]` tables in `config.toml`. Fonn only writes
 
 ## Codex trust
 
-Codex runs a user hook only after you review and trust it. After installing, open Codex and run `/hooks`, then review and trust the Fonn hook. Codex skips it until then. A changed hook needs another review, so trust it again after `fonn hooks install` updates it. Fonn never writes a trust decision.
+Codex runs a user hook only after you review and trust it. After installing, open Codex and run `/hooks`, then review and trust the Fonn hook. Codex skips it until then. A changed hook needs another review, so trust it again after `fonn hooks install` updates it. Fonn never writes a trust decision. A Codex hook installed by Fonn 0.2.0 has no name and shows as "Unnamed hook". `fonn hooks` reports it as needing an update, and `fonn hooks install` adds the name, after which Codex asks you to trust it again.
 
 ## Check that it works
 
