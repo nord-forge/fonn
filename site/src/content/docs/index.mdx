@@ -36,17 +36,18 @@ import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 ## Quick start
 
-The [install guide](/start/install/) covers Homebrew and a source checkout.
+With Homebrew on macOS:
 
 ```sh
-git clone https://github.com/nord-forge/fonn.git
-cd fonn && npm ci --ignore-scripts && npm run build
-node packages/cli/dist/cli/main.js hooks install --agent claude
-node packages/cli/dist/cli/main.js ui
+brew tap nord-forge/fonn https://github.com/nord-forge/fonn
+brew install --cask nord-forge/fonn/fonn
+fonn hooks install     # shows each change and asks before writing
 ```
 
+Then keep using your agent as usual. Using Codex? Open it once and trust the Fonn hook in `/hooks`. The [install guide](/start/install/) covers each agent, a source checkout, and the filter on its own without installing Fonn.
+
 <CardGrid>
-  <LinkCard title="Install" description="A source checkout or Homebrew, the hook for your agent, or just the standalone filters." href="/start/install/" />
+  <LinkCard title="Install" description="Homebrew or a source checkout, the hook for your agent, or just the standalone filters." href="/start/install/" />
   <LinkCard title="How the filter decides" description="Step through every check with real samples or your own output." href="/how-it-works/" />
 </CardGrid>
 
