@@ -1,6 +1,6 @@
 # Fonn UI
 
-`fonn ui` opens a local web interface for Fonn's hooks, settings, filter rules, profiles and history. Its first page, Agents, manages the hooks from [Use Fonn with the tools you already have](hooks.md). It runs inside the Fonn CLI, so there is nothing extra to install. It needs a source checkout until 0.2.0, because the Homebrew cask installs 0.1.0, which does not have `fonn ui` or `fonn hooks` yet.
+`fonn ui` opens a local web interface for Fonn's hooks, settings, filter rules, profiles and history. Its first page, Agents, manages the hooks from [Use Fonn with the tools you already have](hooks.md). It runs inside the Fonn CLI, so there is nothing extra to install.
 
 ```sh
 fonn ui              # starts the server and opens your browser

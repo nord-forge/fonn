@@ -18,7 +18,7 @@ fonn hooks install      # every agent found on this machine
 fonn hooks install --agent claude --agent codex
 ```
 
-A hook installed from a source checkout runs that folder's current build in every session and project, so building, switching branches or unfinished changes there affect all of them. Fonn says so when you install it and in `fonn hooks`. If you work on Fonn itself, install the hook from a second clone that stays on `main`, or from Homebrew once 0.2.0 is out.
+A hook installed from a source checkout runs that folder's current build in every session and project, so building, switching branches or unfinished changes there affect all of them. Fonn says so when you install it and in `fonn hooks`. If you work on Fonn itself, install the hook from Homebrew, or from a second clone that stays on `main`.
 
 Without `--agent`, install picks every agent whose command is on your `PATH` or whose config folder exists. For each agent it shows the file, a short summary and a diff, then asks `[y/N]`. Nothing is written until you answer yes. Outside a terminal, install refuses unless you pass `--yes`. The diff hides likely secrets: values under credential names such as `GITHUB_TOKEN`, `--api-key`, `client_secret` or `DB_PASSWORD`, everything in an `env` block, credentials inside commands such as `Authorization: Bearer ...` headers, `--token` flags, `NAME=value` assignments and passwords in URLs, and well-known token shapes such as `sk-...` or `ghp_...`. A value is the whole shell word, however deeply it is quoted. Names that only contain such a word, like `--keymap` or `--session-name`, stay visible. The file itself keeps the real values.
 
