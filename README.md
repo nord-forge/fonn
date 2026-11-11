@@ -9,7 +9,7 @@ Fonn makes noisy command output smaller before your coding agent reads it, so fe
 
 Fonn also has its own launchers for Claude and Codex, a small agent for local models (`fonn chat`) and structured tasks through the Claude Agent SDK, for those who want them.
 
-This is the `nord-forge/fonn` monorepo with the core and the CLI. A desktop app is planned; none exists yet. Project code is [MIT licensed](LICENSE); upstream dependencies retain [their own terms](THIRD_PARTY_NOTICES.md). Fonn is independent of Anthropic and OpenAI.
+This is the `nord-forge/fonn` monorepo with the core and the CLI. A desktop app is planned; none exists yet. Project code is [MIT licensed](LICENSE), and the logo and other [brand files](brand/) are [CC BY 4.0](brand/LICENSE); upstream dependencies retain [their own terms](THIRD_PARTY_NOTICES.md). Fonn is independent of Anthropic and OpenAI.
 
 ## Noise output?
 Yes, under the hood, both Claude and Codex use more thinking and logic than you as the user get to see. Below you can find an example of what Fonn removes to keep your tokens from being needlessly burned. Let's say we have the following without Fonn:
