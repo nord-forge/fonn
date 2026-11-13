@@ -1,0 +1,60 @@
+---
+import './quick-navigation.css';
+
+const route = Astro.locals.starlightRoute;
+const sections = (route.toc?.items ?? []).filter((item) => item.slug !== '_top');
+
+// Include nested reference groups without maintaining a second site map.
+function linksIn(entries: typeof route.sidebar): Array<{ label: string; href: string; isCurrent: boolean }> {
+  return entries.flatMap((entry) => entry.type === 'link' ? [entry] : linksIn(entry.entries));
+}
+const groups = route.sidebar.map((entry) => ({
+  label: entry.type === 'group' ? entry.label : 'Documentation',
+  links: linksIn([entry]),
+}));
+---
+
+<fonn-quick-navigation>
+  <nav class="quick-navigation" aria-labelledby="quick-navigation-title" aria-describedby="quick-navigation-help" data-pagefind-ignore>
+    <div class="quick-navigation-heading">
+      <p id="quick-navigation-title">Quick navigation</p>
+      <p id="quick-navigation-help"><kbd>Tab</kbd> to move · <kbd>Enter</kbd> to choose · <kbd>Esc</kbd> to close</p>
+    </div>
+    <div class="quick-navigation-actions">
+      <a class="quick-navigation-skip" href="#_top">Skip to main content <span aria-hidden="true">↓</span></a>
+      <button type="button" data-quick-search hidden>Search docs</button>
+      <button type="button" data-quick-close hidden>Close</button>
+    </div>
+    <div class="quick-navigation-grid">
+      <section class="quick-navigation-sections" aria-labelledby="quick-navigation-sections-title" hidden={sections.length === 0}>
+        <h2 id="quick-navigation-sections-title">On this page</h2>
+        <ul>{sections.map((section) => <li><a href={`#${section.slug}`}>{section.text}</a></li>)}</ul>
+      </section>
+      <section aria-labelledby="quick-navigation-site-title">
+        <h2 id="quick-navigation-site-title">Explore Fonn</h2>
+        <a href="/" aria-current={Astro.url.pathname === '/' ? 'page' : undefined}>Home</a>
+        <div class="quick-navigation-groups">
+          {groups.map((group) => (
+            group.label === 'Reference' ? (
+              <details class="quick-navigation-reference">
+                <summary>Reference <span>{group.links.length} guides</span></summary>
+                <ul>{group.links.map((link) => (
+                  <li><a href={link.href} aria-current={link.isCurrent ? 'page' : undefined}>{link.label}</a></li>
+                ))}</ul>
+              </details>
+            ) : <div>
+              <h3>{group.label}</h3>
+              <ul>{group.links.map((link) => (
+                <li><a href={link.href} aria-current={link.isCurrent ? 'page' : undefined}>{link.label}</a></li>
+              ))}</ul>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  </nav>
+</fonn-quick-navigation>
+
+<script>
+  import './quick-navigation';
+</script>

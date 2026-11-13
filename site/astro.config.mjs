@@ -41,6 +41,8 @@ export default defineConfig({
         './src/styles/visualiser-output.css',
       ],
       components: {
+        SkipLink: './src/components/QuickNavigation/QuickNavigation.astro',
+        Header: './src/components/Header/Header.astro',
         Hero: './src/components/Hero.astro',
         SocialIcons: './src/components/StarLink.astro',
         ThemeSelect: './src/components/ThemeSelect.astro',

@@ -34,11 +34,15 @@ Sample character counts describe those samples only. They are not token, cost or
 | `src/content/docs/` | The pages, as Markdown and MDX. `reference/` is generated |
 | `src/pages/how-it-works.astro` | The interactive visualiser page |
 | `src/components/` | Starlight overrides (`Hero`, `Head`, the header star link, the empty mobile controls) and build-time components (`ProfilesTable`, `FilterDemo`) |
+| `src/components/QuickNavigation/` | First-Tab navigation panel: skip to content, search, page sections and links generated from the sidebar |
+| `src/components/Header/` · `src/components/DesktopNavigation/` | Default Starlight header plus a primary navigation row at 72rem and wider |
 | `src/scripts/dock.js` | The mobile section dock, which replaces Starlight's mobile menu and "On this page" bar |
 | `src/scripts/hero/` | WebGL hero: shaders, WebGL helpers, glyph atlas, particle data and the frame loop |
 | `src/scripts/visualiser/` | Visualiser: checks, line alignment, the filter call, each card's rendering, sticky controls and samples |
 | `src/styles/` | The ice theme mapped onto Starlight's variables, plus hero, dock and visualiser styles |
 | `scripts/` | The content preparation and link check steps |
+
+The first Tab reveals **Quick navigation**, with **Skip to main content** first. Tab and Shift+Tab move through ordinary links and buttons; Enter follows a link, and Escape or Close returns focus to the header. Page-section links move keyboard focus to their heading. Reference guides use a native disclosure so the main destinations stay compact. Without JavaScript, the skip link and documentation links still work. The existing mobile dock stays in place; the additional header navigation only appears at desktop widths.
 
 ## Vercel
 
