@@ -1,0 +1,24 @@
+---
+import Default from '@astrojs/starlight/components/Header.astro';
+import DesktopNavigation from '../DesktopNavigation/DesktopNavigation.astro';
+---
+
+<div class="fonn-header">
+  <Default />
+  <DesktopNavigation />
+</div>
+
+<style>
+  .fonn-header { height: 100%; }
+
+  @media (min-width: 72rem) {
+    :global(:root) { --sl-nav-height: 7rem; }
+    .fonn-header {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 0.25rem;
+    }
+    /* SiteTitle sizes its logo from this variable; keep the original row size. */
+    .fonn-header > :global(.header) { --sl-nav-height: 4rem; }
+  }
+</style>
